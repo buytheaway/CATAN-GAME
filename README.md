@@ -1,15 +1,8 @@
-﻿# CATAN-GAME (Desktop + LAN Multiplayer)
+# CATAN-GAME (Singleplayer Desktop Prototype)
 
-## Run server
-.\run_server.ps1 -Port 8000
+Run:
+- double click: RUN_SINGLEPLAYER.bat
 
-## Run desktop client
-.\run_desktop.ps1 -HostIP 127.0.0.1 -Port 8000 -Room room1 -Name Alice
-.\run_desktop.ps1 -HostIP 127.0.0.1 -Port 8000 -Room room1 -Name Bob
-
-### Notes
-- In browser you open: http://127.0.0.1:8000/ (NOT 0.0.0.0)
-- Gameplay:
-  - Host presses Start
-  - Setup: place settlement+road twice (snake order) via clicks + Place button
-  - Main: Roll, Build, Trade, End
+Controls:
+- Setup phase: click highlighted vertex to place Settlement, then click highlighted edge to place Road
+- Main phase: Roll -> Build (Road/Settlement/City) -> click highlighted place -> End

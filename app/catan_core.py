@@ -1,970 +1,458 @@
-﻿from __future__ import annotations
-
-import math
-import random
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Set
+import random
+import math
 
-Resource = str  # "wood" "brick" "wheat" "sheep" "ore"
+RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"]
+TERRAINS  = ["forest", "hill", "pasture", "field", "mountain", "desert"]
 
-COSTS = {
-    "road": {"brick": 1, "wood": 1},
-    "settlement": {"brick": 1, "wood": 1, "wheat": 1, "sheep": 1},
-    "city": {"ore": 3, "wheat": 2},
-    "dev": {"ore": 1, "wheat": 1, "sheep": 1},
+TERRAIN_TO_RESOURCE = {
+    "forest": "wood",
+    "hill": "brick",
+    "pasture": "sheep",
+    "field": "wheat",
+    "mountain": "ore",
+    "desert": None,
 }
 
-# Classic 19-hex layout in axial coords
-STANDARD_AXIAL = [
-    (0, -2), (1, -2), (2, -2),
-    (-1, -1), (0, -1), (1, -1), (2, -1),
-    (-2, 0), (-1, 0), (0, 0), (1, 0), (2, 0),
-    (-2, 1), (-1, 1), (0, 1), (1, 1),
-    (-2, 2), (-1, 2), (0, 2),
-]
+# Standard-ish number tokens (without 7), desert gets None.
+STD_NUMBERS = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
 
-AXIAL_DIRS = [(1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1)]
+def pip_count(n: Optional[int]) -> int:
+    # heuristic pips: 6/8=5, 5/9=4, 4/10=3, 3/11=2, 2/12=1
+    if n is None:
+        return 0
+    return {6:5, 8:5, 5:4, 9:4, 4:3, 10:3, 3:2, 11:2, 2:1, 12:1}.get(n, 0)
 
-DEV_DECK = (
-    ["knight"] * 14 +
-    ["road_building"] * 2 +
-    ["year_of_plenty"] * 2 +
-    ["monopoly"] * 2 +
-    ["victory_point"] * 5
-)
+@dataclass(frozen=True)
+class Vertex:
+    vid: int
+    x: float
+    y: float
 
-MAX_ROADS = 15
-MAX_SETTLEMENTS = 5
-MAX_CITIES = 4
-
-WIN_VP = 10
-
-
-def axial_neighbors(q: int, r: int) -> List[Tuple[int, int]]:
-    return [(q + dq, r + dr) for dq, dr in AXIAL_DIRS]
-
-
-def axial_to_xy(q: int, r: int, size: float) -> Tuple[float, float]:
-    # pointy-top
-    x = size * math.sqrt(3) * (q + r / 2.0)
-    y = size * 1.5 * r
-    return x, y
-
-
-def hex_corners(x: float, y: float, size: float) -> List[Tuple[float, float]]:
-    corners = []
-    for i in range(6):
-        angle = math.radians(60 * i - 30)
-        corners.append((x + size * math.cos(angle), y + size * math.sin(angle)))
-    return corners
-
+@dataclass(frozen=True)
+class Edge:
+    eid: int
+    a: int  # vertex id
+    b: int  # vertex id
 
 @dataclass
-class HexTile:
-    id: int
+class Tile:
+    tid: int
     q: int
     r: int
-    terrain: str              # "wood" "brick" "wheat" "sheep" "ore" "desert"
-    number: Optional[int]     # None for desert
-    nodes: List[int] = field(default_factory=list)
-
-
-@dataclass
-class Board:
-    seed: int
-    hexes: Dict[int, HexTile]
-    robber_hex: int
-    node_neighbors: Dict[int, Set[int]]
-    edge_nodes: Dict[int, Tuple[int, int]]
-    node_hexes: Dict[int, Set[int]]
-    ports_by_node: Dict[int, str]  # node -> "any3" or "<res>2"
-
-    @staticmethod
-    def generate(seed: int) -> "Board":
-        rng = random.Random(seed)
-        size = 10.0
-
-        terrains = (["wood"] * 4 + ["wheat"] * 4 + ["sheep"] * 4 + ["brick"] * 3 + ["ore"] * 3 + ["desert"] * 1)
-        numbers = [2, 12] + [3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11]
-
-        axial_positions = list(STANDARD_AXIAL)
-        rng.shuffle(axial_positions)
-
-        def build_attempt() -> Tuple[Dict[int, HexTile], int]:
-            rng.shuffle(terrains)
-            terr = terrains[:]
-            robber_hex = terr.index("desert")
-
-            nums = numbers[:]
-            rng.shuffle(nums)
-
-            tiles: Dict[int, HexTile] = {}
-            num_i = 0
-            for i, (q, r) in enumerate(axial_positions):
-                t = terr[i]
-                if t == "desert":
-                    n = None
-                else:
-                    n = nums[num_i]
-                    num_i += 1
-                tiles[i] = HexTile(id=i, q=q, r=r, terrain=t, number=n)
-            return tiles, robber_hex
-
-        def violates_6_8(tiles: Dict[int, HexTile]) -> bool:
-            pos_to_id = {(t.q, t.r): t.id for t in tiles.values()}
-            for t in tiles.values():
-                if t.number not in (6, 8):
-                    continue
-                for nq, nr in axial_neighbors(t.q, t.r):
-                    j = pos_to_id.get((nq, nr))
-                    if j is None:
-                        continue
-                    if tiles[j].number in (6, 8):
-                        return True
-            return False
-
-        tiles, robber_hex = build_attempt()
-        for _ in range(250):
-            if not violates_6_8(tiles):
-                break
-            tiles, robber_hex = build_attempt()
-
-        # Build nodes/edges by corner unification
-        node_id_by_xy: Dict[Tuple[float, float], int] = {}
-        next_node_id = 0
-        edge_id_by_pair: Dict[Tuple[int, int], int] = {}
-        edge_nodes: Dict[int, Tuple[int, int]] = {}
-        node_neighbors: Dict[int, Set[int]] = {}
-        node_hexes: Dict[int, Set[int]] = {}
-
-        def get_node_id(xy: Tuple[float, float]) -> int:
-            nonlocal next_node_id
-            key = (round(xy[0], 4), round(xy[1], 4))
-            if key not in node_id_by_xy:
-                node_id_by_xy[key] = next_node_id
-                node_neighbors[next_node_id] = set()
-                node_hexes[next_node_id] = set()
-                next_node_id += 1
-            return node_id_by_xy[key]
-
-        def add_edge(a: int, b: int) -> int:
-            x, y = (a, b) if a < b else (b, a)
-            key = (x, y)
-            if key not in edge_id_by_pair:
-                eid = len(edge_id_by_pair)
-                edge_id_by_pair[key] = eid
-                edge_nodes[eid] = key
-                node_neighbors[x].add(y)
-                node_neighbors[y].add(x)
-            return edge_id_by_pair[key]
-
-        for tid, tile in tiles.items():
-            cx, cy = axial_to_xy(tile.q, tile.r, size)
-            corners = hex_corners(cx, cy, size)
-            node_ids = [get_node_id(xy) for xy in corners]
-            tile.nodes = node_ids
-            for nid in node_ids:
-                node_hexes[nid].add(tid)
-            for i in range(6):
-                add_edge(node_ids[i], node_ids[(i + 1) % 6])
-
-        # Ports (simplified but playable):
-        # Choose 9 boundary nodes: 4x "any3" + 5x resource-specific "res2"
-        boundary_nodes = [nid for nid, hs in node_hexes.items() if len(hs) < 3]
-        rng.shuffle(boundary_nodes)
-        port_nodes = boundary_nodes[:9] if len(boundary_nodes) >= 9 else boundary_nodes[:]
-        port_types = ["any3", "any3", "any3", "any3", "wood2", "brick2", "wheat2", "sheep2", "ore2"]
-        rng.shuffle(port_types)
-
-        ports_by_node: Dict[int, str] = {}
-        for i, nid in enumerate(port_nodes):
-            ports_by_node[nid] = port_types[i % len(port_types)]
-
-        return Board(
-            seed=seed,
-            hexes=tiles,
-            robber_hex=robber_hex,
-            node_neighbors=node_neighbors,
-            edge_nodes=edge_nodes,
-            node_hexes=node_hexes,
-            ports_by_node=ports_by_node,
-        )
-
+    terrain: str
+    number: Optional[int]
+    center: Tuple[float, float]
+    corners: List[int]  # vertex ids
 
 @dataclass
 class Player:
-    id: str
+    pid: int
     name: str
-    resources: Dict[Resource, int] = field(default_factory=lambda: {"wood": 0, "brick": 0, "wheat": 0, "sheep": 0, "ore": 0})
+    is_bot: bool = False
+    resources: Dict[str, int] = field(default_factory=lambda: {k:0 for k in RESOURCES})
+    settlements: Set[int] = field(default_factory=set)  # vertex ids
+    cities: Set[int] = field(default_factory=set)       # vertex ids
+    roads: Set[int] = field(default_factory=set)        # edge ids
 
-    # dev cards
-    dev_hand: List[str] = field(default_factory=list)   # playable
-    dev_new: List[str] = field(default_factory=list)    # bought this turn, not playable
-    vp_cards: int = 0
+    @property
+    def vp(self) -> int:
+        return len(self.settlements) + 2 * len(self.cities)
 
-    # awards
-    played_knights: int = 0
-
-    def res_total(self) -> int:
-        return sum(self.resources.values())
-
+@dataclass
+class Board:
+    tiles: List[Tile]
+    vertices: Dict[int, Vertex]
+    edges: Dict[int, Edge]
+    vertex_tiles: Dict[int, List[int]]          # vid -> [tid...]
+    vertex_neighbors: Dict[int, Set[int]]       # vid -> set(vid)
+    edge_by_verts: Dict[Tuple[int,int], int]    # (min,max) -> eid
 
 @dataclass
 class Game:
-    board: Optional[Board] = None
-    players: List[Player] = field(default_factory=list)
-
-    phase: str = "lobby"  # lobby | setup | main | discard | robber | game_over
-    turn: int = 0
-    current_player: Optional[str] = None
+    board: Board
+    players: List[Player]
+    current: int = 0
     rolled: bool = False
     last_roll: Optional[int] = None
+    log: List[str] = field(default_factory=list)
 
-    setup_order: List[str] = field(default_factory=list)
-    setup_index: int = 0
+    # setup script: snake draft for 2 players
+    setup_seq: List[Tuple[int, str]] = field(default_factory=list)  # (pid, "settlement"/"road")
+    setup_i: int = 0
+    setup_last_settlement_vid: Optional[int] = None
+    settlements_placed: Dict[int, int] = field(default_factory=dict)
 
-    buildings: Dict[int, Dict[str, str]] = field(default_factory=dict)  # node -> {"player":pid,"type":"settlement"/"city"}
-    roads: Dict[int, str] = field(default_factory=dict)                # edge -> pid
+    def phase(self) -> str:
+        if self.setup_i < len(self.setup_seq):
+            pid, act = self.setup_seq[self.setup_i]
+            return f"setup:{pid}:{act}"
+        return "main"
 
-    # per-player piece counts
-    roads_built: Dict[str, int] = field(default_factory=dict)
-    settlements_on_board: Dict[str, int] = field(default_factory=dict)
-    cities_on_board: Dict[str, int] = field(default_factory=dict)
+    def cur_player(self) -> Player:
+        return self.players[self.current]
 
-    # dev
-    dev_deck: List[str] = field(default_factory=list)
-    dev_played_this_turn: bool = False
+    def is_human_turn(self) -> bool:
+        return not self.cur_player().is_bot
 
-    # robber discard
-    discard_required: Dict[str, int] = field(default_factory=dict)
-    discard_done: Set[str] = field(default_factory=set)
+    def setup_action(self) -> Optional[Tuple[int, str]]:
+        if self.setup_i < len(self.setup_seq):
+            return self.setup_seq[self.setup_i]
+        return None
 
-    # awards holders
-    longest_road_holder: Optional[str] = None
-    longest_road_len: int = 0
-    largest_army_holder: Optional[str] = None
-    largest_army_size: int = 0
+    def can_roll(self) -> bool:
+        return self.phase() == "main" and (not self.rolled)
 
-    # end game
-    winner: Optional[str] = None
-
-    # ---------------- basic ----------------
-    def add_player(self, pid: str, name: str) -> None:
-        if self.phase != "lobby":
-            raise ValueError("game already started (join only in lobby)")
-        if any(p.id == pid for p in self.players):
-            return
-        if len(self.players) >= 4:
-            raise ValueError("room full (max 4)")
-        self.players.append(Player(id=pid, name=name))
-        self.roads_built[pid] = 0
-        self.settlements_on_board[pid] = 0
-        self.cities_on_board[pid] = 0
-
-    def player(self, pid: str) -> Player:
-        for p in self.players:
-            if p.id == pid:
-                return p
-        raise ValueError("unknown player")
-
-    def _ids(self) -> List[str]:
-        return [p.id for p in self.players]
-
-    def start(self, seed: Optional[int] = None) -> None:
-        if self.phase != "lobby":
-            raise ValueError("already started")
-        if len(self.players) < 2:
-            raise ValueError("need at least 2 players")
-        if seed is None:
-            seed = random.randint(1, 2_000_000_000)
-        self.board = Board.generate(seed)
-
-        # init dev deck
-        self.dev_deck = list(DEV_DECK)
-        random.Random(seed ^ 0xA5A5A5).shuffle(self.dev_deck)
-        self.dev_played_this_turn = False
-
-        ids = self._ids()
-        self.setup_order = ids + list(reversed(ids))
-        self.setup_index = 0
-
-        self.phase = "setup"
-        self.current_player = self.setup_order[self.setup_index]
-        self.turn = 0
-        self.rolled = False
-        self.last_roll = None
-        self.winner = None
-
-        self.longest_road_holder = None
-        self.longest_road_len = 0
-        self.largest_army_holder = None
-        self.largest_army_size = 0
-
-    # ---------------- VP calc ----------------
-    def _base_vp_from_board(self, pid: str) -> int:
-        vp = 0
-        for _, b in self.buildings.items():
-            if b["player"] != pid:
-                continue
-            if b["type"] == "settlement":
-                vp += 1
-            elif b["type"] == "city":
-                vp += 2
-        return vp
-
-    def _award_vp(self, pid: str) -> int:
-        vp = 0
-        if self.longest_road_holder == pid:
-            vp += 2
-        if self.largest_army_holder == pid:
-            vp += 2
-        return vp
-
-    def total_vp(self, pid: str) -> int:
-        p = self.player(pid)
-        return self._base_vp_from_board(pid) + p.vp_cards + self._award_vp(pid)
-
-    def _check_win(self, pid: str) -> None:
-        if self.phase == "game_over":
-            return
-        if self.total_vp(pid) >= WIN_VP:
-            self.phase = "game_over"
-            self.winner = pid
-
-    # ---------------- public/private state ----------------
-    def public_state(self) -> dict:
-        b = self.board
-        return {
-            "phase": self.phase,
-            "turn": self.turn,
-            "current_player": self.current_player,
-            "rolled": self.rolled,
-            "last_roll": self.last_roll,
-            "winner": self.winner,
-            "players": [
-                {
-                    "id": p.id,
-                    "name": p.name,
-                    "vp": self.total_vp(p.id),
-                    "vp_base": self._base_vp_from_board(p.id),
-                    "vp_cards": p.vp_cards,
-                    "vp_awards": self._award_vp(p.id),
-                    "res_count": p.res_total(),
-                    "knights": p.played_knights,
-                    "dev_hand": len(p.dev_hand),
-                    "dev_new": len(p.dev_new),
-                } for p in self.players
-            ],
-            "board": None if b is None else {
-                "seed": b.seed,
-                "robber_hex": b.robber_hex,
-                "hexes": [{"id": h.id, "terrain": h.terrain, "number": h.number} for h in b.hexes.values()],
-                "nodes_count": len(b.node_neighbors),
-                "edges_count": len(b.edge_nodes),
-                "ports_count": len(b.ports_by_node),
-            },
-            "buildings": self.buildings,
-            "roads_count": len(self.roads),
-            "dev_deck_left": len(self.dev_deck),
-            "awards": {
-                "longest_road_holder": self.longest_road_holder,
-                "longest_road_len": self.longest_road_len,
-                "largest_army_holder": self.largest_army_holder,
-                "largest_army_size": self.largest_army_size,
-            },
-            "discard_required": self.discard_required,
-            "discard_done": list(self.discard_done),
-        }
-
-    def private_state(self, pid: str) -> dict:
-        if self.phase == "lobby":
-            return {"you": pid, "resources": {"wood": 0, "brick": 0, "wheat": 0, "sheep": 0, "ore": 0}}
-        p = self.player(pid)
-        return {
-            "you": pid,
-            "resources": p.resources,
-            "dev_hand": p.dev_hand,
-            "dev_new": p.dev_new,
-            "vp_cards": p.vp_cards,
-        }
-
-    # ---------------- hints ----------------
-    def valid_initial_nodes(self) -> List[int]:
-        if self.phase != "setup" or self.board is None:
-            return []
-        out = []
-        for nid in self.board.node_neighbors.keys():
-            if nid in self.buildings:
-                continue
-            if any(n2 in self.buildings for n2 in self.board.node_neighbors[nid]):
-                continue
-            out.append(nid)
-        return out
-
-    def valid_initial_edges(self, node_id: int) -> List[int]:
-        if self.phase != "setup" or self.board is None:
-            return []
-        out = []
-        for eid, (a, b) in self.board.edge_nodes.items():
-            if eid in self.roads:
-                continue
-            if a == node_id or b == node_id:
-                out.append(eid)
-        return out
-
-    def valid_build_edges(self, pid: str) -> List[int]:
-        if self.phase != "main" or self.board is None:
-            return []
-        out = []
-        for eid in self.board.edge_nodes.keys():
-            if eid in self.roads:
-                continue
-            if self._road_connected(pid, eid):
-                out.append(eid)
-        return out
-
-    def valid_build_nodes(self, pid: str) -> List[int]:
-        if self.phase != "main" or self.board is None:
-            return []
-        out = []
-        for nid in self.board.node_neighbors.keys():
-            if nid in self.buildings:
-                continue
-            if any(n2 in self.buildings for n2 in self.board.node_neighbors[nid]):
-                continue
-            if self._node_connected(pid, nid):
-                out.append(nid)
-        return out
-
-    def ports_for_player(self, pid: str) -> List[str]:
-        if self.board is None:
-            return []
-        ports = []
-        for nid, pt in self.board.ports_by_node.items():
-            b = self.buildings.get(nid)
-            if b and b["player"] == pid:
-                ports.append(pt)
-        return ports
-
-    # ---------------- setup ----------------
-    def place_initial(self, pid: str, node_id: int, edge_id: int) -> None:
-        if self.phase != "setup" or self.board is None:
-            raise ValueError("not in setup")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if node_id not in self.board.node_neighbors:
-            raise ValueError("bad node")
-        if edge_id not in self.board.edge_nodes:
-            raise ValueError("bad edge")
-        if node_id in self.buildings:
-            raise ValueError("node occupied")
-        if any(n2 in self.buildings for n2 in self.board.node_neighbors[node_id]):
-            raise ValueError("too close to another settlement")
-
-        a, b = self.board.edge_nodes[edge_id]
-        if edge_id in self.roads:
-            raise ValueError("edge occupied")
-        if not (a == node_id or b == node_id):
-            raise ValueError("edge must touch chosen node")
-
-        # place settlement + road (free)
-        self.buildings[node_id] = {"player": pid, "type": "settlement"}
-        self.settlements_on_board[pid] += 1
-
-        self.roads[edge_id] = pid
-        self.roads_built[pid] += 1
-
-        # second placement resources
-        n = len(self.players)
-        if self.setup_index >= n:
-            self._grant_setup_resources(pid, node_id)
-
-        self.setup_index += 1
-        if self.setup_index >= len(self.setup_order):
-            self.phase = "main"
-            self.turn = 1
-            self.current_player = self.players[0].id
-            self.rolled = False
-            self.last_roll = None
-        else:
-            self.current_player = self.setup_order[self.setup_index]
-
-        self._update_longest_road()
-        self._check_win(pid)
-
-    def _grant_setup_resources(self, pid: str, node_id: int) -> None:
-        assert self.board is not None
-        pl = self.player(pid)
-        for hid in self.board.node_hexes[node_id]:
-            h = self.board.hexes[hid]
-            if h.terrain == "desert":
-                continue
-            pl.resources[h.terrain] += 1
-
-    # ---------------- main flow ----------------
-    def roll_dice(self, pid: str) -> int:
-        if self.phase != "main" or self.board is None:
-            raise ValueError("not in main")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if self.rolled:
-            raise ValueError("already rolled")
-
-        d = random.randint(1, 6) + random.randint(1, 6)
-        self.last_roll = d
+    def roll_dice(self) -> int:
+        if not self.can_roll():
+            raise RuntimeError("Cannot roll now")
+        a = random.randint(1,6)
+        b = random.randint(1,6)
+        self.last_roll = a+b
         self.rolled = True
+        self.log.append(f"[DICE] {self.cur_player().name} rolled {self.last_roll}")
+        self._distribute(self.last_roll)
+        return self.last_roll
 
-        if d == 7:
-            self.phase = "discard"
-            self._begin_discard_phase()
-        else:
-            self._distribute_resources(d)
-
-        return d
-
-    def _begin_discard_phase(self) -> None:
-        self.discard_required = {}
-        self.discard_done = set()
-        for p in self.players:
-            total = p.res_total()
-            if total > 7:
-                self.discard_required[p.id] = total // 2
-
-        if not self.discard_required:
-            # no discards -> robber immediately
-            self.phase = "robber"
-
-    def discard(self, pid: str, give: Dict[Resource, int]) -> None:
-        if self.phase != "discard":
-            raise ValueError("not in discard phase")
-        if pid not in self.discard_required:
-            raise ValueError("you do not need to discard")
-        if pid in self.discard_done:
-            raise ValueError("already discarded")
-
-        need = self.discard_required[pid]
-        total = sum(int(v) for v in give.values())
-        if total != need:
-            raise ValueError(f"must discard exactly {need}")
-
-        pl = self.player(pid)
-        for r, c in give.items():
-            c = int(c)
-            if c < 0:
-                raise ValueError("negative discard not allowed")
-            if pl.resources.get(r, 0) < c:
-                raise ValueError(f"not enough {r} to discard")
-
-        for r, c in give.items():
-            pl.resources[r] -= int(c)
-
-        self.discard_done.add(pid)
-
-        if len(self.discard_done) == len(self.discard_required):
-            self.phase = "robber"
-
-    def move_robber(self, pid: str, hex_id: int, victim: Optional[str] = None) -> None:
-        if self.phase != "robber" or self.board is None:
-            raise ValueError("not in robber")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if hex_id not in self.board.hexes:
-            raise ValueError("bad hex")
-        if hex_id == self.board.robber_hex:
-            raise ValueError("robber already there")
-
-        self.board.robber_hex = hex_id
-
-        if victim:
-            if victim == pid:
-                raise ValueError("cannot steal from yourself")
-            if not self._victim_adjacent_to_hex(victim, hex_id):
-                raise ValueError("victim not adjacent to robber hex")
-            self._steal_random(pid, victim)
-
-        self.phase = "main"
-
-    def _victim_adjacent_to_hex(self, victim_pid: str, hex_id: int) -> bool:
-        assert self.board is not None
-        h = self.board.hexes[hex_id]
-        for nid in h.nodes:
-            b = self.buildings.get(nid)
-            if b and b["player"] == victim_pid:
-                return True
-        return False
-
-    def _steal_random(self, thief: str, victim: str) -> None:
-        v = self.player(victim)
-        t = self.player(thief)
-        pool = []
-        for r, c in v.resources.items():
-            pool += [r] * c
-        if not pool:
+    def end_turn(self) -> None:
+        if self.phase() != "main":
             return
-        r = random.choice(pool)
-        v.resources[r] -= 1
-        t.resources[r] += 1
-
-    def end_turn(self, pid: str) -> None:
-        if self.phase != "main" or self.board is None:
-            raise ValueError("not in main")
-        if self.winner is not None:
-            raise ValueError("game over")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if not self.rolled:
-            raise ValueError("must roll before ending")
-
-        # unlock newly bought dev cards
-        p = self.player(pid)
-        if p.dev_new:
-            p.dev_hand.extend(p.dev_new)
-            p.dev_new = []
-        self.dev_played_this_turn = False
-
-        ids = self._ids()
-        idx = ids.index(self.current_player)
-        idx = (idx + 1) % len(ids)
-        self.current_player = ids[idx]
-        self.turn += 1
         self.rolled = False
         self.last_roll = None
+        self.current = (self.current + 1) % len(self.players)
+        self.log.append(f"[TURN] Now: {self.cur_player().name}")
 
-    # ---------------- build ----------------
-    def build_road(self, pid: str, edge_id: int, free: bool = False) -> None:
-        if self.phase != "main" or self.board is None:
-            raise ValueError("not in main")
-        if self.winner is not None:
-            raise ValueError("game over")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if not self.rolled:
-            raise ValueError("roll first")
-        if edge_id not in self.board.edge_nodes:
-            raise ValueError("bad edge")
-        if edge_id in self.roads:
-            raise ValueError("edge occupied")
-        if self.roads_built.get(pid, 0) >= MAX_ROADS:
-            raise ValueError("no roads left (limit reached)")
-        if not self._road_connected(pid, edge_id):
-            raise ValueError("road must connect to your network")
+    # ===== build rules =====
+    def cost_road(self) -> Dict[str,int]:
+        return {"wood":1, "brick":1}
+    def cost_settlement(self) -> Dict[str,int]:
+        return {"wood":1, "brick":1, "sheep":1, "wheat":1}
+    def cost_city(self) -> Dict[str,int]:
+        return {"wheat":2, "ore":3}
 
-        if not free:
-            self._pay(pid, COSTS["road"])
+    def has_cost(self, pid: int, cost: Dict[str,int]) -> bool:
+        p = self.players[pid]
+        return all(p.resources.get(k,0) >= v for k,v in cost.items())
 
-        self.roads[edge_id] = pid
-        self.roads_built[pid] += 1
+    def pay_cost(self, pid: int, cost: Dict[str,int]) -> None:
+        p = self.players[pid]
+        for k,v in cost.items():
+            p.resources[k] -= v
 
-        self._update_longest_road()
-        self._check_win(pid)
-
-    def build_settlement(self, pid: str, node_id: int) -> None:
-        if self.phase != "main" or self.board is None:
-            raise ValueError("not in main")
-        if self.winner is not None:
-            raise ValueError("game over")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if not self.rolled:
-            raise ValueError("roll first")
-        if node_id not in self.board.node_neighbors:
-            raise ValueError("bad node")
-        if node_id in self.buildings:
-            raise ValueError("node occupied")
-        if any(n2 in self.buildings for n2 in self.board.node_neighbors[node_id]):
-            raise ValueError("too close to another settlement")
-        if self.settlements_on_board.get(pid, 0) >= MAX_SETTLEMENTS:
-            raise ValueError("no settlements left (limit reached)")
-        if not self._node_connected(pid, node_id):
-            raise ValueError("must connect via your road")
-
-        self._pay(pid, COSTS["settlement"])
-        self.buildings[node_id] = {"player": pid, "type": "settlement"}
-        self.settlements_on_board[pid] += 1
-
-        self._update_longest_road()
-        self._check_win(pid)
-
-    def build_city(self, pid: str, node_id: int) -> None:
-        if self.phase != "main" or self.board is None:
-            raise ValueError("not in main")
-        if self.winner is not None:
-            raise ValueError("game over")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if not self.rolled:
-            raise ValueError("roll first")
-
-        b = self.buildings.get(node_id)
-        if not b or b["player"] != pid or b["type"] != "settlement":
-            raise ValueError("need your settlement to upgrade")
-        if self.cities_on_board.get(pid, 0) >= MAX_CITIES:
-            raise ValueError("no cities left (limit reached)")
-
-        self._pay(pid, COSTS["city"])
-        self.buildings[node_id] = {"player": pid, "type": "city"}
-        self.cities_on_board[pid] += 1
-        self.settlements_on_board[pid] -= 1  # returned settlement piece
-
-        self._check_win(pid)
-
-    # ---------------- trade bank/ports ----------------
-    def trade_bank(self, pid: str, give_res: Resource, give_n: int, get_res: Resource) -> None:
-        if self.phase != "main" or self.board is None:
-            raise ValueError("not in main")
-        if self.winner is not None:
-            raise ValueError("game over")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if not self.rolled:
-            raise ValueError("roll first")
-        if give_res not in ("wood","brick","wheat","sheep","ore") or get_res not in ("wood","brick","wheat","sheep","ore"):
-            raise ValueError("bad resource")
-        if give_res == get_res:
-            raise ValueError("give and get must differ")
-
-        rate = 4
-        ports = self.ports_for_player(pid)
-        if f"{give_res}2" in ports:
-            rate = 2
-        elif "any3" in ports:
-            rate = 3
-
-        if give_n != rate:
-            raise ValueError(f"wrong rate for {give_res}. Your rate: {rate}:1 (send give={give_res}:{rate}).")
-
-        pl = self.player(pid)
-        if pl.resources[give_res] < give_n:
-            raise ValueError("not enough resources to trade")
-        pl.resources[give_res] -= give_n
-        pl.resources[get_res] += 1
-
-    # ---------------- dev cards ----------------
-    def buy_dev(self, pid: str) -> str:
-        if self.phase != "main" or self.board is None:
-            raise ValueError("not in main")
-        if self.winner is not None:
-            raise ValueError("game over")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if not self.rolled:
-            raise ValueError("roll first")
-        if not self.dev_deck:
-            raise ValueError("dev deck empty")
-        self._pay(pid, COSTS["dev"])
-
-        card = self.dev_deck.pop()
-        p = self.player(pid)
-        if card == "victory_point":
-            p.vp_cards += 1
-            self._check_win(pid)
-        else:
-            p.dev_new.append(card)
-        return card
-
-    def play_knight(self, pid: str, hex_id: int, victim: Optional[str]) -> None:
-        self._ensure_can_play_dev(pid, "knight")
-        # playing knight: move robber + steal (optional)
-        self.phase = "robber"
-        self.move_robber(pid, hex_id, victim=victim)
-        p = self.player(pid)
-        p.played_knights += 1
-        self._update_largest_army()
-        self._consume_dev(pid, "knight")
-        self._check_win(pid)
-
-    def play_road_building(self, pid: str, edge1: int, edge2: int) -> None:
-        self._ensure_can_play_dev(pid, "road_building")
-        # build two free roads (still must be legal)
-        self.build_road(pid, edge1, free=True)
-        self.build_road(pid, edge2, free=True)
-        self._consume_dev(pid, "road_building")
-        self._check_win(pid)
-
-    def play_monopoly(self, pid: str, res: Resource) -> None:
-        self._ensure_can_play_dev(pid, "monopoly")
-        if res not in ("wood","brick","wheat","sheep","ore"):
-            raise ValueError("bad resource")
-        me = self.player(pid)
-        got = 0
+    def is_vertex_occupied(self, vid: int) -> bool:
         for p in self.players:
-            if p.id == pid:
-                continue
-            c = p.resources[res]
-            if c > 0:
-                p.resources[res] -= c
-                got += c
-        me.resources[res] += got
-        self._consume_dev(pid, "monopoly")
+            if vid in p.settlements or vid in p.cities:
+                return True
+        return False
 
-    def play_year_of_plenty(self, pid: str, res1: Resource, res2: Resource) -> None:
-        self._ensure_can_play_dev(pid, "year_of_plenty")
-        if res1 not in ("wood","brick","wheat","sheep","ore") or res2 not in ("wood","brick","wheat","sheep","ore"):
-            raise ValueError("bad resource")
-        me = self.player(pid)
-        me.resources[res1] += 1
-        me.resources[res2] += 1
-        self._consume_dev(pid, "year_of_plenty")
+    def owner_of_vertex(self, vid: int) -> Optional[int]:
+        for p in self.players:
+            if vid in p.settlements or vid in p.cities:
+                return p.pid
+        return None
 
-    def _ensure_can_play_dev(self, pid: str, card: str) -> None:
-        if self.phase != "main":
-            raise ValueError("can play dev only in main phase")
-        if self.winner is not None:
-            raise ValueError("game over")
-        if pid != self.current_player:
-            raise ValueError("not your turn")
-        if not self.rolled:
-            raise ValueError("roll first")
-        if self.dev_played_this_turn:
-            raise ValueError("only one dev card per turn")
-        p = self.player(pid)
-        if card not in p.dev_hand:
-            raise ValueError("you do not have this dev card (or it is new this turn)")
+    def is_edge_occupied(self, eid: int) -> bool:
+        for p in self.players:
+            if eid in p.roads:
+                return True
+        return False
 
-    def _consume_dev(self, pid: str, card: str) -> None:
-        p = self.player(pid)
-        p.dev_hand.remove(card)
-        self.dev_played_this_turn = True
+    def legal_settlement_vertices(self, pid: int) -> Set[int]:
+        # distance rule: no adjacent settlement/city
+        legal: Set[int] = set()
+        for vid in self.board.vertices.keys():
+            if self.is_vertex_occupied(vid):
+                continue
+            # adjacency ban
+            ok = True
+            for nb in self.board.vertex_neighbors[vid]:
+                if self.is_vertex_occupied(nb):
+                    ok = False
+                    break
+            if not ok:
+                continue
 
-    # ---------------- resource distribution ----------------
-    def _distribute_resources(self, roll: int) -> None:
-        assert self.board is not None
-        for h in self.board.hexes.values():
-            if h.number != roll:
+            ph = self.phase()
+            if ph.startswith("setup"):
+                # setup: anywhere (distance rule already applied)
+                legal.add(vid)
+            else:
+                # main: must connect to your road
+                if self._is_connected_to_player_road(pid, vid):
+                    legal.add(vid)
+        return legal
+
+    def legal_city_vertices(self, pid: int) -> Set[int]:
+        p = self.players[pid]
+        return set(p.settlements)
+
+    def legal_road_edges(self, pid: int) -> Set[int]:
+        legal: Set[int] = set()
+        for eid, e in self.board.edges.items():
+            if self.is_edge_occupied(eid):
                 continue
-            if h.id == self.board.robber_hex:
-                continue
-            if h.terrain == "desert":
-                continue
-            for nid in h.nodes:
-                b = self.buildings.get(nid)
-                if not b:
+            ph = self.phase()
+            if ph.startswith("setup"):
+                # in setup, must be adjacent to the just placed settlement
+                if self.setup_last_settlement_vid is None:
                     continue
-                owner = self.player(b["player"])
-                amount = 2 if b["type"] == "city" else 1
-                owner.resources[h.terrain] += amount
+                if e.a == self.setup_last_settlement_vid or e.b == self.setup_last_settlement_vid:
+                    legal.add(eid)
+            else:
+                # in main: must connect to player's network
+                if self._edge_connects_to_player(pid, eid):
+                    legal.add(eid)
+        return legal
 
-    # ---------------- payments/connectivity ----------------
-    def _pay(self, pid: str, cost: Dict[Resource, int]) -> None:
-        pl = self.player(pid)
-        for r, c in cost.items():
-            if pl.resources.get(r, 0) < c:
-                raise ValueError(f"not enough {r}")
-        for r, c in cost.items():
-            pl.resources[r] -= c
+    def _is_connected_to_player_road(self, pid: int, vid: int) -> bool:
+        p = self.players[pid]
+        for eid in p.roads:
+            e = self.board.edges[eid]
+            if e.a == vid or e.b == vid:
+                return True
+        return False
 
-    def _node_connected(self, pid: str, node_id: int) -> bool:
-        assert self.board is not None
-        b = self.buildings.get(node_id)
-        if b and b["player"] == pid:
+    def _edge_connects_to_player(self, pid: int, eid: int) -> bool:
+        p = self.players[pid]
+        e = self.board.edges[eid]
+        # adjacent to player's settlement/city
+        if e.a in p.settlements or e.a in p.cities or e.b in p.settlements or e.b in p.cities:
             return True
-        for eid, (a, bn) in self.board.edge_nodes.items():
-            if eid not in self.roads:
-                continue
-            if self.roads[eid] != pid:
-                continue
-            if a == node_id or bn == node_id:
+        # adjacent to player's road (share a vertex)
+        for reid in p.roads:
+            r = self.board.edges[reid]
+            if r.a in (e.a, e.b) or r.b in (e.a, e.b):
                 return True
         return False
 
-    def _road_connected(self, pid: str, edge_id: int) -> bool:
-        assert self.board is not None
-        a, b = self.board.edge_nodes[edge_id]
+    # ===== apply actions =====
+    def place_settlement(self, pid: int, vid: int) -> None:
+        act = self.setup_action()
+        if act:
+            need_pid, need_act = act
+            if pid != need_pid or need_act != "settlement":
+                raise RuntimeError("Not your setup settlement step")
 
-        # if endpoint has your building -> ok
-        for nid in (a, b):
-            bb = self.buildings.get(nid)
-            if bb and bb["player"] == pid:
-                return True
+        if vid not in self.legal_settlement_vertices(pid):
+            raise RuntimeError("Illegal settlement")
 
-        # or if connects to your road through non-blocked node
-        for nid in (a, b):
-            bb = self.buildings.get(nid)
-            if bb and bb["player"] != pid:
-                continue  # blocked
-            for eid2, (x, y) in self.board.edge_nodes.items():
-                if eid2 not in self.roads or self.roads[eid2] != pid:
-                    continue
-                if x == nid or y == nid:
-                    return True
-        return False
+        if self.phase() == "main":
+            if not self.rolled:
+                raise RuntimeError("Roll first")
+            if not self.has_cost(pid, self.cost_settlement()):
+                raise RuntimeError("Not enough resources")
+            self.pay_cost(pid, self.cost_settlement())
 
-    def _is_blocked_node_for_road(self, pid: str, node_id: int) -> bool:
-        b = self.buildings.get(node_id)
-        return bool(b and b["player"] != pid)
+        p = self.players[pid]
+        p.settlements.add(vid)
+        self.setup_last_settlement_vid = vid
+        self.log.append(f"[BUILD] {p.name} built Settlement")
 
-    # ---------------- awards: largest army ----------------
-    def _update_largest_army(self) -> None:
-        # must be >=3 and strictly greater than others to take
-        best_pid = None
-        best = 0
-        for p in self.players:
-            if p.played_knights > best:
-                best = p.played_knights
-                best_pid = p.id
-        if best < 3:
+        # setup: grant initial resources only for the SECOND settlement (standard)
+        if self.phase().startswith("setup"):
+            self.settlements_placed[pid] = self.settlements_placed.get(pid, 0) + 1
+            if self.settlements_placed[pid] == 2:
+                self._grant_initial_resources_for_vertex(pid, vid)
+
+            self.setup_i += 1
+            # next current player is driven by setup sequence
+            if self.setup_i < len(self.setup_seq):
+                self.current = self.setup_seq[self.setup_i][0]
+
+    def place_city(self, pid: int, vid: int) -> None:
+        if self.phase() != "main":
+            raise RuntimeError("Cities only in main")
+        if not self.rolled:
+            raise RuntimeError("Roll first")
+        p = self.players[pid]
+        if vid not in p.settlements:
+            raise RuntimeError("Need your settlement to upgrade")
+        if not self.has_cost(pid, self.cost_city()):
+            raise RuntimeError("Not enough resources")
+        self.pay_cost(pid, self.cost_city())
+        p.settlements.remove(vid)
+        p.cities.add(vid)
+        self.log.append(f"[BUILD] {p.name} upgraded to City")
+
+    def place_road(self, pid: int, eid: int) -> None:
+        act = self.setup_action()
+        if act:
+            need_pid, need_act = act
+            if pid != need_pid or need_act != "road":
+                raise RuntimeError("Not your setup road step")
+
+        if eid not in self.legal_road_edges(pid):
+            raise RuntimeError("Illegal road")
+
+        if self.phase() == "main":
+            if not self.rolled:
+                raise RuntimeError("Roll first")
+            if not self.has_cost(pid, self.cost_road()):
+                raise RuntimeError("Not enough resources")
+            self.pay_cost(pid, self.cost_road())
+
+        p = self.players[pid]
+        p.roads.add(eid)
+        self.log.append(f"[BUILD] {p.name} built Road")
+
+        if self.phase().startswith("setup"):
+            self.setup_last_settlement_vid = None
+            self.setup_i += 1
+            if self.setup_i < len(self.setup_seq):
+                self.current = self.setup_seq[self.setup_i][0]
+
+    # ===== resources =====
+    def _distribute(self, roll: int) -> None:
+        if roll == 7:
+            self.log.append("[INFO] 7 rolled (robber not implemented in this prototype)")
             return
-        # tie does not transfer
-        tied = sum(1 for p in self.players if p.played_knights == best)
-        if tied > 1:
-            return
-        if self.largest_army_holder != best_pid:
-            self.largest_army_holder = best_pid
-            self.largest_army_size = best
-
-    # ---------------- awards: longest road ----------------
-    def _update_longest_road(self) -> None:
-        # compute current best
-        best_pid = self.longest_road_holder
-        best_len = self.longest_road_len
-
-        for p in self.players:
-            l = self._longest_road_length(p.id)
-            if l >= 5:
-                if l > best_len:
-                    best_len = l
-                    best_pid = p.id
-                elif l == best_len:
-                    # tie: holder stays (no transfer)
-                    pass
-
-        # if someone lost roads and holder no longer qualifies, recompute strictly
-        # Simplified: just set to best found this pass (holder stays on ties)
-        self.longest_road_holder = best_pid if best_len >= 5 else None
-        self.longest_road_len = best_len if best_len >= 5 else 0
-
-    def _longest_road_length(self, pid: str) -> int:
-        if self.board is None:
-            return 0
-
-        # player edges
-        player_edges = [eid for eid, owner in self.roads.items() if owner == pid]
-        if not player_edges:
-            return 0
-
-        # build adjacency: node -> list of edges
-        node_to_edges: Dict[int, List[int]] = {}
-        for eid in player_edges:
-            a, b = self.board.edge_nodes[eid]
-            node_to_edges.setdefault(a, []).append(eid)
-            node_to_edges.setdefault(b, []).append(eid)
-
-        def dfs(node: int, used: Set[int]) -> int:
-            # cannot continue THROUGH opponent building
-            if self._is_blocked_node_for_road(pid, node):
-                return 0
-            best = 0
-            for eid in node_to_edges.get(node, []):
-                if eid in used:
+        for t in self.board.tiles:
+            if t.number != roll:
+                continue
+            res = TERRAIN_TO_RESOURCE.get(t.terrain)
+            if res is None:
+                continue
+            for vid in t.corners:
+                owner = self.owner_of_vertex(vid)
+                if owner is None:
                     continue
-                a, b = self.board.edge_nodes[eid]
-                nxt = b if node == a else a
-                used.add(eid)
-                best = max(best, 1 + dfs(nxt, used))
-                used.remove(eid)
-            return best
+                p = self.players[owner]
+                amount = 2 if vid in p.cities else 1
+                p.resources[res] += amount
+        self.log.append("[INFO] Resources distributed")
 
-        best_len = 0
-        for start_node in list(node_to_edges.keys()):
-            best_len = max(best_len, dfs(start_node, set()))
-        return best_len
+    def _grant_initial_resources_for_vertex(self, pid: int, vid: int) -> None:
+        # take 1 resource from each adjacent non-desert tile
+        tids = self.board.vertex_tiles.get(vid, [])
+        p = self.players[pid]
+        for tid in tids:
+            t = self.board.tiles[tid]
+            res = TERRAIN_TO_RESOURCE.get(t.terrain)
+            if res is None:
+                continue
+            p.resources[res] += 1
+        self.log.append(f"[SETUP] {p.name} gained initial resources")
+
+def generate_board(seed: Optional[int] = None, hex_size: float = 62.0) -> Board:
+    rnd = random.Random(seed)
+
+    # axial coords radius=2 => 19 tiles
+    coords = []
+    for q in range(-2, 3):
+        for r in range(-2, 3):
+            s = -q - r
+            if abs(s) <= 2:
+                coords.append((q, r))
+    rnd.shuffle(coords)
+
+    terrains = (
+        ["forest"] * 4 +
+        ["hill"] * 3 +
+        ["pasture"] * 4 +
+        ["field"] * 4 +
+        ["mountain"] * 3 +
+        ["desert"] * 1
+    )
+    rnd.shuffle(terrains)
+
+    numbers = STD_NUMBERS[:]
+    rnd.shuffle(numbers)
+
+    def axial_to_pixel(q: int, r: int) -> Tuple[float,float]:
+        x = hex_size * math.sqrt(3) * (q + r/2.0)
+        y = hex_size * 1.5 * r
+        return (x, y)
+
+    def hex_corners(cx: float, cy: float) -> List[Tuple[float,float]]:
+        pts = []
+        for i in range(6):
+            ang = math.radians(60*i - 30)  # pointy
+            pts.append((cx + hex_size * math.cos(ang), cy + hex_size * math.sin(ang)))
+        return pts
+
+    # vertex pool with stable keys
+    vmap: Dict[Tuple[int,int], int] = {}
+    vertices: Dict[int, Vertex] = {}
+    def vid_for_xy(x: float, y: float) -> int:
+        key = (int(round(x*1000)), int(round(y*1000)))
+        if key in vmap:
+            return vmap[key]
+        vid = len(vmap)
+        vmap[key] = vid
+        vertices[vid] = Vertex(vid, x, y)
+        return vid
+
+    tiles: List[Tile] = []
+    vertex_tiles: Dict[int, List[int]] = {}
+
+    num_i = 0
+    for tid, (q, r) in enumerate(coords):
+        terrain = terrains[tid]
+        number = None
+        if terrain != "desert":
+            number = numbers[num_i]
+            num_i += 1
+
+        cx, cy = axial_to_pixel(q, r)
+        corners_xy = hex_corners(cx, cy)
+        corner_vids = [vid_for_xy(x, y) for (x, y) in corners_xy]
+
+        tiles.append(Tile(
+            tid=tid, q=q, r=r, terrain=terrain, number=number,
+            center=(cx, cy), corners=corner_vids
+        ))
+
+        for vid in corner_vids:
+            vertex_tiles.setdefault(vid, []).append(tid)
+
+    # edges
+    edge_by_verts: Dict[Tuple[int,int], int] = {}
+    edges: Dict[int, Edge] = {}
+    def add_edge(a: int, b: int) -> int:
+        key = (a, b) if a < b else (b, a)
+        if key in edge_by_verts:
+            return edge_by_verts[key]
+        eid = len(edge_by_verts)
+        edge_by_verts[key] = eid
+        edges[eid] = Edge(eid, key[0], key[1])
+        return eid
+
+    for t in tiles:
+        vs = t.corners
+        for i in range(6):
+            add_edge(vs[i], vs[(i+1)%6])
+
+    # neighbors
+    vertex_neighbors: Dict[int, Set[int]] = {vid:set() for vid in vertices.keys()}
+    for e in edges.values():
+        vertex_neighbors[e.a].add(e.b)
+        vertex_neighbors[e.b].add(e.a)
+
+    return Board(
+        tiles=tiles,
+        vertices=vertices,
+        edges=edges,
+        vertex_tiles=vertex_tiles,
+        vertex_neighbors=vertex_neighbors,
+        edge_by_verts=edge_by_verts,
+    )
+
+def new_game(seed: Optional[int] = None) -> Game:
+    b = generate_board(seed=seed)
+    players = [
+        Player(pid=0, name="You", is_bot=False),
+        Player(pid=1, name="Bot", is_bot=True),
+    ]
+    g = Game(board=b, players=players)
+    g.setup_seq = [
+        (0, "settlement"), (0, "road"),
+        (1, "settlement"), (1, "road"),
+        (1, "settlement"), (1, "road"),
+        (0, "settlement"), (0, "road"),
+    ]
+    g.settlements_placed = {0:0, 1:0}
+    g.current = g.setup_seq[0][0]
+    g.log.append("[SYS] New game started (Base game prototype)")
+    return g
