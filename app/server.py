@@ -1,103 +1,75 @@
 ﻿from __future__ import annotations
-
 import json
-import secrets
-from dataclasses import dataclass, field
+import uuid
 from typing import Dict, Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import PlainTextResponse
 
-from app.catan_core import Game
+from .game import Game
 
 app = FastAPI()
 
-@dataclass
 class Room:
-    id: str
-    game: Game = field(default_factory=Game)
-    conns: Dict[str, WebSocket] = field(default_factory=dict)  # pid -> ws
-    names: Dict[str, str] = field(default_factory=dict)        # pid -> name
-    host_id: Optional[str] = None
+    def __init__(self):
+        self.game = Game()
+        self.clients: Dict[str, WebSocket] = {}  # pid -> ws
 
-ROOMS: Dict[str, Room] = {}
-
-def get_room(room_id: str) -> Room:
-    if room_id not in ROOMS:
-        ROOMS[room_id] = Room(id=room_id)
-    return ROOMS[room_id]
-
-async def send(ws: WebSocket, obj: dict):
-    await ws.send_text(json.dumps(obj, ensure_ascii=False))
-
-def build_hints(game: Game, pid: str) -> dict:
-    hints: dict = {}
-    if game.board is None:
-        return hints
-
-    if game.current_player == pid:
-        if game.phase == "setup":
-            nodes = game.valid_initial_nodes()[:25]
-            hints["setup_nodes"] = nodes
-            if nodes:
-                hints["setup_edges_for_node"] = {str(nodes[0]): game.valid_initial_edges(nodes[0])[:25]}
-        elif game.phase == "main":
-            hints["ports"] = game.ports_for_player(pid)
-            if game.rolled:
-                hints["build_edges"] = game.valid_build_edges(pid)[:30]
-                hints["build_nodes"] = game.valid_build_nodes(pid)[:25]
-        elif game.phase == "discard":
-            hints["discard_required"] = game.discard_required.get(pid, 0)
-        elif game.phase == "robber":
-            all_hex = list(game.board.hexes.keys())
-            hints["robber_hexes"] = [h for h in all_hex if h != game.board.robber_hex][:30]
-
-    return hints
-
-async def broadcast(room: Room):
-    for pid, ws in list(room.conns.items()):
-        try:
-            await send(ws, {
-                "type": "state",
-                "public": room.game.public_state(),
-                "private": room.game.private_state(pid),
-                "you": pid,
-                "host": room.host_id,
-                "hints": build_hints(room.game, pid),
-            })
-        except Exception:
-            pass
+rooms: Dict[str, Room] = {}
 
 @app.get("/")
 def root():
-    return PlainTextResponse(
-        "CATAN-GAME server running.\n"
-        "WS: ws://HOST:8000/ws/<room>\n"
-    )
+    return PlainTextResponse("CATAN server OK. Use WebSocket /ws/{room}")
+
+def _room(room_id: str) -> Room:
+    if room_id not in rooms:
+        rooms[room_id] = Room()
+    return rooms[room_id]
+
+async def send_state(room: Room):
+    # broadcast state to each connected player
+    for pid, ws in list(room.clients.items()):
+        try:
+            pub, priv, hints = room.game.state_for(pid)
+            await ws.send_text(json.dumps({
+                "type": "state",
+                "you": pid,
+                "public": pub,
+                "private": priv,
+                "hints": hints
+            }, ensure_ascii=False))
+        except Exception:
+            # ignore send errors
+            pass
+
+def _require(d: dict, k: str):
+    if k not in d:
+        raise ValueError(f"missing {k}")
+    return d[k]
 
 @app.websocket("/ws/{room_id}")
-async def ws_room(ws: WebSocket, room_id: str):
+async def ws(room_id: str, ws: WebSocket):
     await ws.accept()
-    room = get_room(room_id)
+    room = _room(room_id)
 
-    pid = secrets.token_hex(4)
-
+    pid: Optional[str] = None
     try:
+        # first message must be join
         raw = await ws.receive_text()
         msg = json.loads(raw)
         if msg.get("type") != "join":
-            await send(ws, {"type":"error","message":"first message must be join"})
-            await ws.close()
+            await ws.send_text(json.dumps({"type":"error","message":"First message must be join"}, ensure_ascii=False))
             return
 
         name = str(msg.get("name") or "Player")[:24]
-        room.conns[pid] = ws
-        room.names[pid] = name
-        if room.host_id is None:
-            room.host_id = pid
+        pid = uuid.uuid4().hex[:8]
 
-        room.game.add_player(pid, name)
-        await broadcast(room)
+        # register player
+        room.clients[pid] = ws
+        p = room.game.add_player(pid, name)
+        p.online = True
+
+        await send_state(room)
 
         while True:
             raw = await ws.receive_text()
@@ -105,68 +77,48 @@ async def ws_room(ws: WebSocket, room_id: str):
             t = msg.get("type")
 
             try:
+                g = room.game
+
                 if t == "start":
-                    if pid != room.host_id:
-                        raise ValueError("only host can start")
-                    room.game.start(seed=msg.get("seed"))
-
+                    g.start(pid, msg.get("seed"))
                 elif t == "place":
-                    room.game.place_initial(pid, int(msg["node"]), int(msg["edge"]))
-
+                    g.place_setup(pid, int(_require(msg,"node")), int(_require(msg,"edge")))
                 elif t == "roll":
-                    room.game.roll_dice(pid)
-
-                elif t == "discard":
-                    room.game.discard(pid, msg.get("give") or {})
-
-                elif t == "robber":
-                    room.game.move_robber(pid, int(msg["hex"]), victim=msg.get("victim"))
-
+                    g.roll(pid)
                 elif t == "build":
-                    kind = msg.get("kind")
-                    if kind == "road":
-                        room.game.build_road(pid, int(msg["id"]), free=bool(msg.get("free", False)))
-                    elif kind == "settlement":
-                        room.game.build_settlement(pid, int(msg["id"]))
-                    elif kind == "city":
-                        room.game.build_city(pid, int(msg["id"]))
-                    else:
-                        raise ValueError("unknown build kind")
-
+                    g.build(pid, str(_require(msg,"kind")), int(_require(msg,"id")))
                 elif t == "trade_bank":
-                    room.game.trade_bank(pid, str(msg["give_res"]), int(msg["give_n"]), str(msg["get_res"]))
-
-                elif t == "buy_dev":
-                    room.game.buy_dev(pid)
-
-                elif t == "play_dev":
-                    kind = msg.get("kind")
-                    if kind == "knight":
-                        room.game.play_knight(pid, int(msg["hex"]), victim=msg.get("victim"))
-                    elif kind == "road":
-                        room.game.play_road_building(pid, int(msg["edge1"]), int(msg["edge2"]))
-                    elif kind == "monopoly":
-                        room.game.play_monopoly(pid, str(msg["res"]))
-                    elif kind == "plenty":
-                        room.game.play_year_of_plenty(pid, str(msg["res1"]), str(msg["res2"]))
-                    else:
-                        raise ValueError("unknown dev kind")
-
+                    g.trade_bank(pid, str(_require(msg,"give_res")), int(_require(msg,"give_n")), str(_require(msg,"get_res")))
+                elif t == "offer_trade":
+                    g.offer_trade(pid, str(_require(msg,"to")), dict(_require(msg,"give")), dict(_require(msg,"get")))
+                elif t == "accept_trade":
+                    g.accept_trade(pid, str(_require(msg,"offer_id")))
+                elif t == "cancel_trade":
+                    g.cancel_trade(pid, str(_require(msg,"offer_id")))
                 elif t == "end":
-                    room.game.end_turn(pid)
-
+                    g.end_turn(pid)
                 else:
                     raise ValueError("unknown message type")
 
             except Exception as e:
-                await send(ws, {"type":"error","message":str(e)})
-                continue
+                try:
+                    await ws.send_text(json.dumps({"type":"error","message":str(e)}, ensure_ascii=False))
+                except Exception:
+                    pass
 
-            await broadcast(room)
+            await send_state(room)
 
     except WebSocketDisconnect:
         pass
+    except Exception:
+        pass
     finally:
-        if pid in room.conns:
-            del room.conns[pid]
-        await broadcast(room)
+        if pid and pid in room.clients:
+            del room.clients[pid]
+        # mark offline
+        if pid:
+            try:
+                room.game.get_player(pid).online = False
+            except Exception:
+                pass
+        await send_state(room)
