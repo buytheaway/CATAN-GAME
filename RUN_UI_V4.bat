@@ -1,13 +1,11 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
-title CATAN Singleplayer
-echo [i] dir: %cd%
+title CATAN UI v4 (offline)
 
 where py >nul 2>nul
 if %errorlevel%==0 (
-  py -3.12 -V >nul 2>nul
-  if %errorlevel%==0 (set "PYLAUNCH=py -3.12") else (set "PYLAUNCH=py -3")
+  set "PYLAUNCH=py -3"
 ) else (
   set "PYLAUNCH=python"
 )
@@ -25,8 +23,8 @@ echo [i] Installing deps...
 %PY% -m pip install -U pip || goto :fail
 %PY% -m pip install -r requirements.txt || goto :fail
 
-echo [i] Launching UI...
-%PY% -m app.main
+echo [i] Launching...
+%PY% -m app.ui_v4
 goto :end
 
 :fail
