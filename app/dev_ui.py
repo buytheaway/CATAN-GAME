@@ -1,20 +1,25 @@
 from __future__ import annotations
-from PySide6 import QtCore, QtGui, QtWidgets
 
-from app.economy_runtime import ensure_economy_api, RES_LIST
+from PySide6 import QtCore, QtGui, QtWidgets
+from app.runtime_patch import ensure_game_api
+
+RES = ["wood", "brick", "sheep", "wheat", "ore"]
+DEV_TYPES = ["knight", "road_building", "year_of_plenty", "monopoly", "victory_point"]
 
 def _log(win, msg: str):
-    fn = getattr(win, "_log", None)
+    fn = getattr(win, "_log", None) or getattr(win, "log", None)
     if callable(fn):
-        fn(msg); return
-    print(msg)
+        fn(msg)
+    else:
+        print(msg)
 
 def _render(win):
     for name in ("_render_all", "render_all", "render", "_render"):
         fn = getattr(win, name, None)
         if callable(fn):
             try:
-                fn(); return
+                fn()
+                return
             except Exception:
                 pass
 
@@ -37,115 +42,149 @@ class DevDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.setWindowTitle("Development Cards")
         self.setModal(True)
-        self.game = game
+        self.game = game
+        ensure_game_api(self.game, override_ports=True, override_trade=True)
         self.pid = pid
-
-        ensure_economy_api(self.game)
-        self.game.ensure_bank()
-        self.game.ensure_dev_deck()
 
         root = QtWidgets.QVBoxLayout(self)
 
-        top = QtWidgets.QHBoxLayout()
-        self.lbl_deck = QtWidgets.QLabel("")
-        top.addWidget(self.lbl_deck)
-        top.addStretch(1)
+        # Top: Buy section
+        buyBox = QtWidgets.QGroupBox("Buy")
+        buyLay = QtWidgets.QHBoxLayout(buyBox)
         self.btn_buy = QtWidgets.QPushButton("Buy Dev Card (sheep+wheat+ore)")
-        top.addWidget(self.btn_buy)
-        root.addLayout(top)
+        buyLay.addWidget(self.btn_buy)
+        root.addWidget(buyBox)
 
-        self.list = QtWidgets.QListWidget()
-        root.addWidget(self.list, 1)
+        # Middle: Your cards
+        mid = QtWidgets.QGroupBox("Your cards")
+        midLay = QtWidgets.QVBoxLayout(mid)
 
+        self.list_cards = QtWidgets.QListWidget()
+        self.list_cards.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        midLay.addWidget(self.list_cards)
+
+        # Play controls
         playRow = QtWidgets.QHBoxLayout()
         self.btn_play = QtWidgets.QPushButton("Play selected")
-        self.btn_close = QtWidgets.QPushButton("Close")
-        playRow.addStretch(1)
+        self.lbl_hint = QtWidgets.QLabel("Select a card to play. (VP cards add points automatically.)")
+        self.lbl_hint.setWordWrap(True)
         playRow.addWidget(self.btn_play)
-        playRow.addWidget(self.btn_close)
-        root.addLayout(playRow)
+        playRow.addWidget(self.lbl_hint, 1)
+        midLay.addLayout(playRow)
 
-        self.btn_close.clicked.connect(self.reject)
-        self.btn_buy.clicked.connect(self._buy)
-        self.btn_play.clicked.connect(self._play)
+        # Extra inputs (for YoP / Monopoly)
+        form = QtWidgets.QFormLayout()
+        self.cb_res_a = QtWidgets.QComboBox(); self.cb_res_a.addItems(RES)
+        self.cb_res_b = QtWidgets.QComboBox(); self.cb_res_b.addItems(RES)
+        self.cb_monopoly = QtWidgets.QComboBox(); self.cb_monopoly.addItems(RES)
+        self.sp_yop_a = QtWidgets.QSpinBox(); self.sp_yop_a.setRange(0, 2); self.sp_yop_a.setValue(1)
+        self.sp_yop_b = QtWidgets.QSpinBox(); self.sp_yop_b.setRange(0, 2); self.sp_yop_b.setValue(1)
 
-        self._refresh()
+        form.addRow("Year of Plenty A:", self._h(self.cb_res_a, self.sp_yop_a))
+        form.addRow("Year of Plenty B:", self._h(self.cb_res_b, self.sp_yop_b))
+        form.addRow("Monopoly resource:", self.cb_monopoly)
+        midLay.addLayout(form)
 
-    def _hand(self) -> list:
-        # economy_runtime stores hand as player.dev (list) if possible
-        p = self.game.players[self.pid]
-        if hasattr(p, "dev") and isinstance(p.dev, list): return p.dev
-        if isinstance(p, dict) and isinstance(p.get("dev"), list): return p["dev"]
-        # fallback
-        if not hasattr(p, "dev"):
-            try: p.dev = []
-            except Exception: return []
-        return p.dev
+        root.addWidget(mid)
 
-    def _refresh(self):
-        self.lbl_deck.setText(f"Deck remaining: {len(getattr(self.game,'dev_deck',[]))}")
-        self.list.clear()
-        for c in self._hand():
-            self.list.addItem(c)
+        # Bottom buttons
+        bottom = QtWidgets.QHBoxLayout()
+        bottom.addStretch(1)
+        btn_close = QtWidgets.QPushButton("Close")
+        bottom.addWidget(btn_close)
+        root.addLayout(bottom)
 
-    def _buy(self):
+        btn_close.clicked.connect(self.accept)
+        self.btn_buy.clicked.connect(self.on_buy)
+        self.btn_play.clicked.connect(self.on_play)
+
+        self.refresh()
+
+    def _h(self, *widgets):
+        w = QtWidgets.QWidget()
+        l = QtWidgets.QHBoxLayout(w)
+        l.setContentsMargins(0,0,0,0)
+        for x in widgets:
+            l.addWidget(x)
+        l.addStretch(1)
+        return w
+
+    def refresh(self):
+        self.list_cards.clear()
+        fn = getattr(self.game, "dev_summary", None)
+        if callable(fn):
+            summary = fn(self.pid)  # dict type->count
+        else:
+            # fallback: try to read game.dev_hand
+            hand = getattr(self.game, "dev_hand", {}).get(self.pid, [])
+            summary = {}
+            for c in hand:
+                summary[c] = summary.get(c, 0) + 1
+
+        for k in DEV_TYPES:
+            if summary.get(k, 0) > 0:
+                self.list_cards.addItem(f"{k} x{summary[k]}")
+
+        if self.list_cards.count() == 0:
+            self.list_cards.addItem("(no dev cards)")
+
+    def _selected_type(self):
+        it = self.list_cards.currentItem()
+        if not it:
+            return None
+        t = it.text().split()[0].strip()
+        if t in DEV_TYPES:
+            return t
+        return None
+
+    def on_buy(self):
         try:
-            c = self.game.buy_dev_card(self.pid)
-            QtWidgets.QMessageBox.information(self, "Bought", f"You got: {c}")
-            self._refresh()
+            card = self.game.buy_dev(self.pid)
+            QtWidgets.QMessageBox.information(self, "Bought", f"You bought: {card}")
+            self.refresh()
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Buy failed", str(e))
 
-    def _play(self):
-        it = self.list.currentItem()
-        if not it:
+    def on_play(self):
+        t = self._selected_type()
+        if not t:
             return
-        card = it.text()
-
-        kw = {}
-        if card == "year_of_plenty":
-            dlg = QtWidgets.QDialog(self)
-            dlg.setWindowTitle("Year of Plenty")
-            lay = QtWidgets.QFormLayout(dlg)
-            a = QtWidgets.QComboBox(); a.addItems(RES_LIST)
-            b = QtWidgets.QComboBox(); b.addItems(RES_LIST)
-            lay.addRow("Resource 1:", a)
-            lay.addRow("Resource 2:", b)
-            btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-            lay.addRow(btns)
-            btns.accepted.connect(dlg.accept)
-            btns.rejected.connect(dlg.reject)
-            if dlg.exec() != QtWidgets.QDialog.Accepted:
-                return
-            kw["choose"] = [a.currentText(), b.currentText()]
 
         try:
-            res = self.game.play_dev_card(self.pid, card, **kw)
-            QtWidgets.QMessageBox.information(self, "Played", res)
-            self._refresh()
+            if t == "year_of_plenty":
+                a = self.cb_res_a.currentText()
+                b = self.cb_res_b.currentText()
+                qa = int(self.sp_yop_a.value())
+                qb = int(self.sp_yop_b.value())
+                self.game.play_dev(self.pid, t, a=a, qa=qa, b=b, qb=qb)
+            elif t == "monopoly":
+                r = self.cb_monopoly.currentText()
+                self.game.play_dev(self.pid, t, r=r)
+            else:
+                self.game.play_dev(self.pid, t)
+            self.refresh()
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Play failed", str(e))
 
-def attach_dev_button(win: QtWidgets.QWidget):
+def attach_dev_dialog(win: QtWidgets.QWidget):
     if getattr(win, "_dev_attached", False):
         return
+
     game = _get_game(win)
     if game is None:
-        _log(win, "[!] Dev attach: cannot find game on window.")
+        _log(win, "[!] Dev attach: cannot find game object on window (expected win.game or win._game).")
         return
-
-    ensure_economy_api(game)
 
     dev_btn = None
     for b in win.findChildren(QtWidgets.QPushButton):
-        t = (b.text() or "").strip().lower()
-        if t == "dev":
+        if (b.text() or "").strip().lower() == "dev":
             dev_btn = b
             break
     if dev_btn is None:
         _log(win, "[!] Dev attach: cannot find Dev button (text=='Dev').")
         return
 
+    # Make Dev open dialog (disconnect any placeholder behavior)
     try:
         dev_btn.clicked.disconnect()
     except Exception:
@@ -154,7 +193,7 @@ def attach_dev_button(win: QtWidgets.QWidget):
     def _open():
         phase = getattr(game, "phase", "")
         if str(phase).startswith("setup"):
-            _log(win, "[!] Dev disabled during setup.")
+            _log(win, "[!] Dev cards disabled during setup.")
             return
         pid = _get_pid(win)
         dlg = DevDialog(win, game, pid)
@@ -162,5 +201,6 @@ def attach_dev_button(win: QtWidgets.QWidget):
         _render(win)
 
     dev_btn.clicked.connect(_open)
+
     win._dev_attached = True
     _log(win, "[SYS] Dev dialog attached.")
