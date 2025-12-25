@@ -1,0 +1,179 @@
+from __future__ import annotations
+
+from PySide6 import QtCore, QtGui, QtWidgets
+
+CARD_ORDER = ["knight", "victory_point", "road_building", "year_of_plenty", "monopoly"]
+CARD_LABEL = {
+    "knight": "K",
+    "victory_point": "VP",
+    "road_building": "RB",
+    "year_of_plenty": "YP",
+    "monopoly": "M",
+}
+
+def _get_game(win):
+    for name in ("game", "_game", "g", "state"):
+        obj = getattr(win, name, None)
+        if obj is not None and hasattr(obj, "players"):
+            return obj
+    return None
+
+def _get_pid(win) -> int:
+    for name in ("you_pid", "my_pid", "player_id", "pid"):
+        v = getattr(win, name, None)
+        if isinstance(v, int):
+            return v
+    return 0
+
+def _get_dev_list(game, pid: int):
+    p = game.players[pid]
+    if hasattr(p, "dev_cards"):
+        return p.dev_cards or []
+    if hasattr(p, "dev"):
+        return p.dev or []
+    if isinstance(p, dict):
+        return p.get("dev_cards", []) or []
+    return []
+
+def _count_cards(dev_list):
+    counts = {k: 0 for k in CARD_ORDER}
+    new_counts = {k: 0 for k in CARD_ORDER}
+    for c in dev_list:
+        if isinstance(c, dict):
+            t = str(c.get("type", "")).strip().lower()
+            if t in counts:
+                counts[t] += 1
+                if bool(c.get("new", False)):
+                    new_counts[t] += 1
+        else:
+            t = str(c).strip().lower()
+            if t in counts:
+                counts[t] += 1
+    return counts, new_counts
+
+class _Chip(QtWidgets.QFrame):
+    def __init__(self, label: str):
+        super().__init__()
+        self.setObjectName("devChip")
+        self.setFixedSize(46, 44)
+
+        lay = QtWidgets.QVBoxLayout(self)
+        lay.setContentsMargins(0, 4, 0, 4)
+        lay.setSpacing(0)
+
+        self.lbl = QtWidgets.QLabel(label)
+        self.lbl.setAlignment(QtCore.Qt.AlignCenter)
+        f = self.lbl.font()
+        f.setBold(True)
+        f.setPointSize(max(9, f.pointSize()))
+        self.lbl.setFont(f)
+
+        self.cnt = QtWidgets.QLabel("0")
+        self.cnt.setAlignment(QtCore.Qt.AlignCenter)
+        f2 = self.cnt.font()
+        f2.setBold(True)
+        f2.setPointSize(max(10, f2.pointSize()+1))
+        self.cnt.setFont(f2)
+
+        lay.addWidget(self.lbl)
+        lay.addWidget(self.cnt)
+
+class DevHandOverlay(QtWidgets.QFrame):
+    def __init__(self, viewport: QtWidgets.QWidget, win: QtWidgets.QWidget):
+        super().__init__(viewport)
+        self.setObjectName("devHandOverlay")
+        self.win = win
+        self.setAutoFillBackground(False)
+
+        # compact panel: top-right of map, clean alignment
+        self.setFixedSize(280, 86)
+        self.setStyleSheet("""
+#devHandOverlay {
+  background: rgba(5, 20, 28, 205);
+  border: 1px solid rgba(120, 180, 220, 70);
+  border-radius: 12px;
+}
+#devChip {
+  background: rgba(255,255,255,16);
+  border: 1px solid rgba(255,255,255,18);
+  border-radius: 12px;
+}
+QLabel { color: #d7eefc; }
+""")
+
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(10, 8, 10, 8)
+        root.setSpacing(6)
+
+        top = QtWidgets.QHBoxLayout()
+        self.title = QtWidgets.QLabel("Dev cards")
+        ft = self.title.font()
+        ft.setBold(True)
+        self.title.setFont(ft)
+        top.addWidget(self.title)
+        top.addStretch(1)
+        self.hint = QtWidgets.QLabel("")
+        self.hint.setStyleSheet("color: rgba(215,238,252,150); font-size: 11px;")
+        top.addWidget(self.hint)
+        root.addLayout(top)
+
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(8)
+        self.chips = {}
+        for k in CARD_ORDER:
+            chip = _Chip(CARD_LABEL[k])
+            self.chips[k] = chip
+            row.addWidget(chip)
+        row.addStretch(1)
+        root.addLayout(row)
+
+        self._timer = QtCore.QTimer(self)
+        self._timer.setInterval(300)
+        self._timer.timeout.connect(self.refresh)
+        self._timer.start()
+
+        viewport.installEventFilter(self)
+        QtCore.QTimer.singleShot(50, self._reposition)
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QtCore.QEvent.Resize:
+            QtCore.QTimer.singleShot(0, self._reposition)
+        return super().eventFilter(obj, ev)
+
+    def _reposition(self):
+        vp = self.parentWidget()
+        if not vp:
+            return
+        margin = 14
+        x = max(margin, vp.width() - self.width() - margin)
+        y = max(margin, margin)  # top-right (не мешает нижней панели)
+        self.move(x, y)
+
+    def refresh(self):
+        game = _get_game(self.win)
+        if game is None:
+            return
+        pid = _get_pid(self.win)
+        dev_list = _get_dev_list(game, pid)
+        counts, new_counts = _count_cards(dev_list)
+
+        total_new = sum(new_counts.values())
+        self.hint.setText(f"new:{total_new}" if total_new else "")
+
+        for k, chip in self.chips.items():
+            chip.cnt.setText(str(counts.get(k, 0)))
+
+def attach_dev_hand_overlay(win: QtWidgets.QWidget):
+    if getattr(win, "_devhand_attached", False):
+        return
+
+    views = win.findChildren(QtWidgets.QGraphicsView)
+    if not views:
+        return
+    view = sorted(views, key=lambda v: v.width() * v.height(), reverse=True)[0]
+    vp = view.viewport()
+
+    overlay = DevHandOverlay(vp, win)
+    overlay.show()
+
+    win._devhand_attached = True
