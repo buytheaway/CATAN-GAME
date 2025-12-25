@@ -62,6 +62,26 @@ def _extract_owner_and_kind(b):
     return owner, kind
 
 
+def _norm_vid(v):
+    if isinstance(v, str) and v.strip().isdigit():
+        return int(v.strip())
+    return v
+
+
+def _norm_port_kind(kind) -> str | None:
+    if kind is None:
+        return None
+    s = str(kind).strip().lower()
+    if s in ("3:1", "3", "generic", "any", "all", "none", "?"):
+        return "3:1"
+    if "3:1" in s or "3/1" in s or "3 to 1" in s or "3to1" in s:
+        return "3:1"
+    for r in RES:
+        if r in s:
+            return r
+    return None
+
+
 def _owned_vertices(game, pid: int) -> set:
     owned = set()
 
@@ -71,7 +91,16 @@ def _owned_vertices(game, pid: int) -> set:
         for vid, b in bmap.items():
             owner, kind = _extract_owner_and_kind(b)
             if owner == pid and str(kind) in ("settlement", "city"):
-                owned.add(vid)
+                owned.add(_norm_vid(vid))
+
+    # pattern 1b: ui_v6 occupied_v: {vid: (pid, level)}
+    occ = getattr(game, "occupied_v", None)
+    if isinstance(occ, dict):
+        for vid, data in occ.items():
+            if isinstance(data, (tuple, list)) and len(data) >= 2:
+                owner = data[0]
+                if owner == pid:
+                    owned.add(_norm_vid(vid))
 
     # pattern 2: separate maps
     vown = getattr(game, "vertex_owner", None)
@@ -79,7 +108,7 @@ def _owned_vertices(game, pid: int) -> set:
     if isinstance(vown, dict) and isinstance(vtyp, dict):
         for vid, owner in vown.items():
             if owner == pid and str(vtyp.get(vid)) in ("settlement", "city"):
-                owned.add(vid)
+                owned.add(_norm_vid(vid))
 
     # pattern 3: settlements/cities sets + owner maps
     for name in ("settlements", "cities"):
@@ -88,14 +117,14 @@ def _owned_vertices(game, pid: int) -> set:
             # {vid: owner} or {vid: something}
             for vid, owner in s.items():
                 if owner == pid:
-                    owned.add(vid)
+                    owned.add(_norm_vid(vid))
         elif isinstance(s, (set, list, tuple)):
             # if we also have settlement_owner map
             owner_map = getattr(game, f"{name[:-1]}_owner", None)  # settlement_owner/citie_owner (maybe)
             if isinstance(owner_map, dict):
                 for vid in s:
                     if owner_map.get(vid) == pid:
-                        owned.add(vid)
+                        owned.add(_norm_vid(vid))
 
     return owned
 
@@ -104,6 +133,16 @@ def _port_endpoints(port):
     # try many shapes
     if port is None:
         return None, None, None
+
+    # ui_v6 format: ((a,b), kind) or (a, b, kind)
+    if isinstance(port, (tuple, list)):
+        if len(port) == 2 and isinstance(port[0], (tuple, list)) and len(port[0]) >= 2:
+            a, b = port[0][0], port[0][1]
+            kind = port[1]
+            return kind, _norm_vid(a), _norm_vid(b)
+        if len(port) >= 3:
+            a, b, kind = port[0], port[1], port[2]
+            return kind, _norm_vid(a), _norm_vid(b)
 
     if isinstance(port, dict):
         kind = port.get("kind", port.get("type", port.get("port_kind")))
@@ -120,7 +159,7 @@ def _port_endpoints(port):
         e = port.get("edge")
         if isinstance(e, (list, tuple)) and len(e) >= 2:
             a, b = e[0], e[1]
-        return kind, a, b
+        return kind, _norm_vid(a), _norm_vid(b)
 
     kind = getattr(port, "kind", getattr(port, "type", getattr(port, "port_kind", None)))
 
@@ -137,7 +176,7 @@ def _port_endpoints(port):
     if isinstance(e, (list, tuple)) and len(e) >= 2:
         a, b = e[0], e[1]
 
-    return kind, a, b
+    return kind, _norm_vid(a), _norm_vid(b)
 
 
 def player_ports(game, pid: int) -> set[str]:
@@ -153,21 +192,9 @@ def player_ports(game, pid: int) -> set[str]:
         if a is None or b is None:
             continue
         if a in owned or b in owned:
-            k = str(kind).strip().lower() if kind is not None else ""
-            # normalize generic port
-            if k in ("3:1", "3", "generic", "any", "all", "none", "?"):
-                ports.add("3:1")
-            # resource port
-            elif k in RES:
+            k = _norm_port_kind(kind)
+            if k:
                 ports.add(k)
-            # sometimes stored like "2:1 wheat"
-            elif "wheat" in k: ports.add("wheat")
-            elif "wood" in k: ports.add("wood")
-            elif "brick" in k: ports.add("brick")
-            elif "sheep" in k: ports.add("sheep")
-            elif "ore" in k: ports.add("ore")
-            elif "3:1" in k:
-                ports.add("3:1")
 
     return ports
 
