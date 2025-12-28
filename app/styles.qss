@@ -1,0 +1,60 @@
+QWidget {{
+  background: {bg};
+  color: {text};
+  font-family: "Segoe UI";
+}}
+
+QFrame, QGroupBox {{
+  background: {panel};
+  border: 1px solid {border};
+  border-radius: 12px;
+}}
+
+QGroupBox::title {{
+  subcontrol-origin: margin;
+  subcontrol-position: top left;
+  padding: 0 6px;
+}}
+
+QPushButton {{
+  background: {accent};
+  color: {accent_text};
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 600;
+}}
+QPushButton:hover {{
+  background: {accent_hover};
+}}
+QPushButton:disabled {{
+  background: {muted};
+  color: {text_muted};
+}}
+
+QLineEdit, QPlainTextEdit, QComboBox, QSpinBox {{
+  background: {panel_alt};
+  color: {text};
+  border: 1px solid {border};
+  border-radius: 10px;
+  padding: 6px 8px;
+}}
+
+QTabWidget::pane {{
+  border: 0;
+}}
+QTabBar::tab {{
+  background: {panel_alt};
+  color: {text_muted};
+  padding: 6px 10px;
+  border-radius: 8px;
+  margin-right: 6px;
+}}
+QTabBar::tab:selected {{
+  background: {panel};
+  color: {text};
+}}
+
+QMessageBox {{
+  background: {bg};
+}}

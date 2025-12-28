@@ -17,8 +17,8 @@ echo [i] Installing deps...
 "%PY%" -m pip install -U pip
 "%PY%" -m pip install -r requirements.txt
 
-echo [i] Launching UI v6...
-"%PY%" -m app.ui_v6
+echo [i] Launching main menu...
+"%PY%" -m app.main_menu
 
 pause
 endlocal
