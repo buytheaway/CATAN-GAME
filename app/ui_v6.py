@@ -952,37 +952,80 @@ class MainWindow(QtWidgets.QMainWindow):
         right_layout.setContentsMargins(12,12,12,12)
         right_layout.setSpacing(10)
 
-        self.top_status = QtWidgets.QLabel("")
-        self.top_status.setTextFormat(QtCore.Qt.RichText)
-        self.top_status.setStyleSheet("font-size:12px; padding:8px 10px; border-radius:10px; background:rgba(6,26,37,0.65);")
-        right_layout.addWidget(self.top_status)
+        self.top_card = QtWidgets.QFrame()
+        self.top_card.setStyleSheet("background:rgba(6,26,37,0.7); border:1px solid #0f2a3b; border-radius:12px;")
+        top_card_layout = QtWidgets.QVBoxLayout(self.top_card)
+        top_card_layout.setContentsMargins(10,8,10,8)
+        top_card_layout.setSpacing(6)
 
-        self.status_box = QtWidgets.QLabel("")
-        self.status_box.setTextFormat(QtCore.Qt.RichText)
-        self.status_box.setStyleSheet("font-size:12px; padding:8px 10px; border-radius:10px; background:rgba(6,26,37,0.55);")
-        self.status_box.setWordWrap(True)
-        right_layout.addWidget(self.status_box)
+        self.lbl_players = QtWidgets.QLabel("")
+        self.lbl_players.setTextFormat(QtCore.Qt.RichText)
+        self.lbl_players.setStyleSheet("font-size:12px;")
+        top_card_layout.addWidget(self.lbl_players)
+
+        pill_row = QtWidgets.QHBoxLayout()
+        self.lbl_phase = QtWidgets.QLabel("")
+        self.lbl_turn = QtWidgets.QLabel("")
+        self.lbl_roll = QtWidgets.QLabel("")
+        for lbl in (self.lbl_phase, self.lbl_turn, self.lbl_roll):
+            lbl.setStyleSheet("font-size:11px; padding:2px 8px; border-radius:8px; background:#0f2a3b;")
+        pill_row.addWidget(self.lbl_phase)
+        pill_row.addWidget(self.lbl_turn)
+        pill_row.addWidget(self.lbl_roll)
+        pill_row.addStretch(1)
+        top_card_layout.addLayout(pill_row)
+        right_layout.addWidget(self.top_card)
+
+        self.status_card = QtWidgets.QFrame()
+        self.status_card.setStyleSheet("background:rgba(6,26,37,0.55); border:1px solid #0f2a3b; border-radius:12px;")
+        status_layout = QtWidgets.QGridLayout(self.status_card)
+        status_layout.setContentsMargins(10,8,10,8)
+        status_layout.setHorizontalSpacing(8)
+        status_layout.setVerticalSpacing(4)
+
+        def stat_label(text: str):
+            lbl = QtWidgets.QLabel(text)
+            lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
+            return lbl
+
+        self.lbl_vp = QtWidgets.QLabel("")
+        self.lbl_longest = QtWidgets.QLabel("")
+        self.lbl_army = QtWidgets.QLabel("")
+        self.lbl_robber = QtWidgets.QLabel("")
+        for lbl in (self.lbl_vp, self.lbl_longest, self.lbl_army, self.lbl_robber):
+            lbl.setStyleSheet("font-size:12px; font-weight:600;")
+
+        status_layout.addWidget(stat_label("VP"), 0, 0)
+        status_layout.addWidget(self.lbl_vp, 0, 1)
+        status_layout.addWidget(stat_label("Longest Road"), 1, 0)
+        status_layout.addWidget(self.lbl_longest, 1, 1)
+        status_layout.addWidget(stat_label("Largest Army"), 2, 0)
+        status_layout.addWidget(self.lbl_army, 2, 1)
+        status_layout.addWidget(stat_label("Robber"), 3, 0)
+        status_layout.addWidget(self.lbl_robber, 3, 1)
+
+        right_layout.addWidget(self.status_card)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setMaximumHeight(300)
         self.tabs.setStyleSheet("""
             QTabWidget::pane { border:0; }
-            QTabBar::tab { padding:8px 12px; background:#06202d; border-radius:10px; margin-right:6px; }
-            QTabBar::tab:selected { background:#0a3145; }
+            QTabBar::tab { padding:8px 12px; background:#0b2433; border-radius:10px; margin-right:6px; border:1px solid #0f2a3b; }
+            QTabBar::tab:selected { background:#133247; }
         """)
         self.log = QtWidgets.QPlainTextEdit()
         self.log.setReadOnly(True)
-        self.log.setStyleSheet("background:#061a25; border-radius:12px; padding:10px;")
+        self.log.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px; padding:10px;")
         self.chat = QtWidgets.QPlainTextEdit()
         self.chat.setReadOnly(True)
-        self.chat.setStyleSheet("background:#061a25; border-radius:12px; padding:10px;")
+        self.chat.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px; padding:10px;")
         self.tabs.addTab(self.log, "Log")
         self.tabs.addTab(self.chat, "Chat")
         right_layout.addWidget(self.tabs, 1)
 
         self.chat_in = QtWidgets.QLineEdit()
         self.chat_in.setPlaceholderText("Type a message...")
-        self.chat_in.setStyleSheet("background:#061a25; border-radius:12px; padding:10px;")
+        self.chat_in.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px; padding:10px;")
         self.chat_btn = QtWidgets.QPushButton("Send")
         self.chat_btn.setStyleSheet(f"background:{ACCENT}; color:#08131a; padding:10px 14px; border-radius:12px; font-weight:700;")
         self.chat_btn.clicked.connect(self.on_send_chat)
@@ -1043,7 +1086,8 @@ class MainWindow(QtWidgets.QMainWindow):
             b = QtWidgets.QPushButton(text)
             b.setCheckable(True)
             b.setStyleSheet("""
-                QPushButton { background:#06202d; border-radius:14px; padding:12px 16px; font-weight:800; }
+                QPushButton { background:#0a2230; border:1px solid #0f2a3b; border-radius:14px; padding:12px 16px; font-weight:800; }
+                QPushButton:hover { background:#0f2a3b; }
                 QPushButton:checked { background:#0a3145; border:2px solid #22d3ee; }
             """)
             b.clicked.connect(lambda: self.select_action(key))
@@ -1064,15 +1108,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.res_widgets: Dict[str, QtWidgets.QLabel] = {}
         for rname in RESOURCES:
             box = QtWidgets.QFrame()
-            box.setStyleSheet("background:#061a25; border-radius:14px;")
-            bl = QtWidgets.QHBoxLayout(box)
+            box.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px;")
+            bl = QtWidgets.QVBoxLayout(box)
             bl.setContentsMargins(10,8,10,8)
+            bl.setSpacing(4)
             ico = QtWidgets.QLabel()
             ico.setPixmap(make_resource_icon(rname, 40))
             val = QtWidgets.QLabel("0")
-            val.setStyleSheet("font-size:16px; font-weight:900;")
-            bl.addWidget(ico)
-            bl.addWidget(val)
+            val.setAlignment(QtCore.Qt.AlignCenter)
+            val.setStyleSheet("font-size:14px; font-weight:900; background:#0a3145; border-radius:8px; padding:2px 8px;")
+            name = QtWidgets.QLabel(rname.upper())
+            name.setAlignment(QtCore.Qt.AlignCenter)
+            name.setStyleSheet("font-size:9px; color:#93a4b6; letter-spacing:0.5px;")
+            bl.addWidget(ico, alignment=QtCore.Qt.AlignCenter)
+            bl.addWidget(val, alignment=QtCore.Qt.AlignCenter)
+            bl.addWidget(name, alignment=QtCore.Qt.AlignCenter)
             self.res_widgets[rname] = val
             bottom_l.addWidget(box)
 
@@ -1339,41 +1389,32 @@ class MainWindow(QtWidgets.QMainWindow):
     def _sync_ui(self):
         g = self.game
         p = g.players[g.turn]
-        def pill(text: str, bg: str) -> str:
-            return (
-                f'<span style="background:{bg}; color:#e5e7eb; '
-                f'padding:2px 8px; border-radius:8px; margin-right:6px;">{text}</span>'
-            )
-
-        roll_val = "-" if g.last_roll is None else str(g.last_roll)
-        top_html = (
-            pill(f"Players: You VP {g.players[0].vp} | Bot VP {g.players[1].vp}", "#0a3145") +
-            pill(f"Phase: {g.phase}", "#0f2a3b") +
-            pill(f"Turn: {p.name}", "#0f2a3b") +
-            pill(f"Roll: {roll_val}", "#113a2c")
+        self.lbl_players.setText(
+            f"<b>You</b> {g.players[0].vp} VP &nbsp;|&nbsp; <b>Bot</b> {g.players[1].vp} VP"
         )
+        roll_val = "-" if g.last_roll is None else str(g.last_roll)
         if g.game_over:
-            top_html = (
-                pill(f"Players: You VP {g.players[0].vp} | Bot VP {g.players[1].vp}", "#0a3145") +
-                pill(f"Game over. Winner: P{g.winner_pid}", "#3b0f1a")
-            )
+            self.lbl_phase.setText("Game Over")
+            self.lbl_phase.setStyleSheet("font-size:11px; padding:2px 8px; border-radius:8px; background:#3b0f1a;")
+            self.lbl_turn.setText(f"Winner: P{g.winner_pid}")
+            self.lbl_roll.setText(f"Roll: {roll_val}")
             if not self._shown_game_over:
                 QtWidgets.QMessageBox.information(self, "Game Over", f"Winner: Player {g.winner_pid + 1}")
                 self._shown_game_over = True
-        self.top_status.setText(top_html)
+        else:
+            self.lbl_phase.setText(f"Phase: {g.phase}")
+            self.lbl_phase.setStyleSheet("font-size:11px; padding:2px 8px; border-radius:8px; background:#0f2a3b;")
+            self.lbl_turn.setText(f"Turn: {p.name}")
+            self.lbl_roll.setText(f"Roll: {roll_val}")
 
         lr = "none" if g.longest_road_owner is None else f"P{g.longest_road_owner} (len {g.longest_road_len})"
         la = "none"
         if g.largest_army_pid is not None:
             la = f"P{g.largest_army_pid} (size {g.largest_army_size})"
-        status_html = (
-            '<div style="color:#93a4b6; font-size:11px; margin-bottom:4px;">Status</div>'
-            f'<div><b>P1 VP</b>: {g.players[0].vp} &nbsp; <b>P2 VP</b>: {g.players[1].vp}</div>'
-            f'<div><b>Longest Road</b>: {lr}</div>'
-            f'<div><b>Largest Army</b>: {la}</div>'
-            f'<div><b>Robber</b>: tile {g.robber_tile}</div>'
-        )
-        self.status_box.setText(status_html)
+        self.lbl_vp.setText(f"P1 {g.players[0].vp} / P2 {g.players[1].vp}")
+        self.lbl_longest.setText(lr)
+        self.lbl_army.setText(la)
+        self.lbl_robber.setText(f"tile {g.robber_tile}")
         for r in RESOURCES:
             self.res_widgets[r].setText(str(g.players[0].res[r]))
 
