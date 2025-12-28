@@ -9,6 +9,7 @@ from app.dev_hand_overlay import attach_dev_hand_overlay
 from app.dev_ui import attach_dev_dialog
 from app.trade_ui import attach_trade_button
 from app.config import GameConfig
+from app.assets_loader import load_svg
 
 # -------------------- Geometry (pointy-top, Colonist-like) --------------------
 SQRT3 = 1.7320508075688772
@@ -129,6 +130,17 @@ def make_resource_icon(name: str, size: int = 36) -> QtGui.QPixmap:
     p.end()
     return pm
 
+def resource_icon_pixmap(name: str, size: int = 28) -> QtGui.QPixmap:
+    renderer = load_svg(f"icons/{name}.svg")
+    if not renderer.isValid():
+        return make_resource_icon(name, size)
+    pm = QtGui.QPixmap(size, size)
+    pm.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(pm)
+    renderer.render(p, QtCore.QRectF(0, 0, size, size))
+    p.end()
+    return pm
+
 def dice_face(n: int, size: int = 42) -> QtGui.QPixmap:
     pm = QtGui.QPixmap(size, size)
     pm.fill(QtCore.Qt.transparent)
@@ -158,6 +170,65 @@ def dice_face(n: int, size: int = 42) -> QtGui.QPixmap:
         6:[(cx-off,cy-off),(cx+off,cy-off),(cx-off,cy),(cx+off,cy),(cx-off,cy+off),(cx+off,cy+off)],
     }[n]
     for x,y in pos: dot(x,y)
+    p.end()
+    return pm
+
+def make_action_icon(name: str, size: int = 34) -> QtGui.QPixmap:
+    pm = QtGui.QPixmap(size, size)
+    pm.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(pm)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    fg = QtGui.QColor("#e5f2ff")
+    stroke = QtGui.QPen(fg, 2)
+    p.setPen(stroke)
+    p.setBrush(fg)
+    pad = size * 0.18
+
+    if name == "road":
+        rect = QtCore.QRectF(pad, size*0.55, size-pad*2, size*0.2)
+        p.save()
+        p.translate(size/2, size/2)
+        p.rotate(-20)
+        p.translate(-size/2, -size/2)
+        p.drawRoundedRect(rect, 4, 4)
+        p.restore()
+    elif name == "settlement":
+        base = QtGui.QPolygonF([
+            QtCore.QPointF(size*0.25, size*0.65),
+            QtCore.QPointF(size*0.75, size*0.65),
+            QtCore.QPointF(size*0.75, size*0.85),
+            QtCore.QPointF(size*0.25, size*0.85),
+        ])
+        roof = QtGui.QPolygonF([
+            QtCore.QPointF(size*0.22, size*0.65),
+            QtCore.QPointF(size*0.5, size*0.35),
+            QtCore.QPointF(size*0.78, size*0.65),
+        ])
+        p.drawPolygon(base)
+        p.drawPolygon(roof)
+    elif name == "city":
+        p.drawRoundedRect(QtCore.QRectF(size*0.22, size*0.48, size*0.56, size*0.32), 4, 4)
+        p.drawRect(QtCore.QRectF(size*0.32, size*0.3, size*0.36, size*0.2))
+    elif name == "dev":
+        p.drawRoundedRect(QtCore.QRectF(size*0.28, size*0.2, size*0.42, size*0.6), 6, 6)
+        p.drawRoundedRect(QtCore.QRectF(size*0.18, size*0.3, size*0.42, size*0.6), 6, 6)
+    else:  # trade
+        p.setPen(QtGui.QPen(fg, 2))
+        p.setBrush(QtCore.Qt.NoBrush)
+        p.drawArc(QtCore.QRectF(size*0.18, size*0.2, size*0.5, size*0.5), 30*16, 200*16)
+        p.drawArc(QtCore.QRectF(size*0.32, size*0.35, size*0.5, size*0.5), 210*16, 200*16)
+        p.setBrush(fg)
+        p.drawPolygon(QtGui.QPolygonF([
+            QtCore.QPointF(size*0.62, size*0.2),
+            QtCore.QPointF(size*0.78, size*0.24),
+            QtCore.QPointF(size*0.66, size*0.34),
+        ]))
+        p.drawPolygon(QtGui.QPolygonF([
+            QtCore.QPointF(size*0.26, size*0.8),
+            QtCore.QPointF(size*0.12, size*0.76),
+            QtCore.QPointF(size*0.24, size*0.66),
+        ]))
+
     p.end()
     return pm
 
@@ -215,6 +286,7 @@ class Game:
     longest_road_len: int = 0
     game_over: bool = False
     winner_pid: Optional[int] = None
+    roll_history: List[int] = field(default_factory=list)
     dev_deck: List[str] = field(default_factory=list)
     dev_played_turn: Dict[int, bool] = field(default_factory=dict)
     free_roads: Dict[int, int] = field(default_factory=dict)
@@ -904,6 +976,309 @@ class BoardView(QtWidgets.QGraphicsView):
             return
         super().mouseReleaseEvent(e)
 
+class VictoryOverlay(QtWidgets.QWidget):
+    def __init__(self, parent: QtWidgets.QWidget, on_rematch=None, on_menu=None):
+        super().__init__(parent)
+        self.setObjectName("victoryOverlay")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self._on_rematch = on_rematch
+        self._on_menu = on_menu
+
+        self.setStyleSheet("""
+#victoryOverlay {
+  background: rgba(5, 12, 18, 180);
+}
+#victoryCard {
+  background: #0a2230;
+  border: 1px solid #164055;
+  border-radius: 16px;
+}
+""")
+
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addStretch(1)
+
+        card = QtWidgets.QFrame()
+        card.setObjectName("victoryCard")
+        card_l = QtWidgets.QVBoxLayout(card)
+        card_l.setContentsMargins(20, 18, 20, 18)
+        card_l.setSpacing(10)
+
+        self.title = QtWidgets.QLabel("Victory!")
+        self.title.setStyleSheet("font-size:22px; font-weight:800;")
+        self.title.setAlignment(QtCore.Qt.AlignCenter)
+        card_l.addWidget(self.title)
+
+        self.subtitle = QtWidgets.QLabel("")
+        self.subtitle.setStyleSheet("font-size:13px; color:#c7d7e6;")
+        self.subtitle.setAlignment(QtCore.Qt.AlignCenter)
+        card_l.addWidget(self.subtitle)
+
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane { border:0; }
+            QTabBar::tab { padding:6px 10px; background:#0b2433; border-radius:10px; margin-right:6px; border:1px solid #0f2a3b; }
+            QTabBar::tab:selected { background:#133247; }
+        """)
+
+        overview = QtWidgets.QWidget()
+        overview_l = QtWidgets.QVBoxLayout(overview)
+        overview_l.setContentsMargins(8, 6, 8, 6)
+        self.overview_label = QtWidgets.QLabel("")
+        self.overview_label.setWordWrap(True)
+        self.overview_label.setStyleSheet("font-size:12px; color:#d7eefc;")
+        overview_l.addWidget(self.overview_label)
+        overview_l.addStretch(1)
+        self.tabs.addTab(overview, "Overview")
+
+        dice = QtWidgets.QWidget()
+        dice_l = QtWidgets.QGridLayout(dice)
+        dice_l.setContentsMargins(8, 6, 8, 6)
+        dice_l.setHorizontalSpacing(8)
+        dice_l.setVerticalSpacing(6)
+        self._dice_bars = {}
+        self._dice_counts = {}
+        row = 0
+        for n in range(2, 13):
+            lbl = QtWidgets.QLabel(str(n))
+            lbl.setStyleSheet("color:#93a4b6;")
+            bar = QtWidgets.QProgressBar()
+            bar.setTextVisible(False)
+            bar.setMinimum(0)
+            bar.setMaximum(1)
+            bar.setValue(0)
+            bar.setStyleSheet("""
+                QProgressBar { background:#0f2a3b; border-radius:6px; height:10px; }
+                QProgressBar::chunk { background:#22c55e; border-radius:6px; }
+            """)
+            cnt = QtWidgets.QLabel("0")
+            cnt.setStyleSheet("color:#d7eefc; font-weight:700;")
+            dice_l.addWidget(lbl, row, 0)
+            dice_l.addWidget(bar, row, 1)
+            dice_l.addWidget(cnt, row, 2)
+            self._dice_bars[n] = bar
+            self._dice_counts[n] = cnt
+            row += 1
+        self.tabs.addTab(dice, "Dice Stats")
+
+        card_l.addWidget(self.tabs)
+
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.setSpacing(10)
+        self.btn_rematch = QtWidgets.QPushButton("Rematch")
+        self.btn_menu = QtWidgets.QPushButton("Main Menu")
+        self.btn_rematch.setStyleSheet("background:#22c55e; color:#08131a; padding:10px 16px; border-radius:12px; font-weight:800;")
+        self.btn_menu.setStyleSheet("background:#0f2a3b; color:#d7eefc; padding:10px 16px; border-radius:12px; font-weight:700;")
+        btn_row.addStretch(1)
+        btn_row.addWidget(self.btn_rematch)
+        btn_row.addWidget(self.btn_menu)
+        btn_row.addStretch(1)
+        card_l.addLayout(btn_row)
+
+        root.addWidget(card, alignment=QtCore.Qt.AlignCenter)
+        root.addStretch(1)
+
+        self.btn_rematch.clicked.connect(self._handle_rematch)
+        self.btn_menu.clicked.connect(self._handle_menu)
+        self.hide()
+
+    def _handle_rematch(self):
+        if callable(self._on_rematch):
+            self._on_rematch()
+
+    def _handle_menu(self):
+        if callable(self._on_menu):
+            self._on_menu()
+
+    def update_from_game(self, g):
+        pid = g.winner_pid if g.winner_pid is not None else 0
+        winner_name = g.players[pid].name if g.players else f"P{pid + 1}"
+        winner_vp = g.players[pid].vp if g.players else 0
+        self.subtitle.setText(f"Winner: {winner_name} (VP {winner_vp})")
+        lr = "none" if g.longest_road_owner is None else f"P{g.longest_road_owner + 1} (len {g.longest_road_len})"
+        la = "none"
+        if g.largest_army_pid is not None:
+            la = f"P{g.largest_army_pid + 1} (size {g.largest_army_size})"
+        self.overview_label.setText(
+            f"Final VP: P1 {g.players[0].vp} / P2 {g.players[1].vp}\n"
+            f"Longest Road: {lr}\n"
+            f"Largest Army: {la}\n"
+            f"Total rolls: {len(g.roll_history)}"
+        )
+
+        counts = {n: 0 for n in range(2, 13)}
+        for r in g.roll_history:
+            if r in counts:
+                counts[r] += 1
+        max_count = max(counts.values()) if counts else 1
+        if max_count <= 0:
+            max_count = 1
+        for n in range(2, 13):
+            bar = self._dice_bars[n]
+            bar.setMaximum(max_count)
+            bar.setValue(counts[n])
+            self._dice_counts[n].setText(str(counts[n]))
+
+class StatusPanel(QtWidgets.QFrame):
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("statusPanel")
+        self.setStyleSheet("""
+#statusPanel {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+    stop:0 rgba(8,30,42,0.85),
+    stop:1 rgba(6,24,34,0.85));
+  border: 1px solid rgba(25, 70, 90, 180);
+  border-radius: 14px;
+}
+""")
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(8)
+
+        top = QtWidgets.QHBoxLayout()
+        self.badge_p1 = QtWidgets.QLabel("You 0 VP")
+        self.badge_p2 = QtWidgets.QLabel("Bot 0 VP")
+        for b in (self.badge_p1, self.badge_p2):
+            b.setAlignment(QtCore.Qt.AlignCenter)
+            b.setStyleSheet("font-size:12px; padding:5px 12px; border-radius:10px; background:#0f2a3b;")
+        top.addWidget(self.badge_p1)
+        top.addWidget(self.badge_p2)
+        root.addLayout(top)
+
+        pills = QtWidgets.QHBoxLayout()
+        self.badge_turn = QtWidgets.QLabel("Turn: -")
+        self.badge_phase = QtWidgets.QLabel("Phase: -")
+        self.badge_pending = QtWidgets.QLabel("Pending: none")
+        for b in (self.badge_turn, self.badge_phase, self.badge_pending):
+            b.setAlignment(QtCore.Qt.AlignCenter)
+            b.setStyleSheet("font-size:11px; padding:4px 8px; border-radius:8px; background:#0b2433; color:#d7eefc;")
+        pills.addWidget(self.badge_turn)
+        pills.addWidget(self.badge_phase)
+        pills.addWidget(self.badge_pending)
+        root.addLayout(pills)
+
+        row = QtWidgets.QGridLayout()
+        row.setHorizontalSpacing(8)
+        row.setVerticalSpacing(4)
+        lbl_lr = QtWidgets.QLabel("Longest Road")
+        lbl_la = QtWidgets.QLabel("Largest Army")
+        for lbl in (lbl_lr, lbl_la):
+            lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
+        self.lbl_longest = QtWidgets.QLabel("none")
+        self.lbl_army = QtWidgets.QLabel("none")
+        for lbl in (self.lbl_longest, self.lbl_army):
+            lbl.setStyleSheet("font-size:12px; font-weight:600;")
+        row.addWidget(lbl_lr, 0, 0)
+        row.addWidget(self.lbl_longest, 0, 1)
+        row.addWidget(lbl_la, 1, 0)
+        row.addWidget(self.lbl_army, 1, 1)
+        root.addLayout(row)
+
+    def update_from_game(self, g):
+        self.badge_p1.setText(f"You {g.players[0].vp} VP")
+        self.badge_p2.setText(f"Bot {g.players[1].vp} VP")
+        active_style = "font-size:12px; padding:4px 10px; border-radius:10px; background:#22c55e; color:#08131a; font-weight:800;"
+        idle_style = "font-size:12px; padding:4px 10px; border-radius:10px; background:#0f2a3b; color:#d7eefc;"
+        if g.game_over and g.winner_pid is not None:
+            self.badge_p1.setStyleSheet(active_style if g.winner_pid == 0 else idle_style)
+            self.badge_p2.setStyleSheet(active_style if g.winner_pid == 1 else idle_style)
+        else:
+            self.badge_p1.setStyleSheet(active_style if g.turn == 0 else idle_style)
+            self.badge_p2.setStyleSheet(active_style if g.turn == 1 else idle_style)
+        if g.game_over:
+            self.badge_phase.setText("Phase: game over")
+            self.badge_turn.setText(f"Winner: P{g.winner_pid + 1}")
+        else:
+            self.badge_phase.setText(f"Phase: {g.phase}")
+            self.badge_turn.setText(f"Turn: {g.players[g.turn].name}")
+        pending = g.pending_action or "none"
+        self.badge_pending.setText(f"Pending: {pending}")
+
+        lr = "none" if g.longest_road_owner is None else f"P{g.longest_road_owner + 1} (len {g.longest_road_len})"
+        la = "none"
+        if g.largest_army_pid is not None:
+            la = f"P{g.largest_army_pid + 1} (size {g.largest_army_size})"
+        self.lbl_longest.setText(lr)
+        self.lbl_army.setText(la)
+
+class ResourceChip(QtWidgets.QFrame):
+    def __init__(self, name: str):
+        super().__init__()
+        self.setObjectName("resChip")
+        self.name = name
+        self.setStyleSheet("""
+#resChip {
+  background: #071b28;
+  border: 1px solid rgba(20, 60, 80, 200);
+  border-radius: 12px;
+}
+""")
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(6, 4, 6, 4)
+        lay.setSpacing(6)
+
+        self.icon = QtWidgets.QLabel()
+        self.icon.setFixedSize(24, 24)
+        self.icon.setPixmap(resource_icon_pixmap(name, 22))
+        lay.addWidget(self.icon)
+
+        self.count = QtWidgets.QLabel("0")
+        self.count.setAlignment(QtCore.Qt.AlignCenter)
+        self.count.setStyleSheet("font-size:12px; font-weight:800; background:#0f2a3b; border-radius:8px; padding:2px 6px;")
+        lay.addWidget(self.count, 1)
+
+    def set_count(self, value: int):
+        self.count.setText(str(value))
+
+class ResourcesPanel(QtWidgets.QFrame):
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("resourcesPanel")
+        self.setStyleSheet("""
+#resourcesPanel {
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+    stop:0 rgba(8,30,42,0.7),
+    stop:1 rgba(6,24,34,0.7));
+  border: 1px solid rgba(25, 70, 90, 160);
+  border-radius: 14px;
+}
+""")
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(8)
+
+        self.hand_chips = {}
+        self.bank_chips = {}
+
+        hand_lbl = QtWidgets.QLabel("Hand")
+        hand_lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
+        root.addWidget(hand_lbl)
+        hand_row = QtWidgets.QHBoxLayout()
+        hand_row.setSpacing(6)
+        for r in RESOURCES:
+            chip = ResourceChip(r)
+            self.hand_chips[r] = chip
+            hand_row.addWidget(chip)
+        root.addLayout(hand_row)
+
+        bank_lbl = QtWidgets.QLabel("Bank")
+        bank_lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
+        root.addWidget(bank_lbl)
+        bank_row = QtWidgets.QHBoxLayout()
+        bank_row.setSpacing(6)
+        for r in RESOURCES:
+            chip = ResourceChip(r)
+            self.bank_chips[r] = chip
+            bank_row.addWidget(chip)
+        root.addLayout(bank_row)
+
+    def update_from_game(self, g):
+        for r in RESOURCES:
+            self.hand_chips[r].set_count(g.players[0].res[r])
+            self.bank_chips[r].set_count(g.bank[r])
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, config: Optional[GameConfig] = None, on_back_to_menu=None):
         super().__init__()
@@ -951,60 +1326,11 @@ class MainWindow(QtWidgets.QMainWindow):
         right_layout = QtWidgets.QVBoxLayout(right)
         right_layout.setContentsMargins(12,12,12,12)
         right_layout.setSpacing(10)
+        self.status_panel = StatusPanel()
+        right_layout.addWidget(self.status_panel)
 
-        self.top_card = QtWidgets.QFrame()
-        self.top_card.setStyleSheet("background:rgba(6,26,37,0.7); border:1px solid #0f2a3b; border-radius:12px;")
-        top_card_layout = QtWidgets.QVBoxLayout(self.top_card)
-        top_card_layout.setContentsMargins(10,8,10,8)
-        top_card_layout.setSpacing(6)
-
-        self.lbl_players = QtWidgets.QLabel("")
-        self.lbl_players.setTextFormat(QtCore.Qt.RichText)
-        self.lbl_players.setStyleSheet("font-size:12px;")
-        top_card_layout.addWidget(self.lbl_players)
-
-        pill_row = QtWidgets.QHBoxLayout()
-        self.lbl_phase = QtWidgets.QLabel("")
-        self.lbl_turn = QtWidgets.QLabel("")
-        self.lbl_roll = QtWidgets.QLabel("")
-        for lbl in (self.lbl_phase, self.lbl_turn, self.lbl_roll):
-            lbl.setStyleSheet("font-size:11px; padding:2px 8px; border-radius:8px; background:#0f2a3b;")
-        pill_row.addWidget(self.lbl_phase)
-        pill_row.addWidget(self.lbl_turn)
-        pill_row.addWidget(self.lbl_roll)
-        pill_row.addStretch(1)
-        top_card_layout.addLayout(pill_row)
-        right_layout.addWidget(self.top_card)
-
-        self.status_card = QtWidgets.QFrame()
-        self.status_card.setStyleSheet("background:rgba(6,26,37,0.55); border:1px solid #0f2a3b; border-radius:12px;")
-        status_layout = QtWidgets.QGridLayout(self.status_card)
-        status_layout.setContentsMargins(10,8,10,8)
-        status_layout.setHorizontalSpacing(8)
-        status_layout.setVerticalSpacing(4)
-
-        def stat_label(text: str):
-            lbl = QtWidgets.QLabel(text)
-            lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
-            return lbl
-
-        self.lbl_vp = QtWidgets.QLabel("")
-        self.lbl_longest = QtWidgets.QLabel("")
-        self.lbl_army = QtWidgets.QLabel("")
-        self.lbl_robber = QtWidgets.QLabel("")
-        for lbl in (self.lbl_vp, self.lbl_longest, self.lbl_army, self.lbl_robber):
-            lbl.setStyleSheet("font-size:12px; font-weight:600;")
-
-        status_layout.addWidget(stat_label("VP"), 0, 0)
-        status_layout.addWidget(self.lbl_vp, 0, 1)
-        status_layout.addWidget(stat_label("Longest Road"), 1, 0)
-        status_layout.addWidget(self.lbl_longest, 1, 1)
-        status_layout.addWidget(stat_label("Largest Army"), 2, 0)
-        status_layout.addWidget(self.lbl_army, 2, 1)
-        status_layout.addWidget(stat_label("Robber"), 3, 0)
-        status_layout.addWidget(self.lbl_robber, 3, 1)
-
-        right_layout.addWidget(self.status_card)
+        self.resources_panel = ResourcesPanel()
+        right_layout.addWidget(self.resources_panel)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setMaximumHeight(300)
@@ -1082,49 +1408,36 @@ class MainWindow(QtWidgets.QMainWindow):
         bottom_l.setContentsMargins(12,10,12,10)
         bottom_l.setSpacing(10)
 
-        def action_btn(text, key):
-            b = QtWidgets.QPushButton(text)
-            b.setCheckable(True)
+        def action_btn(key: str, tooltip: str, checkable: bool = True):
+            b = QtWidgets.QToolButton()
+            b.setCheckable(checkable)
+            b.setIcon(QtGui.QIcon(make_action_icon(key)))
+            b.setIconSize(QtCore.QSize(34, 34))
+            b.setFixedSize(64, 60)
+            b.setToolTip(tooltip)
             b.setStyleSheet("""
-                QPushButton { background:#0a2230; border:1px solid #0f2a3b; border-radius:14px; padding:12px 16px; font-weight:800; }
-                QPushButton:hover { background:#0f2a3b; }
-                QPushButton:checked { background:#0a3145; border:2px solid #22d3ee; }
+                QToolButton { background:#0a2230; border:1px solid #0f2a3b; border-radius:14px; }
+                QToolButton:hover { background:#0f2a3b; }
+                QToolButton:checked { background:#0a3145; border:2px solid #22d3ee; }
             """)
-            b.clicked.connect(lambda: self.select_action(key))
+            if checkable:
+                b.clicked.connect(lambda: self.select_action(key))
             return b
 
-        self.btn_sett = action_btn("Settlement", "settlement")
-        self.btn_road = action_btn("Road", "road")
-        self.btn_city = action_btn("City", "city")
-        self.btn_dev  = action_btn("Dev", "dev")
+        self.btn_sett = action_btn("settlement", "Settlement (wood+brick+sheep+wheat)")
+        self.btn_road = action_btn("road", "Road (wood+brick)")
+        self.btn_city = action_btn("city", "City (2 wheat + 3 ore)")
+        self.btn_dev  = action_btn("dev", "Dev card (sheep+wheat+ore)", checkable=False)
+        self.btn_trade = action_btn("trade", "Trade with bank", checkable=False)
+        self.btn_dev.setObjectName("btn_dev_action")
+        self.btn_trade.setObjectName("btn_trade_bank")
 
         bottom_l.addWidget(self.btn_sett)
         bottom_l.addWidget(self.btn_road)
         bottom_l.addWidget(self.btn_city)
         bottom_l.addWidget(self.btn_dev)
+        bottom_l.addWidget(self.btn_trade)
         bottom_l.addStretch(1)
-
-        # resource HUD (only player hand here; bank will be in Log later)
-        self.res_widgets: Dict[str, QtWidgets.QLabel] = {}
-        for rname in RESOURCES:
-            box = QtWidgets.QFrame()
-            box.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px;")
-            bl = QtWidgets.QVBoxLayout(box)
-            bl.setContentsMargins(10,8,10,8)
-            bl.setSpacing(4)
-            ico = QtWidgets.QLabel()
-            ico.setPixmap(make_resource_icon(rname, 40))
-            val = QtWidgets.QLabel("0")
-            val.setAlignment(QtCore.Qt.AlignCenter)
-            val.setStyleSheet("font-size:14px; font-weight:900; background:#0a3145; border-radius:8px; padding:2px 8px;")
-            name = QtWidgets.QLabel(rname.upper())
-            name.setAlignment(QtCore.Qt.AlignCenter)
-            name.setStyleSheet("font-size:9px; color:#93a4b6; letter-spacing:0.5px;")
-            bl.addWidget(ico, alignment=QtCore.Qt.AlignCenter)
-            bl.addWidget(val, alignment=QtCore.Qt.AlignCenter)
-            bl.addWidget(name, alignment=QtCore.Qt.AlignCenter)
-            self.res_widgets[rname] = val
-            bottom_l.addWidget(box)
 
         # main container: left area (top + map + bottom), right panel fixed
         left = QtWidgets.QVBoxLayout()
@@ -1135,6 +1448,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         h.addLayout(left, 1)
         h.addWidget(right, 0)
+
+        self.victory_overlay = VictoryOverlay(
+            root,
+            on_rematch=self._restart_game,
+            on_menu=self._back_to_menu,
+        )
+        self.victory_overlay.setGeometry(root.rect())
 
         self._draw_static_board()
         self._log(f"[SYS] New game seed={self.game.seed}. Setup: place settlement then road (x2).")
@@ -1150,9 +1470,28 @@ class MainWindow(QtWidgets.QMainWindow):
     def resizeEvent(self, e):
         super().resizeEvent(e)
         QtCore.QTimer.singleShot(0, self._fit_map)
+        if hasattr(self, "victory_overlay"):
+            self.victory_overlay.setGeometry(self.centralWidget().rect())
 
     def _draw_static_board(self):
         self.scene.clear()
+        if self.game.tiles:
+            pts = []
+            for t in self.game.tiles:
+                pts.extend(hex_corners(t.center, self.game.size))
+            min_x = min(p.x() for p in pts) - self.game.size * 2
+            max_x = max(p.x() for p in pts) + self.game.size * 2
+            min_y = min(p.y() for p in pts) - self.game.size * 2
+            max_y = max(p.y() for p in pts) + self.game.size * 2
+            rect = QtCore.QRectF(min_x, min_y, max_x - min_x, max_y - min_y)
+            ocean_grad = QtGui.QLinearGradient(rect.topLeft(), rect.bottomRight())
+            ocean_grad.setColorAt(0, QtGui.QColor("#0b2a3a"))
+            ocean_grad.setColorAt(1, QtGui.QColor("#0a3a4f"))
+            ocean = QtWidgets.QGraphicsRectItem(rect)
+            ocean.setBrush(QtGui.QBrush(ocean_grad))
+            ocean.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+            ocean.setZValue(-10)
+            self.scene.addItem(ocean)
         # draw hexes + tokens
         for ti, t in enumerate(self.game.tiles):
             poly = QtGui.QPolygonF(hex_corners(t.center, self.game.size))
@@ -1164,8 +1503,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.scene.addItem(shadow)
 
             item = QtWidgets.QGraphicsPolygonItem(poly)
-            item.setBrush(QtGui.QColor(TERRAIN_COLOR[t.terrain]))
-            pen = QtGui.QPen(QtGui.QColor("#062231"), 3)
+            base = QtGui.QColor(TERRAIN_COLOR[t.terrain])
+            grad = QtGui.QLinearGradient(
+                t.center.x()-self.game.size, t.center.y()-self.game.size,
+                t.center.x()+self.game.size, t.center.y()+self.game.size
+            )
+            grad.setColorAt(0, base.lighter(120))
+            grad.setColorAt(1, base.darker(120))
+            item.setBrush(QtGui.QBrush(grad))
+            pen = QtGui.QPen(base.darker(150), 3)
             pen.setJoinStyle(QtCore.Qt.RoundJoin)
             item.setPen(pen)
             item.setZValue(1)
@@ -1174,6 +1520,13 @@ class MainWindow(QtWidgets.QMainWindow):
             # number token with pips
             if t.number is not None:
                 token_r = self.game.size * 0.34
+                sh = QtWidgets.QGraphicsEllipseItem(
+                    t.center.x()-token_r+2, t.center.y()-token_r+2, token_r*2, token_r*2
+                )
+                sh.setBrush(QtGui.QColor(0, 0, 0, 80))
+                sh.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+                sh.setZValue(2.6)
+                self.scene.addItem(sh)
                 circ = QtWidgets.QGraphicsEllipseItem(
                     t.center.x()-token_r, t.center.y()-token_r, token_r*2, token_r*2
                 )
@@ -1266,11 +1619,20 @@ class MainWindow(QtWidgets.QMainWindow):
             pb = self.game.vertices[b]
             path = QtGui.QPainterPath(pa)
             path.lineTo(pb)
+            base = QtWidgets.QGraphicsPathItem(path)
+            dark = self.game.players[pid].color.darker(160)
+            pen_base = QtGui.QPen(dark, 12)
+            pen_base.setCapStyle(QtCore.Qt.RoundCap)
+            base.setPen(pen_base)
+            base.setZValue(10)
+            self.scene.addItem(base)
+            self.piece_items.append(base)
+
             it = QtWidgets.QGraphicsPathItem(path)
-            pen = QtGui.QPen(self.game.players[pid].color, 10)
+            pen = QtGui.QPen(self.game.players[pid].color.lighter(115), 8)
             pen.setCapStyle(QtCore.Qt.RoundCap)
             it.setPen(pen)
-            it.setZValue(10)
+            it.setZValue(11)
             self.scene.addItem(it)
             self.piece_items.append(it)
 
@@ -1349,12 +1711,28 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scene.addItem(b)
         self.piece_items.append(b)
 
+        shine = QtWidgets.QGraphicsPolygonItem(base)
+        shine.setBrush(col.lighter(130))
+        shine.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+        shine.setOpacity(0.25)
+        shine.setZValue(z+0.05)
+        self.scene.addItem(shine)
+        self.piece_items.append(shine)
+
         r = QtWidgets.QGraphicsPolygonItem(roof)
         r.setBrush(col.darker(120))
         r.setPen(QtGui.QPen(QtGui.QColor("#0b1220"), 2))
         r.setZValue(z+0.1)
         self.scene.addItem(r)
         self.piece_items.append(r)
+
+        r_hi = QtWidgets.QGraphicsPolygonItem(roof)
+        r_hi.setBrush(col.lighter(125))
+        r_hi.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+        r_hi.setOpacity(0.25)
+        r_hi.setZValue(z+0.15)
+        self.scene.addItem(r_hi)
+        self.piece_items.append(r_hi)
 
     def _draw_city(self, p: QtCore.QPointF, col: QtGui.QColor, z: float):
         # bigger block
@@ -1379,6 +1757,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scene.addItem(it)
         self.piece_items.append(it)
 
+        top = QtGui.QPolygonF([
+            QtCore.QPointF(p.x()-w/2+2, p.y()-h/2+2),
+            QtCore.QPointF(p.x()+w/2-2, p.y()-h/2+2),
+            QtCore.QPointF(p.x()+w/2-2, p.y()-h/2+8),
+            QtCore.QPointF(p.x()-w/2+2, p.y()-h/2+8),
+        ])
+        hi = QtWidgets.QGraphicsPolygonItem(top)
+        hi.setBrush(col.lighter(130))
+        hi.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+        hi.setOpacity(0.3)
+        hi.setZValue(z+0.05)
+        self.scene.addItem(hi)
+        self.piece_items.append(hi)
+
     # ---------- Logic/UI ----------
     def _log(self, s: str):
         self.log.appendPlainText(s)
@@ -1388,35 +1780,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _sync_ui(self):
         g = self.game
-        p = g.players[g.turn]
-        self.lbl_players.setText(
-            f"<b>You</b> {g.players[0].vp} VP &nbsp;|&nbsp; <b>Bot</b> {g.players[1].vp} VP"
-        )
-        roll_val = "-" if g.last_roll is None else str(g.last_roll)
         if g.game_over:
-            self.lbl_phase.setText("Game Over")
-            self.lbl_phase.setStyleSheet("font-size:11px; padding:2px 8px; border-radius:8px; background:#3b0f1a;")
-            self.lbl_turn.setText(f"Winner: P{g.winner_pid}")
-            self.lbl_roll.setText(f"Roll: {roll_val}")
+            self.victory_overlay.update_from_game(g)
             if not self._shown_game_over:
-                QtWidgets.QMessageBox.information(self, "Game Over", f"Winner: Player {g.winner_pid + 1}")
+                self.victory_overlay.setGeometry(self.centralWidget().rect())
+                self.victory_overlay.show()
+                self.victory_overlay.raise_()
                 self._shown_game_over = True
         else:
-            self.lbl_phase.setText(f"Phase: {g.phase}")
-            self.lbl_phase.setStyleSheet("font-size:11px; padding:2px 8px; border-radius:8px; background:#0f2a3b;")
-            self.lbl_turn.setText(f"Turn: {p.name}")
-            self.lbl_roll.setText(f"Roll: {roll_val}")
+            if self._shown_game_over:
+                self.victory_overlay.hide()
+                self._shown_game_over = False
 
-        lr = "none" if g.longest_road_owner is None else f"P{g.longest_road_owner} (len {g.longest_road_len})"
-        la = "none"
-        if g.largest_army_pid is not None:
-            la = f"P{g.largest_army_pid} (size {g.largest_army_size})"
-        self.lbl_vp.setText(f"P1 {g.players[0].vp} / P2 {g.players[1].vp}")
-        self.lbl_longest.setText(lr)
-        self.lbl_army.setText(la)
-        self.lbl_robber.setText(f"tile {g.robber_tile}")
-        for r in RESOURCES:
-            self.res_widgets[r].setText(str(g.players[0].res[r]))
+        self.status_panel.update_from_game(g)
+        self.resources_panel.update_from_game(g)
 
         # hint text
         if g.game_over:
@@ -1428,9 +1805,9 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.lbl_hint.setText("Main: click dice to roll. Build by selecting card then clicking highlighted spots.")
 
-        for b in (self.btn_sett, self.btn_road, self.btn_city, self.btn_dev, self.btn_end, self.d1, self.d2):
+        for b in (self.btn_sett, self.btn_road, self.btn_city, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
             b.setEnabled(not g.game_over)
-        trade_btn = self.findChild(QtWidgets.QPushButton, "btn_trade_bank")
+        trade_btn = self.findChild(QtWidgets.QWidget, "btn_trade_bank")
         if trade_btn:
             trade_btn.setEnabled(not g.game_over)
 
@@ -1438,6 +1815,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
         self.game.ui = self
         self._shown_game_over = False
+        if hasattr(self, "victory_overlay"):
+            self.victory_overlay.hide()
         self.selected_action = None
         self.overlay_nodes.clear()
         self.overlay_edges.clear()
@@ -1449,6 +1828,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.select_action("settlement")
         QtCore.QTimer.singleShot(30, self._fit_map)
         self._sync_ui()
+
+        attach_trade_button(self)
+        attach_dev_dialog(self)
+        attach_dev_hand_overlay(self)
+        attach_ports_bridge(self)
+        apply_ui_tweaks(self)
+
+    def _back_to_menu(self):
+        if callable(self._on_back_to_menu):
+            self._on_back_to_menu()
+        self.close()
 
     def _open_game_menu(self):
         if self.game.pending_action is not None:
@@ -1471,9 +1861,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._restart_game()
         def _back_menu():
             dlg.accept()
-            if callable(self._on_back_to_menu):
-                self._on_back_to_menu()
-            self.close()
+            self._back_to_menu()
         def _quit():
             dlg.accept()
             QtWidgets.QApplication.instance().quit()
@@ -1881,9 +2269,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.selected_action = key
         # make checkable group
-        for b in (self.btn_sett, self.btn_road, self.btn_city, self.btn_dev):
+        for b in (self.btn_sett, self.btn_road, self.btn_city):
             b.setChecked(False)
-        {"settlement":self.btn_sett,"road":self.btn_road,"city":self.btn_city,"dev":self.btn_dev}[key].setChecked(True)
+        {"settlement":self.btn_sett,"road":self.btn_road,"city":self.btn_city}[key].setChecked(True)
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -1932,6 +2320,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if bot_need > 0:
                 self._bot_discard(1)
                 self._log(f"[7] Bot discarded {bot_need}.")
+            g.roll_history.append(g.last_roll)
             g.pending_action = "robber_move"
             g.pending_pid = 0
             g.pending_victims = []
@@ -1939,6 +2328,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._refresh_all_dynamic()
             self._sync_ui()
             return
+        g.roll_history.append(g.last_roll)
         distribute_for_roll(g, g.last_roll, self._log)
         self._refresh_all_dynamic()
         self._sync_ui()
@@ -1990,6 +2380,7 @@ class MainWindow(QtWidgets.QMainWindow):
             b = random.randint(1,6)
             g.last_roll = a+b
             g.rolled = True
+            g.roll_history.append(g.last_roll)
             self._log(f"Bot rolled {g.last_roll}.")
             if g.last_roll == 7:
                 bot_need = self._bot_discard(1)
@@ -2231,14 +2622,6 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     w.show()
-
-    attach_trade_button(w)
-
-    attach_ports_bridge(w)
-    attach_dev_hand_overlay(w)
-
-    apply_ui_tweaks(w)
-    attach_dev_dialog(w)
     sys.exit(app.exec())
 
 if __name__ == "__main__":

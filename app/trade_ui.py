@@ -152,12 +152,13 @@ def attach_trade_button(win: QtWidgets.QWidget):
         _log(win, "[!] Trade attach: cannot find game object on window.")
         return
 
-    dev_btn = None
-    for b in win.findChildren(QtWidgets.QPushButton):
-        t = (b.text() or "").strip().lower()
-        if t == "dev":
-            dev_btn = b
-            break
+    dev_btn = win.findChild(QtWidgets.QAbstractButton, "btn_dev_action")
+    if dev_btn is None:
+        for b in win.findChildren(QtWidgets.QAbstractButton):
+            t = (b.text() or "").strip().lower()
+            if t == "dev":
+                dev_btn = b
+                break
     if dev_btn is None:
         _log(win, "[!] Trade attach: cannot find Dev button (text=='Dev').")
         return
@@ -168,17 +169,20 @@ def attach_trade_button(win: QtWidgets.QWidget):
         _log(win, "[!] Trade attach: Dev parent has no layout.")
         return
 
-    trade_btn = QtWidgets.QPushButton("Trade")
-    trade_btn.setObjectName("btn_trade_bank")
+    trade_btn = win.findChild(QtWidgets.QAbstractButton, "btn_trade_bank")
+    if trade_btn is None:
+        trade_btn = QtWidgets.QPushButton("Trade")
+        trade_btn.setObjectName("btn_trade_bank")
 
-    try:
-        idx = lay.indexOf(dev_btn)
-        if idx >= 0:
-            lay.insertWidget(idx + 1, trade_btn)
-        else:
+    if trade_btn.parent() is None:
+        try:
+            idx = lay.indexOf(dev_btn)
+            if idx >= 0:
+                lay.insertWidget(idx + 1, trade_btn)
+            else:
+                lay.addWidget(trade_btn)
+        except Exception:
             lay.addWidget(trade_btn)
-    except Exception:
-        lay.addWidget(trade_btn)
 
     def _open():
         # always ensure api right before dialog

@@ -175,11 +175,12 @@ def attach_dev_dialog(win: QtWidgets.QWidget):
         _log(win, "[!] Dev attach: cannot find game object on window (expected win.game or win._game).")
         return
 
-    dev_btn = None
-    for b in win.findChildren(QtWidgets.QPushButton):
-        if (b.text() or "").strip().lower() == "dev":
-            dev_btn = b
-            break
+    dev_btn = win.findChild(QtWidgets.QAbstractButton, "btn_dev_action")
+    if dev_btn is None:
+        for b in win.findChildren(QtWidgets.QAbstractButton):
+            if (b.text() or "").strip().lower() == "dev":
+                dev_btn = b
+                break
     if dev_btn is None:
         _log(win, "[!] Dev attach: cannot find Dev button (text=='Dev').")
         return
