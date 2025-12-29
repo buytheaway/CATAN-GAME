@@ -57,7 +57,7 @@ class TradeDialog(QtWidgets.QDialog):
         qty = int(self.sp_get_qty.value())
 
         if give == get:
-            self.lbl_rate.setText("Rate: —")
+            self.lbl_rate.setText("Rate: -")
             self.lbl_info.setText("Give and Get must be different.")
             self.btn_ok.setEnabled(False)
             return

@@ -7,6 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.config import GameConfig
 from app.game_launcher import start_game
+from app.lobby_ui import LobbyWindow
 from app.theme import apply_theme, apply_ui_scale
 
 
@@ -192,10 +193,6 @@ class MainMenuWindow(QtWidgets.QMainWindow):
         self._launch_game(self.config)
 
     def _on_multi(self):
-        dlg = ModeSelectDialog(self, self.config, "multiplayer")
-        if dlg.exec() != QtWidgets.QDialog.Accepted:
-            return
-        self.config = dlg.config()
         LobbyWindow(self).exec()
 
     def _on_settings(self):
@@ -220,7 +217,12 @@ class MainMenuWindow(QtWidgets.QMainWindow):
         if self._game_window is None:
             self.show()
             return
-        self._game_window.destroyed.connect(lambda: self.show())
+        self._game_window.destroyed.connect(self._on_game_closed)
+
+    def _on_game_closed(self):
+        self._game_window = None
+        if not self.isVisible():
+            self.show()
 
 
 def main():

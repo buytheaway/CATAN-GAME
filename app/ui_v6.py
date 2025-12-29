@@ -21,7 +21,7 @@ def axial_to_pixel(q: int, r: int, size: float) -> QtCore.QPointF:
     return QtCore.QPointF(x, y)
 
 def hex_corners(center: QtCore.QPointF, size: float) -> List[QtCore.QPointF]:
-    # pointy-top corners (30Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р Р†РІР‚С›РЎС›Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†Р вЂљРЎвЂќР В Р’В Р В Р вЂ№Р В Р Р‹Р Р†Р вЂљРЎвЂќР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р В РІР‚В Р В Р вЂ Р В РІР‚С™Р РЋРІР‚С”Р В Р Р‹Р РЋРІР‚С”Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р Р†РІР‚С›РЎС›Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°, 90Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р Р†РІР‚С›РЎС›Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†Р вЂљРЎвЂќР В Р’В Р В Р вЂ№Р В Р Р‹Р Р†Р вЂљРЎвЂќР В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р В РІР‚В Р В Р вЂ Р В РІР‚С™Р РЋРІР‚С”Р В Р Р‹Р РЋРІР‚С”Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р Р†Р вЂљРЎвЂєР РЋРЎвЂєР В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р Р†РІР‚С›РЎС›Р В Р’В Р Р†Р вЂљРІвЂћСћР В РІР‚в„ўР вЂ™Р’В°, ...)
+    # pointy-top corners (30 deg start)
     pts = []
     for i in range(6):
         ang = math.radians(30 + 60 * i)
@@ -1083,6 +1083,12 @@ class VictoryOverlay(QtWidgets.QWidget):
         self.btn_menu.clicked.connect(self._handle_menu)
         self.hide()
 
+    def set_callbacks(self, on_rematch=None, on_menu=None):
+        if on_rematch is not None:
+            self._on_rematch = on_rematch
+        if on_menu is not None:
+            self._on_menu = on_menu
+
     def _handle_rematch(self):
         if callable(self._on_rematch):
             self._on_rematch()
@@ -1280,7 +1286,7 @@ class ResourcesPanel(QtWidgets.QFrame):
             self.bank_chips[r].set_count(g.bank[r])
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, config: Optional[GameConfig] = None, on_back_to_menu=None):
+    def __init__(self, config: Optional[GameConfig] = None, on_back_to_menu=None, online_controller=None, online_pid: int = 0):
         super().__init__()
         self.setWindowTitle("CATAN Desktop (UI v6)")
         self.resize(1400, 820)
@@ -1288,6 +1294,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.bot_enabled = bool(self._last_config.bot_enabled)
         self.bot_difficulty = int(self._last_config.bot_difficulty)
         self._on_back_to_menu = on_back_to_menu
+        self.online_controller = online_controller
+        self.online_mode = online_controller is not None
+        self.you_pid = int(online_pid)
 
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
         self.game.ui = self
@@ -1646,7 +1655,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._draw_robber()
 
-        if self.game.pending_action == "robber_move" and self.game.pending_pid == 0:
+        if self.game.pending_action == "robber_move" and self.game.pending_pid == (self.you_pid if self.online_mode else 0):
             for ti, t in enumerate(self.game.tiles):
                 if ti == self.game.robber_tile:
                     continue
@@ -1659,8 +1668,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.scene.addItem(it)
                 self.overlay_hex[ti] = it
 
-        # show ONLY legal placement spots for current action
-        self._show_legal_spots()
+        # show ONLY legal placement spots for current action (offline only)
+        if not self.online_mode:
+            self._show_legal_spots()
 
     def _draw_robber(self):
         t = self.game.tiles[self.game.robber_tile]
@@ -1807,6 +1817,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         for b in (self.btn_sett, self.btn_road, self.btn_city, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
             b.setEnabled(not g.game_over)
+        if self.online_mode:
+            self.btn_dev.setEnabled(False)
+            self.btn_trade.setEnabled(False)
         trade_btn = self.findChild(QtWidgets.QWidget, "btn_trade_bank")
         if trade_btn:
             trade_btn.setEnabled(not g.game_over)
@@ -1828,6 +1841,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.select_action("settlement")
         QtCore.QTimer.singleShot(30, self._fit_map)
         self._sync_ui()
+        attach_trade_button(self)
+        attach_dev_dialog(self)
+        attach_dev_hand_overlay(self)
+        attach_ports_bridge(self)
+        apply_ui_tweaks(self)
 
         attach_trade_button(self)
         attach_dev_dialog(self)
@@ -1839,6 +1857,17 @@ class MainWindow(QtWidgets.QMainWindow):
         if callable(self._on_back_to_menu):
             self._on_back_to_menu()
         self.close()
+
+    def set_online(self, controller, pid: int):
+        self.online_controller = controller
+        self.online_mode = controller is not None
+        self.you_pid = int(pid)
+        if self.online_mode:
+            self.victory_overlay.set_callbacks(
+                on_rematch=getattr(controller, "rematch", None),
+                on_menu=self._back_to_menu,
+            )
+        self._sync_ui()
 
     def _open_game_menu(self):
         if self.game.pending_action is not None:
@@ -1938,7 +1967,10 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if g.pending_action != "robber_move":
             return
-        if g.pending_pid != 0:
+        if g.pending_pid != (self.you_pid if self.online_mode else 0):
+            return
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_move_robber(ti)
             return
         if ti == g.robber_tile:
             self._log("[ROB] Pick a different hex.")
@@ -2289,6 +2321,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if g.game_over:
             self._log(f"Game over. Winner: P{g.winner_pid}")
             return
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_roll()
+            return
         if g.phase != "main":
             self._log("[!] Roll is available after setup.")
             return
@@ -2337,6 +2372,9 @@ class MainWindow(QtWidgets.QMainWindow):
         g = self.game
         if g.game_over:
             self._log(f"Game over. Winner: P{g.winner_pid}")
+            return
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_end_turn()
             return
         if g.phase == "setup":
             self._log("[!] Finish setup by placing required piece(s).")
@@ -2522,6 +2560,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if g.game_over:
             self._log(f"Game over. Winner: P{g.winner_pid}")
             return
+        if self.online_mode and self.online_controller:
+            if g.phase == "setup":
+                self.online_controller.cmd_place_settlement(vid, setup=True)
+                return
+            if self.selected_action == "settlement":
+                self.online_controller.cmd_place_settlement(vid, setup=False)
+            elif self.selected_action == "city":
+                self.online_controller.cmd_upgrade_city(vid)
+            return
         if g.phase == "setup":
             # settlement step
             if g.setup_need != "settlement":
@@ -2531,6 +2578,7 @@ class MainWindow(QtWidgets.QMainWindow):
             g.occupied_v[vid] = (pid, 1)
             g.players[pid].vp += 1
             self._log(f"{g.players[pid].name} placed a settlement.")
+            update_longest_road(g, self._log)
             check_win(g, self._log)
             g.setup_need = "road"
             g.setup_anchor_vid = vid
@@ -2551,6 +2599,7 @@ class MainWindow(QtWidgets.QMainWindow):
             g.occupied_v[vid] = (0, 1)
             g.players[0].vp += 1
             self._log("You built a settlement.")
+            update_longest_road(g, self._log)
             check_win(g, self._log)
         elif self.selected_action == "city":
             if not can_pay(g.players[0], COST["city"]):
@@ -2562,6 +2611,7 @@ class MainWindow(QtWidgets.QMainWindow):
             g.occupied_v[vid] = (0, 2)
             g.players[0].vp += 1
             self._log("You upgraded to a city.")
+            update_longest_road(g, self._log)
             check_win(g, self._log)
         self._refresh_all_dynamic()
         self._sync_ui()
@@ -2573,6 +2623,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if g.game_over:
             self._log(f"Game over. Winner: P{g.winner_pid}")
+            return
+        if self.online_mode and self.online_controller:
+            if g.phase == "setup":
+                self.online_controller.cmd_place_road(e, setup=True)
+                return
+            if self.selected_action == "road":
+                self.online_controller.cmd_place_road(e, setup=False)
             return
         if g.phase == "setup":
             if g.setup_need != "road":
