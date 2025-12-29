@@ -15,5 +15,6 @@ Controls:
 Testing:
 - Scenario suite + reports: `python -m tests.run_all`
 - UI smoke (pytest): `pytest -q`
+- UI interactions (dev/trade/robber): `pytest -q tests/test_ui_interactions.py`
 - Multiplayer smoke: `pytest -q tests/test_multiplayer_basic.py`
 - Reports output: `tests/reports/report_<timestamp>.json` and `tests/reports/BUG_REPORT.md`

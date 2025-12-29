@@ -46,9 +46,9 @@ class HexItem(QtWidgets.QGraphicsPolygonItem):
 
 def terrain_color(t: str) -> str:
     return {
-        "forest":   "#2f8f4e",
+        "forest":   "#1d6132",
         "hill":     "#cc5a2d",
-        "pasture":  "#7dbb4b",
+        "pasture":  "#73ff00",
         "field":    "#e4c44f",
         "mountain": "#9aa1a8",
         "desert":   "#d8c38f",

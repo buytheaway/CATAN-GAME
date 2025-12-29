@@ -5,17 +5,11 @@ from typing import Any, Dict, Optional
 from PySide6 import QtCore, QtGui
 
 from app import ui_v6
+from app.theme import get_player_colors
 from app.net_client import NetClient
 
 
-PLAYER_COLORS = [
-    "#ef4444",
-    "#3b82f6",
-    "#22c55e",
-    "#f59e0b",
-    "#a855f7",
-    "#14b8a6",
-]
+PLAYER_COLORS = get_player_colors()
 
 
 class OnlineGameController(QtCore.QObject):

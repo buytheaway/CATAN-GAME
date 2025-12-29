@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
+from app.theme import get_ui_palette, get_dev_card_colors
 
 CARD_ORDER = ["knight", "victory_point", "road_building", "year_of_plenty", "monopoly"]
 CARD_LABEL = {
@@ -13,13 +14,8 @@ CARD_LABEL = {
     "monopoly": "Monopoly",
 }
 
-CARD_COLORS = {
-    "knight": ("#6d28d9", "#8b5cf6"),
-    "victory_point": ("#1d4ed8", "#3b82f6"),
-    "road_building": ("#475569", "#94a3b8"),
-    "year_of_plenty": ("#15803d", "#22c55e"),
-    "monopoly": ("#b45309", "#f59e0b"),
-}
+PALETTE = get_ui_palette()
+CARD_COLORS = get_dev_card_colors()
 
 def _star_points(cx: float, cy: float, r: float):
     pts = []
@@ -35,7 +31,7 @@ def make_dev_icon(card_type: str, size: int = 22) -> QtGui.QPixmap:
     p = QtGui.QPainter(pm)
     p.setRenderHint(QtGui.QPainter.Antialiasing, True)
 
-    fg = QtGui.QColor("#f8fafc")
+    fg = QtGui.QColor(PALETTE["ui_token_bg"])
     pen = QtGui.QPen(fg)
     pen.setWidthF(1.2)
     p.setPen(pen)
@@ -54,7 +50,7 @@ def make_dev_icon(card_type: str, size: int = 22) -> QtGui.QPixmap:
         p.drawPolygon(poly)
     elif card_type == "road_building":
         p.drawRoundedRect(QtCore.QRectF(cx-7, cy-4, 14, 8), 2, 2)
-        p.setPen(QtGui.QPen(QtGui.QColor("#0b1220"), 1))
+        p.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_dark"]), 1))
         p.drawLine(QtCore.QPointF(cx-6, cy), QtCore.QPointF(cx+6, cy))
     elif card_type == "year_of_plenty":
         p.drawEllipse(QtCore.QRectF(cx-7, cy-3, 7, 10))
@@ -131,7 +127,7 @@ class _Chip(QtWidgets.QFrame):
 
         self.new_dot = QtWidgets.QLabel()
         self.new_dot.setFixedSize(6, 6)
-        self.new_dot.setStyleSheet("background:#f97316; border-radius:3px;")
+        self.new_dot.setStyleSheet(f"background:{PALETTE['ui_token_hot']}; border-radius:3px;")
         self.new_dot.hide()
         top.addWidget(self.new_dot)
 
@@ -150,7 +146,7 @@ class _Chip(QtWidgets.QFrame):
     def set_count(self, count: int, new_count: int):
         self.badge.setText(str(count))
         self.new_dot.setVisible(new_count > 0)
-        base, edge = CARD_COLORS.get(self.card_type, ("#0f172a", "#334155"))
+        base, edge = CARD_COLORS.get(self.card_type, CARD_COLORS["default"])
         if count <= 0:
             self.setStyleSheet(
                 "background:rgba(10,20,28,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:12px;"
@@ -172,26 +168,26 @@ class DevHandOverlay(QtWidgets.QFrame):
 
         # compact panel: top-right of map, clean alignment
         self.setFixedSize(360, 94)
-        self.setStyleSheet("""
-#devHandOverlay {
-  background: rgba(6, 18, 26, 215);
-  border: 1px solid rgba(120, 180, 220, 90);
+        self.setStyleSheet(f"""
+#devHandOverlay {{
+  background: {PALETTE['dev_overlay_bg_rgba']};
+  border: 1px solid {PALETTE['dev_overlay_border_rgba']};
   border-radius: 14px;
-}
-#devChip {
-  background: rgba(255,255,255,16);
-  border: 1px solid rgba(255,255,255,18);
+}}
+#devChip {{
+  background: {PALETTE['dev_chip_bg_rgba']};
+  border: 1px solid {PALETTE['dev_chip_border_rgba']};
   border-radius: 12px;
-}
-#devCount {
-  background: rgba(10, 18, 26, 0.6);
-  border: 1px solid rgba(255,255,255,0.18);
+}}
+#devCount {{
+  background: {PALETTE['dev_count_bg_rgba']};
+  border: 1px solid {PALETTE['dev_count_border_rgba']};
   border-radius: 7px;
   min-width: 20px;
   padding: 1px 6px;
   font-size: 10px;
-}
-QLabel { color: #d7eefc; }
+}}
+QLabel {{ color: {PALETTE['dev_label_text']}; }}
 """)
 
         root = QtWidgets.QVBoxLayout(self)
@@ -206,7 +202,7 @@ QLabel { color: #d7eefc; }
         top.addWidget(self.title)
         top.addStretch(1)
         self.hint = QtWidgets.QLabel("")
-        self.hint.setStyleSheet("color: rgba(215,238,252,150); font-size: 11px;")
+        self.hint.setStyleSheet(f"color: {PALETTE['dev_hint_rgba']}; font-size: 11px;")
         top.addWidget(self.hint)
         root.addLayout(top)
 

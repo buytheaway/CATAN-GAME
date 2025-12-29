@@ -44,6 +44,106 @@ THEMES: Dict[str, Dict[str, str]] = {
     },
 }
 
+UI_COLORS: Dict[str, str] = {
+    "ui_bg": "#0b2a3a",
+    "ui_panel": "#0b2230",
+    "ui_panel_border": "#164055",
+    "ui_panel_tab": "#0b2433",
+    "ui_panel_tab_active": "#133247",
+    "ui_panel_outline": "#0f2a3b",
+    "ui_panel_input": "#061a25",
+    "ui_panel_deep": "#071b28",
+    "ui_panel_soft": "#0a3145",
+    "ui_panel_action": "#0a2230",
+    "ui_panel_action_hover": "#0f2a3b",
+    "ui_panel_action_checked": "#0a3145",
+    "ui_panel_end": "#113a2c",
+    "ui_accent": "#22c55e",
+    "ui_text_soft": "#c7d7e6",
+    "ui_text_muted": "#93a4b6",
+    "ui_text_bright": "#d7eefc",
+    "ui_text_dark": "#08131a",
+    "ui_shadow": "#03131c",
+    "ui_piece_shadow": "#021018",
+    "ui_outline_dark": "#0b1220",
+    "ui_outline_light": "#22d3ee",
+    "ui_outline_hover": "#67e8f9",
+    "ui_token_bg": "#f8fafc",
+    "ui_token_outline": "#0b1220",
+    "ui_token_hot": "#ef4444",
+    "ui_action_icon": "#e5f2ff",
+    "ui_progress_bg": "#0f2a3b",
+    "ui_progress_chunk": "#22c55e",
+    "ui_robber_text": "#e5e7eb",
+    "dev_overlay_bg_rgba": "rgba(6, 18, 26, 215)",
+    "dev_overlay_border_rgba": "rgba(120, 180, 220, 90)",
+    "dev_chip_bg_rgba": "rgba(255,255,255,16)",
+    "dev_chip_border_rgba": "rgba(255,255,255,18)",
+    "dev_count_bg_rgba": "rgba(10, 18, 26, 0.6)",
+    "dev_count_border_rgba": "rgba(255,255,255,0.18)",
+    "dev_label_text": "#d7eefc",
+    "dev_hint_rgba": "rgba(215,238,252,150)",
+    "victory_overlay_bg_rgba": "rgba(5, 12, 18, 180)",
+    "status_panel_stop1_rgba": "rgba(8,30,42,0.85)",
+    "status_panel_stop2_rgba": "rgba(6,24,34,0.85)",
+    "status_panel_border_rgba": "rgba(25, 70, 90, 180)",
+    "res_chip_border_rgba": "rgba(20, 60, 80, 200)",
+    "resources_panel_stop1_rgba": "rgba(8,30,42,0.7)",
+    "resources_panel_stop2_rgba": "rgba(6,24,34,0.7)",
+    "resources_panel_border_rgba": "rgba(25, 70, 90, 160)",
+    "overlay_hex_rgba": "rgba(6, 26, 37, 40)",
+    "robber_fill_rgba": "rgba(10, 10, 10, 220)",
+    "token_shadow_rgba": "rgba(0, 0, 0, 80)",
+
+    "terrain_forest": "#22c55e",
+    "terrain_hills": "#f97316",
+    "terrain_pasture": "#4ade80",
+    "terrain_fields": "#facc15",
+    "terrain_mountains": "#94a3b8",
+    "terrain_desert": "#d6c8a0",
+
+    "res_wood": "#16a34a",
+    "res_brick": "#f97316",
+    "res_sheep": "#22c55e",
+    "res_wheat": "#facc15",
+    "res_ore": "#94a3b8",
+    "res_any": "#0ea5e9",
+    "res_default": "#64748b",
+}
+
+DEV_CARD_COLORS: Dict[str, tuple[str, str]] = {
+    "knight": ("#6d28d9", "#8b5cf6"),
+    "victory_point": ("#1d4ed8", "#3b82f6"),
+    "road_building": ("#475569", "#94a3b8"),
+    "year_of_plenty": ("#15803d", "#22c55e"),
+    "monopoly": ("#b45309", "#f59e0b"),
+    "default": ("#0f172a", "#334155"),
+}
+
+PLAYER_COLORS: list[str] = [
+    "#ef4444",
+    "#3b82f6",
+    "#22c55e",
+    "#f59e0b",
+    "#a855f7",
+    "#14b8a6",
+]
+
+
+def get_ui_palette(theme_name: str = "midnight") -> Dict[str, str]:
+    theme = THEMES.get(theme_name, THEMES["midnight"])
+    palette = dict(theme)
+    palette.update(UI_COLORS)
+    return palette
+
+
+def get_dev_card_colors() -> Dict[str, tuple[str, str]]:
+    return dict(DEV_CARD_COLORS)
+
+
+def get_player_colors() -> list[str]:
+    return list(PLAYER_COLORS)
+
 
 def apply_theme(app: QtWidgets.QApplication, theme_name: str) -> None:
     theme = THEMES.get(theme_name, THEMES["midnight"])

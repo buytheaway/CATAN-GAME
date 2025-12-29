@@ -10,6 +10,7 @@ from app.dev_ui import attach_dev_dialog
 from app.trade_ui import attach_trade_button
 from app.config import GameConfig
 from app.assets_loader import load_svg
+from app.theme import get_ui_palette, get_player_colors
 
 # -------------------- Geometry (pointy-top, Colonist-like) --------------------
 SQRT3 = 1.7320508075688772
@@ -53,14 +54,43 @@ TERRAIN_TO_RES = {
     "mountains": "ore",
     "desert": None,
 }
-TERRAIN_COLOR = {
-    "forest":   "#22c55e",
-    "hills":    "#f97316",
-    "pasture":  "#4ade80",
-    "fields":   "#facc15",
-    "mountains":"#94a3b8",
-    "desert":   "#d6c8a0",
-}
+TERRAIN_COLOR: Dict[str, str] = {}
+RESOURCE_COLORS: Dict[str, str] = {}
+
+# Global palette (updated in MainWindow.__init__)
+PALETTE = get_ui_palette()
+PLAYER_COLORS = get_player_colors()
+BG = PALETTE["ui_bg"]
+PANEL = PALETTE["ui_panel"]
+ACCENT = PALETTE["ui_accent"]
+TEXT = PALETTE["text"]
+
+def set_ui_palette(theme_name: str) -> None:
+    global PALETTE, BG, PANEL, ACCENT, TEXT, TERRAIN_COLOR, RESOURCE_COLORS, PLAYER_COLORS
+    PALETTE = get_ui_palette(theme_name)
+    PLAYER_COLORS = get_player_colors()
+    BG = PALETTE["ui_bg"]
+    PANEL = PALETTE["ui_panel"]
+    ACCENT = PALETTE["ui_accent"]
+    TEXT = PALETTE["text"]
+    TERRAIN_COLOR = {
+        "forest": PALETTE["terrain_forest"],
+        "hills": PALETTE["terrain_hills"],
+        "pasture": PALETTE["terrain_pasture"],
+        "fields": PALETTE["terrain_fields"],
+        "mountains": PALETTE["terrain_mountains"],
+        "desert": PALETTE["terrain_desert"],
+    }
+    RESOURCE_COLORS = {
+        "wood": PALETTE["res_wood"],
+        "brick": PALETTE["res_brick"],
+        "sheep": PALETTE["res_sheep"],
+        "wheat": PALETTE["res_wheat"],
+        "ore": PALETTE["res_ore"],
+        "any": PALETTE["res_any"],
+    }
+
+set_ui_palette("midnight")
 
 # pips like Colonist (2/12=1 ... 6/8=5)
 PIPS = {2:1,3:2,4:3,5:4,6:5,8:5,9:4,10:3,11:2,12:1}
@@ -72,14 +102,7 @@ def make_resource_icon(name: str, size: int = 36) -> QtGui.QPixmap:
     p = QtGui.QPainter(pm)
     p.setRenderHint(QtGui.QPainter.Antialiasing, True)
 
-    bg = {
-        "wood":"#16a34a",
-        "brick":"#f97316",
-        "sheep":"#22c55e",
-        "wheat":"#facc15",
-        "ore":"#94a3b8",
-        "any":"#0ea5e9",
-    }.get(name, "#64748b")
+    bg = RESOURCE_COLORS.get(name, PALETTE["res_default"])
 
     # rounded rect
     path = QtGui.QPainterPath()
@@ -88,7 +111,7 @@ def make_resource_icon(name: str, size: int = 36) -> QtGui.QPixmap:
 
     # simple white glyph (not copyrighted)
     p.setPen(QtCore.Qt.NoPen)
-    p.setBrush(QtGui.QColor("#0b1220"))
+    p.setBrush(QtGui.QColor(PALETTE["ui_outline_dark"]))
 
     if name == "wood":
         # tree
@@ -104,12 +127,12 @@ def make_resource_icon(name: str, size: int = 36) -> QtGui.QPixmap:
         p.drawEllipse(QtCore.QRectF(size*0.18, size*0.44, size*0.18, size*0.18))
     elif name == "wheat":
         # wheat stalk
-        pen = QtGui.QPen(QtGui.QColor("#0b1220"), 3)
+        pen = QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_dark"]), 3)
         pen.setCapStyle(QtCore.Qt.RoundCap)
         p.setPen(pen)
         p.drawLine(int(size*0.50), int(size*0.22), int(size*0.50), int(size*0.80))
         p.setPen(QtCore.Qt.NoPen)
-        p.setBrush(QtGui.QColor("#0b1220"))
+        p.setBrush(QtGui.QColor(PALETTE["ui_outline_dark"]))
         for k in range(5):
             y = size*(0.30 + k*0.10)
             p.drawEllipse(QtCore.QRectF(size*0.52, y, size*0.12, size*0.07))
@@ -150,12 +173,12 @@ def dice_face(n: int, size: int = 42) -> QtGui.QPixmap:
     rect = QtCore.QRectF(1,1,size-2,size-2)
     path = QtGui.QPainterPath()
     path.addRoundedRect(rect, 10, 10)
-    p.fillPath(path, QtGui.QColor("#f8fafc"))
-    p.setPen(QtGui.QPen(QtGui.QColor("#0b1220"), 2))
+    p.fillPath(path, QtGui.QColor(PALETTE["ui_token_bg"]))
+    p.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_dark"]), 2))
     p.drawPath(path)
     # pips
     p.setPen(QtCore.Qt.NoPen)
-    p.setBrush(QtGui.QColor("#0b1220"))
+    p.setBrush(QtGui.QColor(PALETTE["ui_outline_dark"]))
     def dot(x,y):
         r = size*0.07
         p.drawEllipse(QtCore.QRectF(x-r, y-r, 2*r, 2*r))
@@ -178,7 +201,7 @@ def make_action_icon(name: str, size: int = 34) -> QtGui.QPixmap:
     pm.fill(QtCore.Qt.transparent)
     p = QtGui.QPainter(pm)
     p.setRenderHint(QtGui.QPainter.Antialiasing, True)
-    fg = QtGui.QColor("#e5f2ff")
+    fg = QtGui.QColor(PALETTE["ui_action_icon"])
     stroke = QtGui.QPen(fg, 2)
     p.setPen(stroke)
     p.setBrush(fg)
@@ -555,8 +578,8 @@ def build_board(seed: int, size: float) -> Game:
 
     # players
     g.players = [
-        Player("You", QtGui.QColor("#ef4444")),
-        Player("Bot", QtGui.QColor("#e5e7eb")),
+        Player("You", QtGui.QColor(PLAYER_COLORS[0])),
+        Player("Bot", QtGui.QColor(PLAYER_COLORS[1])),
     ]
 
     dev_deck = (
@@ -813,9 +836,9 @@ class ClickableEllipse(QtWidgets.QGraphicsEllipseItem):
         self._cb = cb
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
-        self._base_pen = QtGui.QPen(QtGui.QColor("#22d3ee"), 2)
+        self._base_pen = QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_light"]), 2)
         self._base_pen.setCapStyle(QtCore.Qt.RoundCap)
-        self._hover_pen = QtGui.QPen(QtGui.QColor("#67e8f9"), 3)
+        self._hover_pen = QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_hover"]), 3)
         self._hover_pen.setCapStyle(QtCore.Qt.RoundCap)
 
     def hoverEnterEvent(self, e):
@@ -837,9 +860,9 @@ class ClickableLine(QtWidgets.QGraphicsPathItem):
         self._cb = cb
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
-        self._base = QtGui.QPen(QtGui.QColor("#22d3ee"), 7)
+        self._base = QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_light"]), 7)
         self._base.setCapStyle(QtCore.Qt.RoundCap)
-        self._hover = QtGui.QPen(QtGui.QColor("#67e8f9"), 9)
+        self._hover = QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_hover"]), 9)
         self._hover.setCapStyle(QtCore.Qt.RoundCap)
         self.setPen(self._base)
 
@@ -862,8 +885,8 @@ class ClickableHex(QtWidgets.QGraphicsPolygonItem):
         self._cb = cb
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
-        self._base_pen = QtGui.QPen(QtGui.QColor("#22d3ee"), 2)
-        self._hover_pen = QtGui.QPen(QtGui.QColor("#67e8f9"), 3)
+        self._base_pen = QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_light"]), 2)
+        self._hover_pen = QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_hover"]), 3)
         self.setPen(self._base_pen)
 
     def hoverEnterEvent(self, e):
@@ -926,10 +949,6 @@ class DiscardDialog(QtWidgets.QDialog):
         return dict(self._result)
 
 # -------------------- Main UI --------------------
-BG = "#0b2a3a"
-PANEL = "#0b2230"
-ACCENT = "#22c55e"
-TEXT = "#e5e7eb"
 
 class BoardView(QtWidgets.QGraphicsView):
     def __init__(self, scene):
@@ -984,15 +1003,15 @@ class VictoryOverlay(QtWidgets.QWidget):
         self._on_rematch = on_rematch
         self._on_menu = on_menu
 
-        self.setStyleSheet("""
-#victoryOverlay {
-  background: rgba(5, 12, 18, 180);
-}
-#victoryCard {
-  background: #0a2230;
-  border: 1px solid #164055;
+        self.setStyleSheet(f"""
+#victoryOverlay {{
+  background: {PALETTE['victory_overlay_bg_rgba']};
+}}
+#victoryCard {{
+  background: {PALETTE['ui_panel_action']};
+  border: 1px solid {PALETTE['ui_panel_border']};
   border-radius: 16px;
-}
+}}
 """)
 
         root = QtWidgets.QVBoxLayout(self)
@@ -1011,15 +1030,15 @@ class VictoryOverlay(QtWidgets.QWidget):
         card_l.addWidget(self.title)
 
         self.subtitle = QtWidgets.QLabel("")
-        self.subtitle.setStyleSheet("font-size:13px; color:#c7d7e6;")
+        self.subtitle.setStyleSheet(f"font-size:13px; color:{PALETTE['ui_text_soft']};")
         self.subtitle.setAlignment(QtCore.Qt.AlignCenter)
         card_l.addWidget(self.subtitle)
 
         self.tabs = QtWidgets.QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane { border:0; }
-            QTabBar::tab { padding:6px 10px; background:#0b2433; border-radius:10px; margin-right:6px; border:1px solid #0f2a3b; }
-            QTabBar::tab:selected { background:#133247; }
+        self.tabs.setStyleSheet(f"""
+            QTabWidget::pane {{ border:0; }}
+            QTabBar::tab {{ padding:6px 10px; background:{PALETTE['ui_panel_tab']}; border-radius:10px; margin-right:6px; border:1px solid {PALETTE['ui_panel_outline']}; }}
+            QTabBar::tab:selected {{ background:{PALETTE['ui_panel_tab_active']}; }}
         """)
 
         overview = QtWidgets.QWidget()
@@ -1027,7 +1046,7 @@ class VictoryOverlay(QtWidgets.QWidget):
         overview_l.setContentsMargins(8, 6, 8, 6)
         self.overview_label = QtWidgets.QLabel("")
         self.overview_label.setWordWrap(True)
-        self.overview_label.setStyleSheet("font-size:12px; color:#d7eefc;")
+        self.overview_label.setStyleSheet(f"font-size:12px; color:{PALETTE['ui_text_bright']};")
         overview_l.addWidget(self.overview_label)
         overview_l.addStretch(1)
         self.tabs.addTab(overview, "Overview")
@@ -1042,18 +1061,18 @@ class VictoryOverlay(QtWidgets.QWidget):
         row = 0
         for n in range(2, 13):
             lbl = QtWidgets.QLabel(str(n))
-            lbl.setStyleSheet("color:#93a4b6;")
+            lbl.setStyleSheet(f"color:{PALETTE['ui_text_muted']};")
             bar = QtWidgets.QProgressBar()
             bar.setTextVisible(False)
             bar.setMinimum(0)
             bar.setMaximum(1)
             bar.setValue(0)
-            bar.setStyleSheet("""
-                QProgressBar { background:#0f2a3b; border-radius:6px; height:10px; }
-                QProgressBar::chunk { background:#22c55e; border-radius:6px; }
+            bar.setStyleSheet(f"""
+                QProgressBar {{ background:{PALETTE['ui_progress_bg']}; border-radius:6px; height:10px; }}
+                QProgressBar::chunk {{ background:{PALETTE['ui_progress_chunk']}; border-radius:6px; }}
             """)
             cnt = QtWidgets.QLabel("0")
-            cnt.setStyleSheet("color:#d7eefc; font-weight:700;")
+            cnt.setStyleSheet(f"color:{PALETTE['ui_text_bright']}; font-weight:700;")
             dice_l.addWidget(lbl, row, 0)
             dice_l.addWidget(bar, row, 1)
             dice_l.addWidget(cnt, row, 2)
@@ -1068,8 +1087,8 @@ class VictoryOverlay(QtWidgets.QWidget):
         btn_row.setSpacing(10)
         self.btn_rematch = QtWidgets.QPushButton("Rematch")
         self.btn_menu = QtWidgets.QPushButton("Main Menu")
-        self.btn_rematch.setStyleSheet("background:#22c55e; color:#08131a; padding:10px 16px; border-radius:12px; font-weight:800;")
-        self.btn_menu.setStyleSheet("background:#0f2a3b; color:#d7eefc; padding:10px 16px; border-radius:12px; font-weight:700;")
+        self.btn_rematch.setStyleSheet(f"background:{PALETTE['ui_accent']}; color:{PALETTE['ui_text_dark']}; padding:10px 16px; border-radius:12px; font-weight:800;")
+        self.btn_menu.setStyleSheet(f"background:{PALETTE['ui_panel_outline']}; color:{PALETTE['ui_text_bright']}; padding:10px 16px; border-radius:12px; font-weight:700;")
         btn_row.addStretch(1)
         btn_row.addWidget(self.btn_rematch)
         btn_row.addWidget(self.btn_menu)
@@ -1130,14 +1149,14 @@ class StatusPanel(QtWidgets.QFrame):
     def __init__(self):
         super().__init__()
         self.setObjectName("statusPanel")
-        self.setStyleSheet("""
-#statusPanel {
+        self.setStyleSheet(f"""
+#statusPanel {{
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-    stop:0 rgba(8,30,42,0.85),
-    stop:1 rgba(6,24,34,0.85));
-  border: 1px solid rgba(25, 70, 90, 180);
+    stop:0 {PALETTE['status_panel_stop1_rgba']},
+    stop:1 {PALETTE['status_panel_stop2_rgba']});
+  border: 1px solid {PALETTE['status_panel_border_rgba']};
   border-radius: 14px;
-}
+}}
 """)
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
@@ -1148,7 +1167,7 @@ class StatusPanel(QtWidgets.QFrame):
         self.badge_p2 = QtWidgets.QLabel("Bot 0 VP")
         for b in (self.badge_p1, self.badge_p2):
             b.setAlignment(QtCore.Qt.AlignCenter)
-            b.setStyleSheet("font-size:12px; padding:5px 12px; border-radius:10px; background:#0f2a3b;")
+            b.setStyleSheet(f"font-size:12px; padding:5px 12px; border-radius:10px; background:{PALETTE['ui_panel_outline']};")
         top.addWidget(self.badge_p1)
         top.addWidget(self.badge_p2)
         root.addLayout(top)
@@ -1159,7 +1178,7 @@ class StatusPanel(QtWidgets.QFrame):
         self.badge_pending = QtWidgets.QLabel("Pending: none")
         for b in (self.badge_turn, self.badge_phase, self.badge_pending):
             b.setAlignment(QtCore.Qt.AlignCenter)
-            b.setStyleSheet("font-size:11px; padding:4px 8px; border-radius:8px; background:#0b2433; color:#d7eefc;")
+            b.setStyleSheet(f"font-size:11px; padding:4px 8px; border-radius:8px; background:{PALETTE['ui_panel_tab']}; color:{PALETTE['ui_text_bright']};")
         pills.addWidget(self.badge_turn)
         pills.addWidget(self.badge_phase)
         pills.addWidget(self.badge_pending)
@@ -1171,7 +1190,7 @@ class StatusPanel(QtWidgets.QFrame):
         lbl_lr = QtWidgets.QLabel("Longest Road")
         lbl_la = QtWidgets.QLabel("Largest Army")
         for lbl in (lbl_lr, lbl_la):
-            lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
+            lbl.setStyleSheet(f"color:{PALETTE['ui_text_muted']}; font-size:11px;")
         self.lbl_longest = QtWidgets.QLabel("none")
         self.lbl_army = QtWidgets.QLabel("none")
         for lbl in (self.lbl_longest, self.lbl_army):
@@ -1185,8 +1204,8 @@ class StatusPanel(QtWidgets.QFrame):
     def update_from_game(self, g):
         self.badge_p1.setText(f"You {g.players[0].vp} VP")
         self.badge_p2.setText(f"Bot {g.players[1].vp} VP")
-        active_style = "font-size:12px; padding:4px 10px; border-radius:10px; background:#22c55e; color:#08131a; font-weight:800;"
-        idle_style = "font-size:12px; padding:4px 10px; border-radius:10px; background:#0f2a3b; color:#d7eefc;"
+        active_style = f"font-size:12px; padding:4px 10px; border-radius:10px; background:{PALETTE['ui_accent']}; color:{PALETTE['ui_text_dark']}; font-weight:800;"
+        idle_style = f"font-size:12px; padding:4px 10px; border-radius:10px; background:{PALETTE['ui_panel_outline']}; color:{PALETTE['ui_text_bright']};"
         if g.game_over and g.winner_pid is not None:
             self.badge_p1.setStyleSheet(active_style if g.winner_pid == 0 else idle_style)
             self.badge_p2.setStyleSheet(active_style if g.winner_pid == 1 else idle_style)
@@ -1214,12 +1233,12 @@ class ResourceChip(QtWidgets.QFrame):
         super().__init__()
         self.setObjectName("resChip")
         self.name = name
-        self.setStyleSheet("""
-#resChip {
-  background: #071b28;
-  border: 1px solid rgba(20, 60, 80, 200);
+        self.setStyleSheet(f"""
+#resChip {{
+  background: {PALETTE['ui_panel_deep']};
+  border: 1px solid {PALETTE['res_chip_border_rgba']};
   border-radius: 12px;
-}
+}}
 """)
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(6, 4, 6, 4)
@@ -1232,7 +1251,7 @@ class ResourceChip(QtWidgets.QFrame):
 
         self.count = QtWidgets.QLabel("0")
         self.count.setAlignment(QtCore.Qt.AlignCenter)
-        self.count.setStyleSheet("font-size:12px; font-weight:800; background:#0f2a3b; border-radius:8px; padding:2px 6px;")
+        self.count.setStyleSheet(f"font-size:12px; font-weight:800; background:{PALETTE['ui_panel_outline']}; border-radius:8px; padding:2px 6px;")
         lay.addWidget(self.count, 1)
 
     def set_count(self, value: int):
@@ -1242,14 +1261,14 @@ class ResourcesPanel(QtWidgets.QFrame):
     def __init__(self):
         super().__init__()
         self.setObjectName("resourcesPanel")
-        self.setStyleSheet("""
-#resourcesPanel {
+        self.setStyleSheet(f"""
+#resourcesPanel {{
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-    stop:0 rgba(8,30,42,0.7),
-    stop:1 rgba(6,24,34,0.7));
-  border: 1px solid rgba(25, 70, 90, 160);
+    stop:0 {PALETTE['resources_panel_stop1_rgba']},
+    stop:1 {PALETTE['resources_panel_stop2_rgba']});
+  border: 1px solid {PALETTE['resources_panel_border_rgba']};
   border-radius: 14px;
-}
+}}
 """)
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
@@ -1259,7 +1278,7 @@ class ResourcesPanel(QtWidgets.QFrame):
         self.bank_chips = {}
 
         hand_lbl = QtWidgets.QLabel("Hand")
-        hand_lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
+        hand_lbl.setStyleSheet(f"color:{PALETTE['ui_text_muted']}; font-size:11px;")
         root.addWidget(hand_lbl)
         hand_row = QtWidgets.QHBoxLayout()
         hand_row.setSpacing(6)
@@ -1270,7 +1289,7 @@ class ResourcesPanel(QtWidgets.QFrame):
         root.addLayout(hand_row)
 
         bank_lbl = QtWidgets.QLabel("Bank")
-        bank_lbl.setStyleSheet("color:#93a4b6; font-size:11px;")
+        bank_lbl.setStyleSheet(f"color:{PALETTE['ui_text_muted']}; font-size:11px;")
         root.addWidget(bank_lbl)
         bank_row = QtWidgets.QHBoxLayout()
         bank_row.setSpacing(6)
@@ -1291,6 +1310,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("CATAN Desktop (UI v6)")
         self.resize(1400, 820)
         self._last_config = config or GameConfig()
+        set_ui_palette(self._last_config.theme)
         self.bot_enabled = bool(self._last_config.bot_enabled)
         self.bot_difficulty = int(self._last_config.bot_difficulty)
         self._on_back_to_menu = on_back_to_menu
@@ -1343,26 +1363,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setMaximumHeight(300)
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane { border:0; }
-            QTabBar::tab { padding:8px 12px; background:#0b2433; border-radius:10px; margin-right:6px; border:1px solid #0f2a3b; }
-            QTabBar::tab:selected { background:#133247; }
+        self.tabs.setStyleSheet(f"""
+            QTabWidget::pane {{ border:0; }}
+            QTabBar::tab {{ padding:8px 12px; background:{PALETTE['ui_panel_tab']}; border-radius:10px; margin-right:6px; border:1px solid {PALETTE['ui_panel_outline']}; }}
+            QTabBar::tab:selected {{ background:{PALETTE['ui_panel_tab_active']}; }}
         """)
         self.log = QtWidgets.QPlainTextEdit()
         self.log.setReadOnly(True)
-        self.log.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px; padding:10px;")
+        self.log.setStyleSheet(f"background:{PALETTE['ui_panel_input']}; border:1px solid {PALETTE['ui_panel_outline']}; border-radius:12px; padding:10px;")
         self.chat = QtWidgets.QPlainTextEdit()
         self.chat.setReadOnly(True)
-        self.chat.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px; padding:10px;")
+        self.chat.setStyleSheet(f"background:{PALETTE['ui_panel_input']}; border:1px solid {PALETTE['ui_panel_outline']}; border-radius:12px; padding:10px;")
         self.tabs.addTab(self.log, "Log")
         self.tabs.addTab(self.chat, "Chat")
         right_layout.addWidget(self.tabs, 1)
 
         self.chat_in = QtWidgets.QLineEdit()
         self.chat_in.setPlaceholderText("Type a message...")
-        self.chat_in.setStyleSheet("background:#061a25; border:1px solid #0f2a3b; border-radius:12px; padding:10px;")
+        self.chat_in.setStyleSheet(f"background:{PALETTE['ui_panel_input']}; border:1px solid {PALETTE['ui_panel_outline']}; border-radius:12px; padding:10px;")
         self.chat_btn = QtWidgets.QPushButton("Send")
-        self.chat_btn.setStyleSheet(f"background:{ACCENT}; color:#08131a; padding:10px 14px; border-radius:12px; font-weight:700;")
+        self.chat_btn.setStyleSheet(f"background:{ACCENT}; color:{PALETTE['ui_text_dark']}; padding:10px 14px; border-radius:12px; font-weight:700;")
         self.chat_btn.clicked.connect(self.on_send_chat)
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.chat_in, 1)
@@ -1390,16 +1410,16 @@ class MainWindow(QtWidgets.QMainWindow):
         for b in (self.d1, self.d2):
             b.setIconSize(QtCore.QSize(44,44))
             b.setFixedSize(54,54)
-            b.setStyleSheet("background:#0a3145; border-radius:14px;")
+            b.setStyleSheet(f"background:{PALETTE['ui_panel_soft']}; border-radius:14px;")
         self.d1.clicked.connect(self.on_roll_click)
         self.d2.clicked.connect(self.on_roll_click)
 
         self.btn_end = QtWidgets.QPushButton("End turn")
-        self.btn_end.setStyleSheet("background:#113a2c; padding:10px 14px; border-radius:12px; font-weight:800;")
+        self.btn_end.setStyleSheet(f"background:{PALETTE['ui_panel_end']}; padding:10px 14px; border-radius:12px; font-weight:800;")
         self.btn_end.clicked.connect(self.on_end_turn)
 
         self.btn_menu = QtWidgets.QPushButton("Menu")
-        self.btn_menu.setStyleSheet("background:#0f2a3b; padding:10px 14px; border-radius:12px; font-weight:700;")
+        self.btn_menu.setStyleSheet(f"background:{PALETTE['ui_panel_outline']}; padding:10px 14px; border-radius:12px; font-weight:700;")
         self.btn_menu.clicked.connect(self._open_game_menu)
         self._esc_shortcut = QtGui.QShortcut(QtGui.QKeySequence("Escape"), self)
         self._esc_shortcut.activated.connect(self._open_game_menu)
@@ -1424,10 +1444,10 @@ class MainWindow(QtWidgets.QMainWindow):
             b.setIconSize(QtCore.QSize(34, 34))
             b.setFixedSize(64, 60)
             b.setToolTip(tooltip)
-            b.setStyleSheet("""
-                QToolButton { background:#0a2230; border:1px solid #0f2a3b; border-radius:14px; }
-                QToolButton:hover { background:#0f2a3b; }
-                QToolButton:checked { background:#0a3145; border:2px solid #22d3ee; }
+            b.setStyleSheet(f"""
+                QToolButton {{ background:{PALETTE['ui_panel_action']}; border:1px solid {PALETTE['ui_panel_outline']}; border-radius:14px; }}
+                QToolButton:hover {{ background:{PALETTE['ui_panel_action_hover']}; }}
+                QToolButton:checked {{ background:{PALETTE['ui_panel_action_checked']}; border:2px solid {PALETTE['ui_outline_light']}; }}
             """)
             if checkable:
                 b.clicked.connect(lambda: self.select_action(key))
@@ -1494,8 +1514,8 @@ class MainWindow(QtWidgets.QMainWindow):
             max_y = max(p.y() for p in pts) + self.game.size * 2
             rect = QtCore.QRectF(min_x, min_y, max_x - min_x, max_y - min_y)
             ocean_grad = QtGui.QLinearGradient(rect.topLeft(), rect.bottomRight())
-            ocean_grad.setColorAt(0, QtGui.QColor("#0b2a3a"))
-            ocean_grad.setColorAt(1, QtGui.QColor("#0a3a4f"))
+            ocean_grad.setColorAt(0, QtGui.QColor(PALETTE["ui_bg"]))
+            ocean_grad.setColorAt(1, QtGui.QColor(PALETTE["ui_panel_deep"]))
             ocean = QtWidgets.QGraphicsRectItem(rect)
             ocean.setBrush(QtGui.QBrush(ocean_grad))
             ocean.setPen(QtGui.QPen(QtCore.Qt.NoPen))
@@ -1506,7 +1526,7 @@ class MainWindow(QtWidgets.QMainWindow):
             poly = QtGui.QPolygonF(hex_corners(t.center, self.game.size))
             # shadow (pseudo-3D)
             shadow = QtWidgets.QGraphicsPolygonItem(poly.translated(6,6))
-            shadow.setBrush(QtGui.QColor("#03131c"))
+            shadow.setBrush(QtGui.QColor(PALETTE["ui_shadow"]))
             shadow.setPen(QtGui.QPen(QtCore.Qt.NoPen))
             shadow.setZValue(0)
             self.scene.addItem(shadow)
@@ -1532,20 +1552,20 @@ class MainWindow(QtWidgets.QMainWindow):
                 sh = QtWidgets.QGraphicsEllipseItem(
                     t.center.x()-token_r+2, t.center.y()-token_r+2, token_r*2, token_r*2
                 )
-                sh.setBrush(QtGui.QColor(0, 0, 0, 80))
+                sh.setBrush(QtGui.QColor(PALETTE["token_shadow_rgba"]))
                 sh.setPen(QtGui.QPen(QtCore.Qt.NoPen))
                 sh.setZValue(2.6)
                 self.scene.addItem(sh)
                 circ = QtWidgets.QGraphicsEllipseItem(
                     t.center.x()-token_r, t.center.y()-token_r, token_r*2, token_r*2
                 )
-                circ.setBrush(QtGui.QColor("#f8fafc"))
-                circ.setPen(QtGui.QPen(QtGui.QColor("#0b1220"), 2))
+                circ.setBrush(QtGui.QColor(PALETTE["ui_token_bg"]))
+                circ.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_token_outline"]), 2))
                 circ.setZValue(3)
                 self.scene.addItem(circ)
 
                 txt = QtWidgets.QGraphicsTextItem(str(t.number))
-                color = "#ef4444" if t.number in (6,8) else "#0b1220"
+                color = PALETTE["ui_token_hot"] if t.number in (6,8) else PALETTE["ui_token_outline"]
                 txt.setDefaultTextColor(QtGui.QColor(color))
                 f = QtGui.QFont("Segoe UI", 16, QtGui.QFont.Bold)
                 txt.setFont(f)
@@ -1592,14 +1612,14 @@ class MainWindow(QtWidgets.QMainWindow):
             path = QtGui.QPainterPath()
             path.addRoundedRect(rect, 10, 10)
             box = QtWidgets.QGraphicsPathItem(path)
-            box.setBrush(QtGui.QColor("#061a25"))
-            box.setPen(QtGui.QPen(QtGui.QColor("#0a3145"), 2))
+            box.setBrush(QtGui.QColor(PALETTE["ui_panel_input"]))
+            box.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_panel_soft"]), 2))
             box.setZValue(6)
             self.scene.addItem(box)
 
             label = ptype.replace("2:1:", "2:1 ")
             txt = QtWidgets.QGraphicsTextItem(label)
-            txt.setDefaultTextColor(QtGui.QColor("#e5e7eb"))
+            txt.setDefaultTextColor(QtGui.QColor(PALETTE["text"]))
             txt.setFont(QtGui.QFont("Segoe UI", 9, QtGui.QFont.Bold))
             br = txt.boundingRect()
             txt.setPos(rect.center().x()-br.width()/2, rect.center().y()-br.height()/2-1)
@@ -1663,7 +1683,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 def on_click(_ti=ti):
                     self._on_hex_clicked(_ti)
                 it = ClickableHex(poly, on_click)
-                it.setBrush(QtGui.QColor(6, 26, 37, 40))
+                it.setBrush(QtGui.QColor(PALETTE["overlay_hex_rgba"]))
                 it.setZValue(9)
                 self.scene.addItem(it)
                 self.overlay_hex[ti] = it
@@ -1677,14 +1697,14 @@ class MainWindow(QtWidgets.QMainWindow):
         c = t.center
         r = self.game.size * 0.16
         rob = QtWidgets.QGraphicsEllipseItem(c.x()-r, c.y()-r, r*2, r*2)
-        rob.setBrush(QtGui.QColor(10, 10, 10, 220))
-        rob.setPen(QtGui.QPen(QtGui.QColor("#e5e7eb"), 2))
+        rob.setBrush(QtGui.QColor(PALETTE["robber_fill_rgba"]))
+        rob.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_robber_text"]), 2))
         rob.setZValue(8)
         self.scene.addItem(rob)
         self.piece_items.append(rob)
 
         txt = QtWidgets.QGraphicsTextItem("R")
-        txt.setDefaultTextColor(QtGui.QColor("#e5e7eb"))
+        txt.setDefaultTextColor(QtGui.QColor(PALETTE["ui_robber_text"]))
         txt.setFont(QtGui.QFont("Segoe UI", 10, QtGui.QFont.Bold))
         b = txt.boundingRect()
         txt.setPos(c.x()-b.width()/2, c.y()-b.height()/2-1)
@@ -1708,7 +1728,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ])
 
         sh = QtWidgets.QGraphicsPolygonItem(base.translated(2,2))
-        sh.setBrush(QtGui.QColor("#021018"))
+        sh.setBrush(QtGui.QColor(PALETTE["ui_piece_shadow"]))
         sh.setPen(QtGui.QPen(QtCore.Qt.NoPen))
         sh.setZValue(z-0.2)
         self.scene.addItem(sh)
@@ -1716,7 +1736,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         b = QtWidgets.QGraphicsPolygonItem(base)
         b.setBrush(col)
-        b.setPen(QtGui.QPen(QtGui.QColor("#0b1220"), 2))
+        b.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_dark"]), 2))
         b.setZValue(z)
         self.scene.addItem(b)
         self.piece_items.append(b)
@@ -1731,7 +1751,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         r = QtWidgets.QGraphicsPolygonItem(roof)
         r.setBrush(col.darker(120))
-        r.setPen(QtGui.QPen(QtGui.QColor("#0b1220"), 2))
+        r.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_dark"]), 2))
         r.setZValue(z+0.1)
         self.scene.addItem(r)
         self.piece_items.append(r)
@@ -1754,7 +1774,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.QPointF(p.x()-w/2, p.y()-h/2),
         ])
         sh = QtWidgets.QGraphicsPolygonItem(poly.translated(2,2))
-        sh.setBrush(QtGui.QColor("#021018"))
+        sh.setBrush(QtGui.QColor(PALETTE["ui_piece_shadow"]))
         sh.setPen(QtGui.QPen(QtCore.Qt.NoPen))
         sh.setZValue(z-0.2)
         self.scene.addItem(sh)
@@ -1762,7 +1782,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         it = QtWidgets.QGraphicsPolygonItem(poly)
         it.setBrush(col)
-        it.setPen(QtGui.QPen(QtGui.QColor("#0b1220"), 2))
+        it.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_dark"]), 2))
         it.setZValue(z)
         self.scene.addItem(it)
         self.piece_items.append(it)
@@ -2531,8 +2551,8 @@ class MainWindow(QtWidgets.QMainWindow):
         def on_click():
             self._on_node_clicked(vid, forced_pid)
         it = ClickableEllipse(rect, on_click)
-        it.setBrush(QtGui.QColor("#061a25"))
-        it.setPen(QtGui.QPen(QtGui.QColor("#22d3ee"), 2))
+        it.setBrush(QtGui.QColor(PALETTE["ui_panel_input"]))
+        it.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_light"]), 2))
         it.setZValue(20)
         self.scene.addItem(it)
         self.overlay_nodes[vid] = it
