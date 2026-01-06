@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from app import ui_v6
+from app.engine import rules as engine_rules
 from tests.harness.engine import GameDriver
 
 
@@ -47,7 +47,7 @@ def _pick_isolated_vertex(g) -> int:
         if blocked:
             continue
         ok = True
-        for nb in ui_v6.edge_neighbors_of_vertex(g.edges, vid):
+        for nb in engine_rules.edge_neighbors_of_vertex(g.edges, vid):
             if nb in g.occupied_v:
                 ok = False
                 break
@@ -66,7 +66,7 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     start = _pick_isolated_vertex(g)
     g.occupied_v[start] = (0, 1)
     g.players[0].vp += 1
-    ui_v6.update_longest_road(g)
+    engine_rules.update_longest_road(g)
 
     path = _find_path_edges(g, start, 5)
     if len(path) < 5:
@@ -89,7 +89,7 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     start2 = _pick_isolated_vertex(g)
     g.occupied_v[start2] = (1, 1)
     g.players[1].vp += 1
-    ui_v6.update_longest_road(g)
+    engine_rules.update_longest_road(g)
 
     path2 = _find_path_edges(g, start2, 6)
     if len(path2) < 6:
@@ -105,14 +105,14 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         driver.fail("longest road did not transfer", kind="assertion", details={"owner": g.longest_road_owner})
 
     # blocking settlement should reduce road length (recompute only)
-    before_len = ui_v6.longest_road_length(g, 0)
+    before_len = engine_rules.longest_road_length(g, 0)
     blocker = None
     for e in path:
         for vid in e:
             if vid in g.occupied_v:
                 continue
             ok = True
-            for nb in ui_v6.edge_neighbors_of_vertex(g.edges, vid):
+            for nb in engine_rules.edge_neighbors_of_vertex(g.edges, vid):
                 if nb in g.occupied_v:
                     ok = False
                     break
@@ -126,8 +126,8 @@ def run(driver: GameDriver) -> Dict[str, Any]:
 
     g.occupied_v[blocker] = (1, 1)
     g.players[1].vp += 1
-    ui_v6.update_longest_road(g)
-    after_len = ui_v6.longest_road_length(g, 0)
+    engine_rules.update_longest_road(g)
+    after_len = engine_rules.longest_road_length(g, 0)
     if after_len > before_len:
         driver.fail("blocking settlement did not reduce road", kind="assertion", details={
             "before": before_len,

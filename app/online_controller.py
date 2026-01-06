@@ -125,7 +125,7 @@ class OnlineGameController(QtCore.QObject):
 
         g.longest_road_owner = state.get("longest_road_owner", None)
         g.longest_road_len = int(state.get("longest_road_len", 0))
-        g.largest_army_pid = state.get("largest_army_owner", None)
+        g.largest_army_owner = state.get("largest_army_owner", None)
         g.largest_army_size = int(state.get("largest_army_size", 0))
         g.game_over = bool(state.get("game_over", False))
         g.winner_pid = state.get("winner_pid", None)

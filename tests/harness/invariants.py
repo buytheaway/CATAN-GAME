@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from app import ui_v6
+from app.engine import rules as engine_rules
+from app.engine.state import RESOURCES
 
 
 def _edge_key(e: Tuple[int, int]) -> Tuple[int, int]:
@@ -11,7 +12,7 @@ def _edge_key(e: Tuple[int, int]) -> Tuple[int, int]:
 
 
 def _recompute_longest_road(g) -> Tuple[Optional[int], int]:
-    lens = [ui_v6.longest_road_length(g, pid) for pid in range(len(g.players))]
+    lens = [engine_rules.longest_road_length(g, pid) for pid in range(len(g.players))]
     if not lens:
         return None, 0
     if lens[0] >= 5 and lens[0] > lens[1]:
@@ -53,7 +54,7 @@ def check_invariants(game, expected_totals: Optional[Dict[str, int]] = None) -> 
 
     # resource conservation
     if expected_totals:
-        totals = {r: int(game.bank.get(r, 0)) for r in ui_v6.RESOURCES}
+        totals = {r: int(game.bank.get(r, 0)) for r in RESOURCES}
         for p in game.players:
             for r, q in p.res.items():
                 totals[r] += int(q)
@@ -77,7 +78,7 @@ def check_invariants(game, expected_totals: Optional[Dict[str, int]] = None) -> 
 
     # distance rule
     for vid in game.occupied_v.keys():
-        for nb in ui_v6.edge_neighbors_of_vertex(game.edges, vid):
+        for nb in engine_rules.edge_neighbors_of_vertex(game.edges, vid):
             if nb in game.occupied_v:
                 fails.append({"code": "distance_rule", "message": "Adjacent settlements detected", "details": {"vid": vid, "neighbor": nb}})
                 break
@@ -98,14 +99,14 @@ def check_invariants(game, expected_totals: Optional[Dict[str, int]] = None) -> 
 
     # largest army consistent
     exp_owner, exp_size = _recompute_largest_army(game)
-    if game.largest_army_pid != exp_owner or game.largest_army_size != exp_size:
+    if game.largest_army_owner != exp_owner or game.largest_army_size != exp_size:
         fails.append({
             "code": "largest_army",
             "message": "Largest army state mismatch",
             "details": {
                 "expected_owner": exp_owner,
                 "expected_size": exp_size,
-                "actual_owner": game.largest_army_pid,
+                "actual_owner": game.largest_army_owner,
                 "actual_size": game.largest_army_size,
             },
         })

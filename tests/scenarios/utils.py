@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Tuple
 
-from app import ui_v6
+from app.engine import rules as engine_rules
 from tests.harness.engine import GameDriver
 
 
@@ -29,6 +29,6 @@ def pick_port_vertex(driver: GameDriver) -> Tuple[int, str]:
     g = driver.game
     for edge, kind in g.ports:
         for vid in edge:
-            if ui_v6.can_place_settlement(g, 0, vid, require_road=False):
+            if engine_rules.can_place_settlement(g, 0, vid, require_road=False):
                 return vid, kind
     raise ValueError("no legal port vertex found")

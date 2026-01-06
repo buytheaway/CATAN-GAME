@@ -1,12 +1,14 @@
 import sys, math, random
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple, Optional, Set
+from typing import Any, Dict, List, Tuple, Optional, Set
 
 from PySide6 import QtCore, QtGui, QtWidgets
 from app.dev_hand_overlay import attach_dev_hand_overlay
 from app.dev_ui import DevDialog
 from app.trade_ui import TradeDialog
 from app.config import GameConfig
+from app.engine import rules as engine_rules
+from app.engine.state import COST, RESOURCES, TERRAIN_TO_RES
 from app.assets_loader import load_svg
 from app.theme import get_ui_palette, get_player_colors
 
@@ -43,15 +45,6 @@ BASE_AXIAL: List[Tuple[int,int]] = (
     [(-2,2),(-1,2),(0,2)]
 )
 
-RESOURCES = ["wood","brick","sheep","wheat","ore"]
-TERRAIN_TO_RES = {
-    "forest": "wood",
-    "hills": "brick",
-    "pasture": "sheep",
-    "fields": "wheat",
-    "mountains": "ore",
-    "desert": None,
-}
 TERRAIN_COLOR: Dict[str, str] = {}
 RESOURCE_COLORS: Dict[str, str] = {}
 
@@ -89,42 +82,6 @@ def set_ui_palette(theme_name: str) -> None:
     }
 
 set_ui_palette("midnight")
-
-def _normalize_port_kind(kind: Optional[str]) -> Optional[str]:
-    if kind is None:
-        return None
-    s = str(kind).strip().lower()
-    if s in RESOURCES:
-        return s
-    if s in ("3:1", "3", "generic", "any", "all", "none", "?"):
-        return "3:1"
-    if "3:1" in s or "3/1" in s or "3 to 1" in s or "3to1" in s:
-        return "3:1"
-    for r in RESOURCES:
-        if r in s:
-            return r
-    return None
-
-
-def _iter_ports(ports):
-    for p in ports:
-        a = b = kind = None
-        if isinstance(p, dict):
-            kind = p.get("kind")
-            a = p.get("a", p.get("v1"))
-            b = p.get("b", p.get("v2"))
-        elif isinstance(p, (tuple, list)) and len(p) == 2:
-            edge, kind = p
-            if isinstance(edge, (tuple, list)) and len(edge) == 2:
-                a, b = edge
-        if a is None or b is None:
-            continue
-        try:
-            a = int(a)
-            b = int(b)
-        except Exception:
-            continue
-        yield a, b, kind
 
 # pips like Colonist (2/12=1 ... 6/8=5)
 PIPS = {2:1,3:2,4:3,5:4,6:5,8:5,9:4,10:3,11:2,12:1}
@@ -347,7 +304,7 @@ class Game:
     dev_deck: List[str] = field(default_factory=list)
     dev_played_turn: Dict[int, bool] = field(default_factory=dict)
     free_roads: Dict[int, int] = field(default_factory=dict)
-    largest_army_pid: Optional[int] = None
+    largest_army_owner: Optional[int] = None
     largest_army_size: int = 0
 
     def dev_summary(self, pid: int) -> Dict[str,int]:
@@ -365,471 +322,124 @@ class Game:
         return self.players[pid].res
 
     def player_ports(self, pid: int) -> set:
-        owned = {vid for vid, (owner, _lvl) in self.occupied_v.items() if owner == pid}
-        ports = set()
-        for a, b, kind in _iter_ports(self.ports):
-            if a in owned or b in owned:
-                norm = _normalize_port_kind(kind)
-                if norm:
-                    ports.add(norm)
-        return ports
+        return engine_rules.player_ports(self, pid)
 
     def best_trade_rate(self, pid: int, give_res: str) -> int:
-        ports = self.player_ports(pid)
-        give_res = str(give_res).strip().lower()
-        if give_res in ports:
-            return 2
-        if "3:1" in ports:
-            return 3
-        return 4
+        return engine_rules.best_trade_rate(self, pid, give_res)
 
     def trade_with_bank(self, pid: int, give_res: str, get_res: str, get_qty: int) -> int:
-        if self.game_over:
-            raise ValueError("Game over.")
-        if self.phase != "main" or pid != self.turn:
-            raise ValueError("Not your turn.")
-        give_res = str(give_res).strip().lower()
-        get_res = str(get_res).strip().lower()
-        if give_res == get_res:
-            raise ValueError("Give and Get must be different.")
-        if give_res not in RESOURCES or get_res not in RESOURCES:
-            raise ValueError("Invalid resource.")
-        qty = int(get_qty)
-        if qty <= 0:
-            raise ValueError("Invalid quantity.")
-        rate = self.best_trade_rate(pid, give_res)
-        give_qty = rate * qty
-        pres = self._get_player_res_dict(pid)
-        if pres.get(give_res, 0) < give_qty:
-            raise ValueError("Not enough resources.")
-        if self.bank.get(get_res, 0) < qty:
-            raise ValueError("Bank has not enough resources.")
-        pres[give_res] -= give_qty
-        pres[get_res] += qty
-        self.bank[give_res] += give_qty
-        self.bank[get_res] -= qty
-        return rate
-
-    def _find_dev_idx(self, pid: int, card_type: str, allow_new: bool = False) -> Optional[int]:
-        card_type = str(card_type).strip().lower()
-        cards = self.players[pid].dev_cards
-        for i, c in enumerate(cards):
-            if not isinstance(c, dict):
-                continue
-            if str(c.get("type", "")).strip().lower() == card_type and (allow_new or not c.get("new", False)):
-                return i
-        if allow_new:
-            for i, c in enumerate(cards):
-                if isinstance(c, dict) and str(c.get("type", "")).strip().lower() == card_type:
-                    return i
-        return None
-
-    def _clear_dev_new_flags(self, pid: int) -> None:
-        for c in self.players[pid].dev_cards:
-            if isinstance(c, dict) and c.get("new", False):
-                c["new"] = False
+        try:
+            return engine_rules.trade_with_bank(self, pid, give_res, get_res, get_qty)
+        except engine_rules.RuleError as exc:
+            raise ValueError(exc.message) from None
 
     def end_turn_cleanup(self, pid: int) -> None:
-        self._clear_dev_new_flags(pid)
-        self.dev_played_turn[pid] = False
-
-    def _update_largest_army(self) -> None:
-        sizes = [p.knights_played for p in self.players]
-        max_k = max(sizes) if sizes else 0
-        if max_k < 3:
-            if self.largest_army_pid is not None:
-                self.players[self.largest_army_pid].vp -= 2
-            self.largest_army_pid = None
-            self.largest_army_size = 0
-            ui = getattr(self, "ui", None)
-            if ui and hasattr(ui, "_log"):
-                check_win(self, ui._log)
-            return
-
-        leaders = [i for i,k in enumerate(sizes) if k == max_k]
-        if len(leaders) != 1:
-            if self.largest_army_pid is not None:
-                self.players[self.largest_army_pid].vp -= 2
-            self.largest_army_pid = None
-            self.largest_army_size = max_k
-            ui = getattr(self, "ui", None)
-            if ui and hasattr(ui, "_log"):
-                check_win(self, ui._log)
-            return
-
-        leader = leaders[0]
-        if leader == self.largest_army_pid:
-            self.largest_army_size = max_k
-            return
-
-        if self.largest_army_pid is not None:
-            self.players[self.largest_army_pid].vp -= 2
-        self.largest_army_pid = leader
-        self.largest_army_size = max_k
-        self.players[leader].vp += 2
-        ui = getattr(self, "ui", None)
-        if ui and hasattr(ui, "_log"):
-            check_win(self, ui._log)
+        engine_rules.end_turn_cleanup(self, pid)
 
     def buy_dev(self, pid: int) -> str:
-        if self.game_over:
-            raise ValueError("Game over.")
-        if self.phase != "main" or pid != self.turn:
-            raise ValueError("Not your turn.")
-        if not self.dev_deck:
-            raise ValueError("Dev deck is empty.")
-        cost = COST["dev"]
-        if not can_pay(self.players[pid], cost):
-            raise ValueError("Not enough resources for dev card.")
-        pay_to_bank(self, pid, cost)
-        card = self.dev_deck.pop()
-        self.players[pid].dev_cards.append({"type": card, "new": True})
-        if card == "victory_point":
-            self.players[pid].vp += 1
-        ui = getattr(self, "ui", None)
-        if ui and hasattr(ui, "_sync_ui"):
-            check_win(self, ui._log if hasattr(ui, "_log") else None)
-            ui._sync_ui()
-        return card
+        try:
+            return engine_rules.buy_dev(self, pid)
+        except engine_rules.RuleError as exc:
+            raise ValueError(exc.message) from None
 
     def play_dev(self, pid: int, card_type: str, **kwargs):
-        card_type = str(card_type).strip().lower()
-        if self.game_over:
-            raise ValueError("Game over.")
-        if self.phase != "main" or pid != self.turn:
-            raise ValueError("Not your turn.")
-        if self.dev_played_turn.get(pid, False):
-            raise ValueError("Already played a dev card this turn.")
-        if card_type == "victory_point":
-            raise ValueError("Victory Point cards are passive.")
-
-        idx = self._find_dev_idx(pid, card_type, allow_new=False)
-        if idx is None:
-            raise ValueError("Cannot play this card now (new or missing).")
-        card = self.players[pid].dev_cards.pop(idx)
-        self.dev_played_turn[pid] = True
-
-        if card_type == "knight":
-            self.players[pid].knights_played += 1
-            self._update_largest_army()
-            ui = getattr(self, "ui", None)
-            if ui and hasattr(ui, "_start_robber_flow"):
-                ui._start_robber_flow(pid, reason="knight")
-            else:
-                self.pending_action = "robber_move"
-                self.pending_pid = pid
-                self.pending_victims = []
-            return {"played": "knight"}
-
-        if card_type == "road_building":
-            self.free_roads[pid] = int(self.free_roads.get(pid, 0)) + 2
-            ui = getattr(self, "ui", None)
-            if ui and hasattr(ui, "_start_free_roads"):
-                ui._start_free_roads(pid)
-            return {"played": "road_building"}
-
-        if card_type == "year_of_plenty":
-            a = str(kwargs.get("a", "wood")).lower()
-            b = str(kwargs.get("b", "brick")).lower()
-            qa = int(kwargs.get("qa", 1))
-            qb = int(kwargs.get("qb", 1))
-            if a not in RESOURCES or b not in RESOURCES:
-                raise ValueError("Bad resources.")
-            if qa < 0 or qb < 0 or qa + qb != 2:
-                raise ValueError("Year of Plenty must give exactly 2 resources total.")
-            if self.bank.get(a, 0) < qa or self.bank.get(b, 0) < qb:
-                raise ValueError("Bank doesn't have enough resources.")
-            self.bank[a] -= qa
-            self.bank[b] -= qb
-            self.players[pid].res[a] += qa
-            self.players[pid].res[b] += qb
-            ui = getattr(self, "ui", None)
-            if ui and hasattr(ui, "_sync_ui"):
-                ui._sync_ui()
-            return {"played": "year_of_plenty"}
-
-        if card_type == "monopoly":
-            r = str(kwargs.get("r", "wood")).lower()
-            if r not in RESOURCES:
-                raise ValueError("Bad resource.")
-            taken = 0
-            for opid, op in enumerate(self.players):
-                if opid == pid:
-                    continue
-                q = int(op.res.get(r, 0))
-                if q > 0:
-                    op.res[r] -= q
-                    taken += q
-            self.players[pid].res[r] += taken
-            ui = getattr(self, "ui", None)
-            if ui and hasattr(ui, "_sync_ui"):
-                ui._sync_ui()
-            return {"played": "monopoly", "taken": taken}
-
-        # fallback
-        self.players[pid].dev_cards.append(card)
-        self.dev_played_turn[pid] = False
-        raise ValueError("Unknown dev card.")
+        try:
+            return engine_rules.play_dev(self, pid, card_type, **kwargs)
+        except engine_rules.RuleError as exc:
+            raise ValueError(exc.message) from None
 
 def build_board(seed: int, size: float) -> Game:
-    rng = random.Random(seed)
-    g = Game(seed=seed, size=size)
+    base = engine_rules.build_game(seed=seed, max_players=2, size=size, player_names=["You", "Bot"])
 
-    terrains = (
-        ["forest"]*4 + ["hills"]*3 + ["pasture"]*4 + ["fields"]*4 + ["mountains"]*3 + ["desert"]*1
-    )
-    rng.shuffle(terrains)
+    def _pt(p):
+        return QtCore.QPointF(float(p[0]), float(p[1]))
 
-    numbers = [2,3,3,4,4,5,5,6,6,8,8,9,9,10,10,11,11,12]
-    rng.shuffle(numbers)
-
-    tiles: List[HexTile] = []
-    desert_idx = None
-    ni = 0
-    for (q,r), terr in zip(BASE_AXIAL, terrains):
-        c = axial_to_pixel(q,r,size)
-        num = None
-        if terr != "desert":
-            num = numbers[ni]; ni += 1
-        else:
-            desert_idx = len(tiles)
-        tiles.append(HexTile(q=q,r=r,terrain=terr,number=num,center=c))
-    g.tiles = tiles
-    g.robber_tile = desert_idx if desert_idx is not None else 0
-    g.pending_action = None
-    g.pending_pid = None
-    g.pending_victims = []
-
-    # geometry build (global vertex merge)
-    v_map: Dict[Tuple[int,int], int] = {}
-    v_points: List[QtCore.QPointF] = []
-    v_hexes: Dict[int, List[int]] = {}
-    edges: Set[Tuple[int,int]] = set()
-    edge_hexes: Dict[Tuple[int,int], List[int]] = {}
-
-    for ti, t in enumerate(tiles):
-        corners = hex_corners(t.center, size)
-        vids = []
-        for p in corners:
-            k = quant_key(p, 0.5)
-            if k not in v_map:
-                vid = len(v_points)
-                v_map[k] = vid
-                v_points.append(p)
-                v_hexes[vid] = []
-            vid = v_map[k]
-            vids.append(vid)
-            v_hexes[vid].append(ti)
-
-        # edges (vid pairs)
-        for i in range(6):
-            a = vids[i]
-            b = vids[(i+1) % 6]
-            e = (a,b) if a < b else (b,a)
-            edges.add(e)
-            edge_hexes.setdefault(e, []).append(ti)
-
-    g.vertices = {i:p for i,p in enumerate(v_points)}
-    g.vertex_adj_hexes = v_hexes
-    g.edges = edges
-    g.edge_adj_hexes = edge_hexes
-
-    # ports: choose 9 coast edges (edges with 1 adjacent hex) evenly by angle
-    coast = [e for e,hx in edge_hexes.items() if len(hx)==1]
-    center = QtCore.QPointF(0,0)
-    def angle_of_edge(e):
-        a,b = e
-        p = (g.vertices[a] + g.vertices[b]) * 0.5
-        return math.atan2(p.y()-center.y(), p.x()-center.x())
-    coast.sort(key=angle_of_edge)
-
-    if len(coast) >= 9:
-        pick_idx = [int(i * len(coast)/9) for i in range(9)]
-        coast9 = [coast[i % len(coast)] for i in pick_idx]
-    else:
-        coast9 = coast
-
-    port_types = ["3:1"]*4 + [f"2:1:{r}" for r in RESOURCES]
-    rng.shuffle(port_types)
-    port_types = port_types[:len(coast9)]
-    g.ports = list(zip(coast9, port_types))
-    for edge, kind in g.ports:
-        if not (isinstance(edge, tuple) and len(edge) == 2 and all(isinstance(v, int) for v in edge)):
-            raise ValueError(f"Port edge must be (int,int), got: {edge!r}")
-        if not isinstance(kind, str):
-            raise ValueError(f"Port kind must be str, got: {kind!r}")
-
-    # players
-    g.players = [
-        Player("You", QtGui.QColor(PLAYER_COLORS[0])),
-        Player("Bot", QtGui.QColor(PLAYER_COLORS[1])),
+    g = Game(seed=base.seed, size=base.size)
+    g.tiles = [
+        HexTile(q=t.q, r=t.r, terrain=t.terrain, number=t.number, center=_pt(t.center))
+        for t in base.tiles
     ]
+    g.vertices = {int(k): _pt(v) for k, v in base.vertices.items()}
+    g.vertex_adj_hexes = {int(k): list(v) for k, v in base.vertex_adj_hexes.items()}
+    g.edges = set(base.edges)
+    g.edge_adj_hexes = {k: list(v) for k, v in base.edge_adj_hexes.items()}
+    g.ports = list(base.ports)
 
-    dev_deck = (
-        ["knight"] * 14 +
-        ["victory_point"] * 5 +
-        ["road_building"] * 2 +
-        ["year_of_plenty"] * 2 +
-        ["monopoly"] * 2
-    )
-    rng.shuffle(dev_deck)
-    g.dev_deck = dev_deck
+    g.players = []
+    for p in base.players:
+        pl = Player(p.name, QtGui.QColor(PLAYER_COLORS[p.pid]))
+        pl.res = dict(p.res)
+        pl.vp = int(p.vp)
+        pl.dev_cards = list(p.dev_cards)
+        pl.knights_played = int(p.knights_played)
+        g.players.append(pl)
+
+    g.bank = dict(base.bank)
+    g.occupied_v = dict(base.occupied_v)
+    g.occupied_e = dict(base.occupied_e)
+    g.turn = int(base.turn)
+    g.phase = base.phase
+    g.rolled = bool(base.rolled)
+    g.setup_order = list(base.setup_order)
+    g.setup_idx = int(base.setup_idx)
+    g.setup_need = base.setup_need
+    g.setup_anchor_vid = base.setup_anchor_vid
+    g.last_roll = base.last_roll
+    g.robber_tile = int(base.robber_tile)
+    g.pending_action = base.pending_action
+    g.pending_pid = base.pending_pid
+    g.pending_victims = list(base.pending_victims)
+    g.longest_road_owner = base.longest_road_owner
+    g.longest_road_len = int(base.longest_road_len)
+    g.largest_army_owner = base.largest_army_owner
+    g.largest_army_size = int(base.largest_army_size)
+    g.game_over = bool(base.game_over)
+    g.winner_pid = base.winner_pid
+    g.roll_history = list(base.roll_history)
+    g.dev_deck = list(base.dev_deck)
+    g.dev_played_turn = dict(base.dev_played_turn)
+    g.free_roads = dict(base.free_roads)
     return g
 
 def edge_neighbors_of_vertex(edges: Set[Tuple[int,int]], vid: int) -> Set[int]:
-    out = set()
-    for a,b in edges:
-        if a == vid: out.add(b)
-        elif b == vid: out.add(a)
-    return out
+    return engine_rules.edge_neighbors_of_vertex(edges, vid)
 
 def can_place_settlement(g: Game, pid: int, vid: int, require_road: bool) -> bool:
-    if vid in g.occupied_v:
-        return False
-    # distance rule: no adjacent vertex occupied
-    for nb in edge_neighbors_of_vertex(g.edges, vid):
-        if nb in g.occupied_v:
-            return False
-    if not require_road:
-        return True
-    # must connect to own road
-    for e in g.edges:
-        if vid in e and g.occupied_e.get(e) == pid:
-            return True
-    return False
+    return engine_rules.can_place_settlement(g, pid, vid, require_road=require_road)
 
 def can_place_road(g: Game, pid: int, e: Tuple[int,int], must_touch_vid: Optional[int]=None) -> bool:
-    if e in g.occupied_e:
-        return False
-    a,b = e
-    if must_touch_vid is not None and (a != must_touch_vid and b != must_touch_vid):
-        return False
-    # must connect to own settlement/city or road
-    for v in (a,b):
-        occ = g.occupied_v.get(v)
-        if occ and occ[0] == pid:
-            return True
-    # connect to own road
-    for ee, owner in g.occupied_e.items():
-        if owner == pid and (a in ee or b in ee):
-            return True
-    return False
+    return engine_rules.can_place_road(g, pid, e, must_touch_vid=must_touch_vid)
 
 def can_upgrade_city(g: Game, pid: int, vid: int) -> bool:
-    occ = g.occupied_v.get(vid)
-    return bool(occ and occ[0]==pid and occ[1]==1)
+    return engine_rules.can_upgrade_city(g, pid, vid)
 
 def distribute_for_roll(g: Game, roll: int, log_cb):
-    for vid,(pid,level) in g.occupied_v.items():
-        for ti in g.vertex_adj_hexes.get(vid, []):
-            t = g.tiles[ti]
-            if t.number != roll:
-                continue
-            if ti == g.robber_tile:
-                continue
-            res = TERRAIN_TO_RES[t.terrain]
-            if not res:
-                continue
-            amount = 2 if level==2 else 1
-            # bank limit
-            give = min(amount, g.bank[res])
-            if give <= 0:
-                continue
-            g.bank[res] -= give
-            g.players[pid].res[res] += give
+    engine_rules.distribute_for_roll(g, roll)
     log_cb(f"[ROLL] distributed resources for {roll} (bank limits applied).")
 
-COST = {
-    "road": {"wood":1, "brick":1},
-    "settlement": {"wood":1, "brick":1, "sheep":1, "wheat":1},
-    "city": {"wheat":2, "ore":3},
-    "dev": {"sheep":1, "wheat":1, "ore":1},
-}
 def can_pay(p: Player, cost: Dict[str,int]) -> bool:
-    return all(p.res[k] >= v for k,v in cost.items())
+    return engine_rules.can_pay(p, cost)
 def pay_to_bank(g: Game, pid: int, cost: Dict[str,int]):
-    p = g.players[pid]
-    for k,v in cost.items():
-        p.res[k] -= v
-        g.bank[k] += v
-
-def _vertex_owner(g: Game, vid: int) -> Optional[int]:
-    if vid in g.occupied_v:
-        return g.occupied_v[vid][0]
-    return None
-
-def _is_blocked_vertex(g: Game, vid: int, pid: int) -> bool:
-    owner = _vertex_owner(g, vid)
-    return owner is not None and owner != pid
+    engine_rules.pay_to_bank(g, pid, cost)
 
 def longest_road_length(g: Game, pid: int) -> int:
-    road_edges = [e for e, owner in g.occupied_e.items() if owner == pid]
-    if not road_edges:
-        return 0
-
-    adj: Dict[int, List[Tuple[int,int]]] = {}
-    for e in road_edges:
-        a, b = e
-        adj.setdefault(a, []).append(e)
-        adj.setdefault(b, []).append(e)
-
-    def dfs(v: int, used: set[Tuple[int,int]], came_from: Optional[Tuple[int,int]]) -> int:
-        if _is_blocked_vertex(g, v, pid) and came_from is not None:
-            return 0
-        best = 0
-        for e in adj.get(v, []):
-            if e in used:
-                continue
-            a, b = e
-            nxt = b if a == v else a
-            used.add(e)
-            best = max(best, 1 + dfs(nxt, used, e))
-            used.remove(e)
-        return best
-
-    ans = 0
-    for v in adj.keys():
-        ans = max(ans, dfs(v, set(), None))
-    return ans
+    return engine_rules.longest_road_length(g, pid)
 
 def update_longest_road(g: Game, log_cb=None) -> None:
-    l0 = longest_road_length(g, 0)
-    l1 = longest_road_length(g, 1)
-    new_owner = None
-    new_len = 0
-    if l0 >= 5 and l0 > l1:
-        new_owner, new_len = 0, l0
-    elif l1 >= 5 and l1 > l0:
-        new_owner, new_len = 1, l1
-
-    if new_owner == g.longest_road_owner and new_len == g.longest_road_len:
-        return
-
-    if g.longest_road_owner is not None and new_owner != g.longest_road_owner:
-        g.players[g.longest_road_owner].vp -= 2
-
-    if new_owner is not None and new_owner != g.longest_road_owner:
-        g.players[new_owner].vp += 2
-
-    g.longest_road_owner = new_owner
-    g.longest_road_len = new_len
-
-    if log_cb:
-        if new_owner is None:
+    before_owner = g.longest_road_owner
+    before_len = g.longest_road_len
+    engine_rules.update_longest_road(g)
+    if log_cb and (before_owner != g.longest_road_owner or before_len != g.longest_road_len):
+        if g.longest_road_owner is None:
             log_cb("Longest Road: none")
         else:
-            log_cb(f"Longest Road: P{new_owner} (len {new_len})")
+            log_cb(f"Longest Road: P{g.longest_road_owner + 1} (len {g.longest_road_len})")
 
 def check_win(g: Game, log_cb=None) -> None:
-    if g.game_over:
-        return
-    for i, p in enumerate(g.players):
-        if p.vp >= 10:
-            g.game_over = True
-            g.winner_pid = i
-            if log_cb:
-                log_cb(f"Game over. Winner: P{i}")
-            return
+    before = g.game_over
+    engine_rules.check_win(g)
+    if log_cb and not before and g.game_over:
+        log_cb(f"Game over. Winner: P{g.winner_pid}")
 
 def expected_vertex_yield(g: Game, vid: int, pid: int) -> int:
     score = 0
@@ -1206,8 +816,8 @@ class VictoryOverlay(QtWidgets.QWidget):
         self.subtitle.setText(f"Winner: {winner_name} (VP {winner_vp})")
         lr = "none" if g.longest_road_owner is None else f"P{g.longest_road_owner + 1} (len {g.longest_road_len})"
         la = "none"
-        if g.largest_army_pid is not None:
-            la = f"P{g.largest_army_pid + 1} (size {g.largest_army_size})"
+        if g.largest_army_owner is not None:
+            la = f"P{g.largest_army_owner + 1} (size {g.largest_army_size})"
         self.overview_label.setText(
             f"Final VP: P1 {g.players[0].vp} / P2 {g.players[1].vp}\n"
             f"Longest Road: {lr}\n"
@@ -1306,8 +916,8 @@ class StatusPanel(QtWidgets.QFrame):
 
         lr = "none" if g.longest_road_owner is None else f"P{g.longest_road_owner + 1} (len {g.longest_road_len})"
         la = "none"
-        if g.largest_army_pid is not None:
-            la = f"P{g.largest_army_pid + 1} (size {g.largest_army_size})"
+        if g.largest_army_owner is not None:
+            la = f"P{g.largest_army_owner + 1} (size {g.largest_army_size})"
         self.lbl_longest.setText(lr)
         self.lbl_army.setText(la)
 
@@ -1402,7 +1012,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.you_pid = int(online_pid)
 
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
-        self.game.ui = self
 
         self.selected_action = None  # "settlement"/"road"/"city"/"dev"
         self.overlay_nodes: Dict[int, QtWidgets.QGraphicsItem] = {}
@@ -1902,6 +1511,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def _chat(self, s: str):
         self.chat.appendPlainText(s)
 
+    def _apply_cmd(self, cmd: Dict[str, Any], pid: Optional[int] = None) -> Optional[List[Dict[str, Any]]]:
+        try:
+            _, events = engine_rules.apply_cmd(self.game, int(pid if pid is not None else self.game.turn), cmd)
+            return events
+        except engine_rules.RuleError as exc:
+            msg = exc.message
+            if exc.details:
+                msg = f"{msg} ({exc.details})"
+            self._log(f"[!] {msg}")
+            return None
+
     def _sync_ui(self):
         g = self.game
         if g.game_over:
@@ -1937,7 +1557,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _restart_game(self):
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
-        self.game.ui = self
         self._shown_game_over = False
         if hasattr(self, "victory_overlay"):
             self.victory_overlay.hide()
@@ -2041,49 +1660,6 @@ class MainWindow(QtWidgets.QMainWindow):
         total = self.hand_size(pid)
         return total // 2 if total > 7 else 0
 
-    def _apply_discard(self, pid: int, discard: Dict[str,int]):
-        pres = self.game.players[pid].res
-        for r, n in discard.items():
-            q = min(int(n), int(pres.get(r, 0)))
-            if q <= 0:
-                continue
-            pres[r] -= q
-            self.game.bank[r] += q
-
-    def _random_discard(self, pid: int, need: int):
-        pres = self.game.players[pid].res
-        bag = []
-        for r, c in pres.items():
-            bag += [r] * int(c)
-        random.shuffle(bag)
-        for _ in range(min(need, len(bag))):
-            r = bag.pop()
-            pres[r] -= 1
-            self.game.bank[r] += 1
-
-    def _start_robber_flow(self, pid: int, reason: str):
-        g = self.game
-        g.pending_action = "robber_move"
-        g.pending_pid = pid
-        g.pending_victims = []
-        who = g.players[pid].name
-        self._log(f"[ROB] {who} moves the robber ({reason}). Click a hex.")
-        self._refresh_all_dynamic()
-        self._sync_ui()
-
-    def _steal_random(self, pid: int, target_pid: int):
-        pres = self.game.players[target_pid].res
-        bag = []
-        for r, c in pres.items():
-            bag += [r] * int(c)
-        if not bag:
-            self._log("[ROB] Target has no resources to steal.")
-            return
-        r = random.choice(bag)
-        pres[r] -= 1
-        self.game.players[pid].res[r] += 1
-        self._log(f"[ROB] Stole 1 {r} from {self.game.players[target_pid].name}.")
-
     def _victims_for_tile(self, ti: int, pid: int) -> List[int]:
         g = self.game
         victims = set()
@@ -2110,34 +1686,27 @@ class MainWindow(QtWidgets.QMainWindow):
         if ti == g.robber_tile:
             self._log("[ROB] Pick a different hex.")
             return
-        g.robber_tile = ti
         victims = self._victims_for_tile(ti, g.pending_pid or 0)
-        g.pending_victims = victims
-        if not victims:
-            g.pending_action = None
-            g.pending_pid = None
-            g.pending_victims = []
-            self._log("[ROB] Robber moved. No victims.")
-            self._refresh_all_dynamic()
-            self._sync_ui()
-            return
-
-        g.pending_action = "robber_steal"
-        self._log("[ROB] Choose a victim to steal from.")
-        names = [g.players[v].name for v in victims]
-        choice, ok = QtWidgets.QInputDialog.getItem(self, "Robber", "Choose player to steal from:", names, 0, False)
         target_pid = None
-        if ok:
-            for v in victims:
-                if g.players[v].name == choice:
-                    target_pid = v
-                    break
-        if target_pid is None:
-            target_pid = random.choice(victims)
-        self._steal_random(g.pending_pid or 0, target_pid)
-        g.pending_action = None
-        g.pending_pid = None
-        g.pending_victims = []
+        if victims:
+            self._log("[ROB] Choose a victim to steal from.")
+            names = [g.players[v].name for v in victims]
+            choice, ok = QtWidgets.QInputDialog.getItem(self, "Robber", "Choose player to steal from:", names, 0, False)
+            if ok:
+                for v in victims:
+                    if g.players[v].name == choice:
+                        target_pid = v
+                        break
+            if target_pid is None:
+                target_pid = victims[0]
+        events = self._apply_cmd({"type": "move_robber", "tile": ti, "victim": target_pid}, pid=g.pending_pid or 0)
+        if events is None:
+            return
+        for ev in events:
+            if ev.get("type") == "move_robber" and ev.get("stolen"):
+                self._log(f"[ROB] Stole 1 {ev.get('stolen')} from P{target_pid + 1}.")
+        if not victims:
+            self._log("[ROB] Robber moved. No victims.")
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -2150,20 +1719,23 @@ class MainWindow(QtWidgets.QMainWindow):
         if BOT_LOG:
             self._log(msg)
 
-    def _bot_discard(self, pid: int):
-        need = self.discard_needed(pid)
-        if need <= 0:
-            return 0
+    def _bot_discard_plan(self, pid: int, need: int) -> Dict[str, int]:
         pres = self.game.players[pid].res
-        for _ in range(need):
+        plan = {r: 0 for r in RESOURCES}
+        remaining = int(need)
+        while remaining > 0:
             max_q = max(pres.values()) if pres else 0
             if max_q <= 0:
                 break
-            choices = [r for r, q in pres.items() if q == max_q and q > 0]
-            r = random.choice(choices)
+            choices = sorted([r for r, q in pres.items() if q == max_q and q > 0])
+            r = choices[0]
+            plan[r] += 1
             pres[r] -= 1
-            self.game.bank[r] += 1
-        return need
+            remaining -= 1
+        # restore player res (plan is applied by engine)
+        for r, q in plan.items():
+            pres[r] += q
+        return plan
 
     def _bot_choose_victim(self, victims: List[int]) -> int:
         best = None
@@ -2185,17 +1757,13 @@ class MainWindow(QtWidgets.QMainWindow):
         return False
 
     def _bot_move_robber(self, pid: int, target_hex: int):
-        g = self.game
-        g.robber_tile = target_hex
         victims = self._victims_for_tile(target_hex, pid)
-        if victims:
-            target_pid = self._bot_choose_victim(victims)
-            self._steal_random(pid, target_pid)
-        else:
+        target_pid = self._bot_choose_victim(victims) if victims else None
+        events = self._apply_cmd({"type": "move_robber", "tile": target_hex, "victim": target_pid}, pid=pid)
+        if events is None:
+            return
+        if not victims:
             self._log("[ROB] Bot moved robber. No victims.")
-        g.pending_action = None
-        g.pending_pid = None
-        g.pending_victims = []
 
     def _bot_choose_robber_tile(self) -> int:
         g = self.game
@@ -2236,44 +1804,22 @@ class MainWindow(QtWidgets.QMainWindow):
         g = self.game
         if e is None:
             return False
-        if not can_place_road(g, 1, e):
+        events = self._apply_cmd({"type": "place_road", "eid": e, "free": bool(use_free)}, pid=1)
+        if events is None:
             return False
-        if use_free and int(g.free_roads.get(1, 0)) > 0:
-            g.free_roads[1] = int(g.free_roads.get(1, 0)) - 1
-        else:
-            if not can_pay(g.players[1], COST["road"]):
-                return False
-            pay_to_bank(g, 1, COST["road"])
-        g.occupied_e[e] = 1
         self._log("Bot built a road.")
-        update_longest_road(g, self._log)
-        check_win(g, self._log)
         return True
 
     def _bot_build_city_at(self, vid: int) -> bool:
-        g = self.game
-        if not can_pay(g.players[1], COST["city"]):
+        if self._apply_cmd({"type": "upgrade_city", "vid": vid}, pid=1) is None:
             return False
-        if not can_upgrade_city(g, 1, vid):
-            return False
-        pay_to_bank(g, 1, COST["city"])
-        g.occupied_v[vid] = (1, 2)
-        g.players[1].vp += 1
         self._log("Bot upgraded to a city.")
-        check_win(g, self._log)
         return True
 
     def _bot_build_settlement_at(self, vid: int) -> bool:
-        g = self.game
-        if not can_pay(g.players[1], COST["settlement"]):
+        if self._apply_cmd({"type": "place_settlement", "vid": vid, "setup": False}, pid=1) is None:
             return False
-        if not can_place_settlement(g, 1, vid, require_road=True):
-            return False
-        pay_to_bank(g, 1, COST["settlement"])
-        g.occupied_v[vid] = (1, 1)
-        g.players[1].vp += 1
         self._log("Bot built a settlement.")
-        check_win(g, self._log)
         return True
 
     def _bot_build_city(self) -> bool:
@@ -2289,15 +1835,16 @@ class MainWindow(QtWidgets.QMainWindow):
         return self._bot_build_settlement_at(vid)
 
     def _bot_buy_dev(self) -> bool:
-        g = self.game
-        if not can_pay(g.players[1], COST["dev"]):
+        events = self._apply_cmd({"type": "buy_dev"}, pid=1)
+        if events is None:
             return False
-        try:
-            card = g.buy_dev(1)
-            self._log(f"Bot bought dev: {card}.")
-            return True
-        except Exception:
-            return False
+        card = None
+        for ev in events:
+            if ev.get("type") == "buy_dev":
+                card = ev.get("card")
+                break
+        self._log(f"Bot bought dev: {card}.")
+        return True
 
     def _bot_choose_actions(self, pid: int) -> List[Tuple[str, object]]:
         g = self.game
@@ -2337,12 +1884,11 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = self._bot_find_dev_index(1, "knight")
         if idx is None:
             return False
-        g.players[1].dev_cards.pop(idx)
-        g.dev_played_turn[1] = True
-        g.players[1].knights_played += 1
-        g._update_largest_army()
-        target = self._bot_choose_robber_tile()
-        self._bot_move_robber(1, target)
+        if self._apply_cmd({"type": "play_dev", "card": "knight"}, pid=1) is None:
+            return False
+        if g.pending_action == "robber_move":
+            target = self._bot_choose_robber_tile()
+            self._bot_move_robber(1, target)
         self._bot_log("Bot played knight.")
         return True
 
@@ -2353,9 +1899,8 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = self._bot_find_dev_index(1, "road_building")
         if idx is None:
             return False
-        g.players[1].dev_cards.pop(idx)
-        g.dev_played_turn[1] = True
-        g.free_roads[1] = int(g.free_roads.get(1, 0)) + 2
+        if self._apply_cmd({"type": "play_dev", "card": "road_building"}, pid=1) is None:
+            return False
         for _ in range(2):
             e = choose_best_road(g, 1)
             if not self._bot_place_road(e, use_free=True):
@@ -2401,13 +1946,8 @@ class MainWindow(QtWidgets.QMainWindow):
             qb = 0 if a == b else 1
             if g.bank.get(a, 0) < qa or (b != a and g.bank.get(b, 0) < qb):
                 return False
-        g.players[1].dev_cards.pop(idx)
-        g.dev_played_turn[1] = True
-        g.bank[a] -= qa
-        g.players[1].res[a] += qa
-        if qb > 0:
-            g.bank[b] -= qb
-            g.players[1].res[b] += qb
+        if self._apply_cmd({"type": "play_dev", "card": "year_of_plenty", "a": a, "qa": qa, "b": b, "qb": qb}, pid=1) is None:
+            return False
         self._bot_log("Bot played year of plenty.")
         return True
 
@@ -2423,10 +1963,8 @@ class MainWindow(QtWidgets.QMainWindow):
         taken = pres.get(r, 0)
         if taken <= 0:
             return False
-        g.players[1].dev_cards.pop(idx)
-        g.dev_played_turn[1] = True
-        g.players[0].res[r] -= taken
-        g.players[1].res[r] += taken
+        if self._apply_cmd({"type": "play_dev", "card": "monopoly", "r": r}, pid=1) is None:
+            return False
         self._bot_log(f"Bot played monopoly on {r}.")
         return True
 
@@ -2470,36 +2008,32 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         a = random.randint(1,6)
         b = random.randint(1,6)
-        g.last_roll = a+b
-        g.rolled = True
+        roll = a + b
         self.d1.setIcon(QtGui.QIcon(dice_face(a)))
         self.d2.setIcon(QtGui.QIcon(dice_face(b)))
-        self._log(f"You rolled {g.last_roll}.")
-        if g.last_roll == 7:
+        self._log(f"You rolled {roll}.")
+        if roll == 7:
+            discards: Dict[int, Dict[str, int]] = {}
             need = self.discard_needed(0)
             if need > 0:
                 dlg = DiscardDialog(self, g.players[0].res, need)
                 if dlg.exec() != QtWidgets.QDialog.Accepted:
-                    g.rolled = False
-                    g.last_roll = None
                     self._log("[7] Discard canceled.")
                     return
-                self._apply_discard(0, dlg.selected())
+                discards[0] = dlg.selected()
                 self._log(f"[7] You discarded {need}.")
             bot_need = self.discard_needed(1)
             if bot_need > 0:
-                self._bot_discard(1)
+                discards[1] = self._bot_discard_plan(1, bot_need)
                 self._log(f"[7] Bot discarded {bot_need}.")
-            g.roll_history.append(g.last_roll)
-            g.pending_action = "robber_move"
-            g.pending_pid = 0
-            g.pending_victims = []
+            if self._apply_cmd({"type": "roll", "roll": roll, "discards": discards}, pid=0) is None:
+                return
             self._log("[7] Move the robber.")
             self._refresh_all_dynamic()
             self._sync_ui()
             return
-        g.roll_history.append(g.last_roll)
-        distribute_for_roll(g, g.last_roll, self._log)
+        if self._apply_cmd({"type": "roll", "roll": roll}, pid=0) is None:
+            return
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -2520,19 +2054,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if g.pending_action is not None:
             self._log("[!] Resolve pending action first.")
             return
-        g.end_turn_cleanup(g.turn)
-        # end
-        g.turn = 1 - g.turn
-        g.rolled = False
-        g.last_roll = None
+        if self._apply_cmd({"type": "end_turn"}, pid=g.turn) is None:
+            return
         if g.turn == 1:
             if self.bot_enabled:
                 self._bot_turn()
             else:
                 self._log("Bot disabled. Skipping bot turn.")
-                g.turn = 0
-                g.rolled = False
-                g.last_roll = None
+                self._apply_cmd({"type": "end_turn"}, pid=1)
         else:
             self._log("Turn: You")
         self._refresh_all_dynamic()
@@ -2551,18 +2080,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if not g.rolled:
             a = random.randint(1,6)
             b = random.randint(1,6)
-            g.last_roll = a+b
-            g.rolled = True
-            g.roll_history.append(g.last_roll)
-            self._log(f"Bot rolled {g.last_roll}.")
-            if g.last_roll == 7:
-                bot_need = self._bot_discard(1)
+            roll = a + b
+            self._log(f"Bot rolled {roll}.")
+            cmd = {"type": "roll", "roll": roll}
+            if roll == 7:
+                bot_need = self.discard_needed(1)
                 if bot_need > 0:
+                    cmd["discards"] = {1: self._bot_discard_plan(1, bot_need)}
                     self._log(f"[7] Bot discarded {bot_need}.")
+            if self._apply_cmd(cmd, pid=1) is None:
+                return
+            if g.pending_action == "robber_move":
                 target = self._bot_choose_robber_tile()
                 self._bot_move_robber(1, target)
-            else:
-                distribute_for_roll(g, g.last_roll, self._log)
 
         if g.game_over or g.pending_action is not None:
             return
@@ -2604,10 +2134,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         # end turn back
-        g.end_turn_cleanup(1)
-        g.turn = 0
-        g.rolled = False
-        g.last_roll = None
+        if self._apply_cmd({"type": "end_turn"}, pid=1) is None:
+            return
         self._log("Turn: You")
 
     # ---------- Legal spots + placement handlers ----------
@@ -2708,15 +2236,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # settlement step
             if g.setup_need != "settlement":
                 return
-            if not can_place_settlement(g, pid, vid, require_road=False):
+            if self._apply_cmd({"type": "place_settlement", "vid": vid, "setup": True}, pid=pid) is None:
                 return
-            g.occupied_v[vid] = (pid, 1)
-            g.players[pid].vp += 1
             self._log(f"{g.players[pid].name} placed a settlement.")
-            update_longest_road(g, self._log)
-            check_win(g, self._log)
-            g.setup_need = "road"
-            g.setup_anchor_vid = vid
             self._refresh_all_dynamic()
             self._sync_ui()
             return
@@ -2725,29 +2247,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if pid != 0:
             return
         if self.selected_action == "settlement":
-            if not can_pay(g.players[0], COST["settlement"]):
-                self._log("[!] Not enough resources for settlement.")
+            if self._apply_cmd({"type": "place_settlement", "vid": vid, "setup": False}, pid=0) is None:
                 return
-            if not can_place_settlement(g, 0, vid, require_road=True):
-                return
-            pay_to_bank(g, 0, COST["settlement"])
-            g.occupied_v[vid] = (0, 1)
-            g.players[0].vp += 1
             self._log("You built a settlement.")
-            update_longest_road(g, self._log)
-            check_win(g, self._log)
         elif self.selected_action == "city":
-            if not can_pay(g.players[0], COST["city"]):
-                self._log("[!] Not enough resources for city.")
+            if self._apply_cmd({"type": "upgrade_city", "vid": vid}, pid=0) is None:
                 return
-            if not can_upgrade_city(g, 0, vid):
-                return
-            pay_to_bank(g, 0, COST["city"])
-            g.occupied_v[vid] = (0, 2)
-            g.players[0].vp += 1
             self._log("You upgraded to a city.")
-            update_longest_road(g, self._log)
-            check_win(g, self._log)
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -2769,19 +2275,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if g.phase == "setup":
             if g.setup_need != "road":
                 return
-            if not can_place_road(g, pid, e, must_touch_vid=g.setup_anchor_vid):
+            if self._apply_cmd({"type": "place_road", "eid": e, "setup": True}, pid=pid) is None:
                 return
-            g.occupied_e[e] = pid
             self._log(f"{g.players[pid].name} placed a road.")
-            update_longest_road(g, self._log)
-            check_win(g, self._log)
-            g.setup_need = "settlement"
-            g.setup_anchor_vid = None
-            g.setup_idx += 1
-
-            # finish setup after 4 placements (2 per player in 2p)
-            if g.setup_idx >= len(g.setup_order):
-                g.phase = "main"
+            if g.phase == "main":
                 self._log("[SYS] Setup finished. Now roll dice to start.")
             self._refresh_all_dynamic()
             self._sync_ui()
@@ -2792,21 +2289,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if self.selected_action != "road":
             return
-        if not can_place_road(g, 0, e):
-            return
         free_left = int(g.free_roads.get(0, 0))
+        cmd = {"type": "place_road", "eid": e, "free": free_left > 0}
+        if self._apply_cmd(cmd, pid=0) is None:
+            return
         if free_left > 0:
-            g.free_roads[0] = free_left - 1
             self._log("[DEV] Free road placed.")
-        else:
-            if not can_pay(g.players[0], COST["road"]):
-                self._log("[!] Not enough resources for road.")
-                return
-            pay_to_bank(g, 0, COST["road"])
-        g.occupied_e[e] = 0
         self._log("You built a road.")
-        update_longest_road(g, self._log)
-        check_win(g, self._log)
         self._refresh_all_dynamic()
         self._sync_ui()
 

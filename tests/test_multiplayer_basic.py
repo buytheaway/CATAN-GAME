@@ -8,7 +8,7 @@ import uvicorn
 import websockets
 
 from app import net_protocol
-from app.rules_engine import build_game, can_place_road, can_place_settlement
+from app.engine import build_game, can_place_road, can_place_settlement
 
 
 def _find_free_port() -> int:

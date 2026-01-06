@@ -12,19 +12,7 @@ from typing import Dict, List, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from app import net_protocol
-from app.rules_engine import (
-    GameState,
-    COST,
-    build_game,
-    can_pay,
-    can_place_road,
-    can_place_settlement,
-    can_upgrade_city,
-    check_win,
-    distribute_for_roll,
-    pay_to_bank,
-    update_longest_road,
-)
+from app.engine import GameState, RuleError, apply_cmd, build_game, to_dict
 
 
 @dataclass
@@ -112,65 +100,9 @@ manager = RoomManager()
 
 
 def _snapshot_state(game: GameState, room: Room) -> Dict:
-    return {
-        "state_version": 1,
-        "max_players": room.max_players,
-        "size": game.size,
-        "phase": game.phase,
-        "turn": game.turn,
-        "rolled": game.rolled,
-        "setup_order": list(game.setup_order),
-        "setup_idx": game.setup_idx,
-        "setup_need": game.setup_need,
-        "setup_anchor_vid": game.setup_anchor_vid,
-        "last_roll": game.last_roll,
-        "robber_tile": game.robber_tile,
-        "pending_action": game.pending_action,
-        "pending_pid": game.pending_pid,
-        "pending_victims": list(game.pending_victims),
-        "longest_road_owner": game.longest_road_owner,
-        "longest_road_len": game.longest_road_len,
-        "largest_army_owner": game.largest_army_owner,
-        "largest_army_size": game.largest_army_size,
-        "game_over": game.game_over,
-        "winner_pid": game.winner_pid,
-        "players": [
-            {
-                "pid": p.pid,
-                "name": p.name,
-                "vp": p.vp,
-                "res": dict(p.res),
-                "knights_played": p.knights_played,
-            }
-            for p in game.players
-        ],
-        "bank": dict(game.bank),
-        "occupied_v": {str(k): [v[0], v[1]] for k, v in game.occupied_v.items()},
-        "occupied_e": {f"{a},{b}": owner for (a, b), owner in game.occupied_e.items()},
-        "tiles": [
-            {
-                "q": t.q,
-                "r": t.r,
-                "terrain": t.terrain,
-                "number": t.number,
-                "center": [t.center[0], t.center[1]],
-            }
-            for t in game.tiles
-        ],
-        "vertices": {str(k): [v[0], v[1]] for k, v in game.vertices.items()},
-        "edges": [[a, b] for a, b in sorted(game.edges)],
-        "vertex_adj_hexes": {str(k): v for k, v in game.vertex_adj_hexes.items()},
-        "edge_adj_hexes": {f"{a},{b}": v for (a, b), v in game.edge_adj_hexes.items()},
-        "ports": [[[a, b], kind] for (a, b), kind in game.ports],
-    }
-
-
-def _parse_edge_key(k: str) -> Optional[tuple]:
-    try:
-        a, b = k.split(",", 1)
-        return int(a), int(b)
-    except Exception:
-        return None
+    state = to_dict(game)
+    state["max_players"] = room.max_players
+    return state
 
 
 async def _send(ws: WebSocket, obj: Dict) -> None:
@@ -212,32 +144,6 @@ def _start_match(room: Room) -> None:
     room.status = "in_match"
 
 
-def _hand_size(game: GameState, pid: int) -> int:
-    return sum(game.players[pid].res.values())
-
-
-def _victims_for_tile(game: GameState, tile: int, thief_pid: int) -> List[int]:
-    victims = set()
-    for vid, (owner, _level) in game.occupied_v.items():
-        if owner == thief_pid:
-            continue
-        if tile in game.vertex_adj_hexes.get(vid, []):
-            if _hand_size(game, owner) > 0:
-                victims.add(owner)
-    return sorted(victims)
-
-
-def _steal_one(game: GameState, thief_pid: int, victim_pid: int) -> Optional[str]:
-    res = game.players[victim_pid].res
-    choices = [r for r, q in res.items() if q > 0]
-    if not choices:
-        return None
-    r = random.choice(choices)
-    game.players[victim_pid].res[r] -= 1
-    game.players[thief_pid].res[r] += 1
-    return r
-
-
 def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     g = room.game
     if not g:
@@ -247,145 +153,22 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     if not isinstance(ctype, str):
         return net_protocol.error_message("invalid", "cmd.type required")
 
-    if g.game_over:
-        return net_protocol.error_message("game_over", "Game over")
-
-    if g.pending_action is not None and ctype not in ("move_robber", "end_turn"):
-        return net_protocol.error_message("pending_action", "Resolve pending action first")
-
-    if ctype == "place_settlement":
-        vid = int(cmd.get("vid"))
-        setup = bool(cmd.get("setup", False)) or g.phase == "setup"
-        if setup:
-            if g.setup_need != "settlement":
-                return net_protocol.error_message("illegal", "Not settlement step")
-            if not can_place_settlement(g, pid, vid, require_road=False):
-                return net_protocol.error_message("illegal", "Settlement not allowed")
-            g.occupied_v[vid] = (pid, 1)
-            g.players[pid].vp += 1
-            update_longest_road(g)
-            check_win(g)
-            g.setup_need = "road"
-            g.setup_anchor_vid = vid
-            return None
-
-        if g.turn != pid or g.phase != "main":
-            return net_protocol.error_message("illegal", "Not your turn")
-        if not can_place_settlement(g, pid, vid, require_road=True):
-            return net_protocol.error_message("illegal", "Settlement not allowed")
-        if not can_pay(g.players[pid], COST["settlement"]):
-            return net_protocol.error_message("illegal", "Not enough resources")
-        pay_to_bank(g, pid, COST["settlement"])
-        g.occupied_v[vid] = (pid, 1)
-        g.players[pid].vp += 1
-        update_longest_road(g)
-        check_win(g)
-        return None
-
-    if ctype == "place_road":
-        eid = cmd.get("eid")
-        if not isinstance(eid, (list, tuple)) or len(eid) != 2:
-            return net_protocol.error_message("invalid", "eid required")
-        a, b = int(eid[0]), int(eid[1])
-        e = (a, b) if a < b else (b, a)
-        setup = bool(cmd.get("setup", False)) or g.phase == "setup"
-        if setup:
-            if g.setup_need != "road":
-                return net_protocol.error_message("illegal", "Not road step")
-            if not can_place_road(g, pid, e, must_touch_vid=g.setup_anchor_vid):
-                return net_protocol.error_message("illegal", "Road not allowed")
-            g.occupied_e[e] = pid
-            update_longest_road(g)
-            check_win(g)
-            g.setup_need = "settlement"
-            g.setup_anchor_vid = None
-            g.setup_idx += 1
-            if g.setup_idx >= len(g.setup_order):
-                g.phase = "main"
-            return None
-
-        if g.turn != pid or g.phase != "main":
-            return net_protocol.error_message("illegal", "Not your turn")
-        if not can_place_road(g, pid, e):
-            return net_protocol.error_message("illegal", "Road not allowed")
-        if not can_pay(g.players[pid], COST["road"]):
-            return net_protocol.error_message("illegal", "Not enough resources")
-        pay_to_bank(g, pid, COST["road"])
-        g.occupied_e[e] = pid
-        update_longest_road(g)
-        check_win(g)
-        return None
-
-    if ctype == "upgrade_city":
-        vid = int(cmd.get("vid"))
-        if g.turn != pid or g.phase != "main":
-            return net_protocol.error_message("illegal", "Not your turn")
-        if not can_upgrade_city(g, pid, vid):
-            return net_protocol.error_message("illegal", "City upgrade not allowed")
-        if not can_pay(g.players[pid], COST["city"]):
-            return net_protocol.error_message("illegal", "Not enough resources")
-        pay_to_bank(g, pid, COST["city"])
-        g.occupied_v[vid] = (pid, 2)
-        g.players[pid].vp += 1
-        update_longest_road(g)
-        check_win(g)
-        return None
-
     if ctype == "roll":
-        if g.turn != pid or g.phase != "main":
-            return net_protocol.error_message("illegal", "Not your turn")
-        if g.rolled:
-            return net_protocol.error_message("illegal", "Already rolled")
         forced = cmd.get("forced")
         if forced is not None and os.getenv("CATAN_DEBUG_ROLLS") != "1":
             return net_protocol.error_message("illegal", "Forced roll disabled")
         if forced is not None:
-            roll = int(forced)
-        else:
-            roll = random.randint(1, 6) + random.randint(1, 6)
-        g.last_roll = roll
-        g.rolled = True
-        if roll == 7:
-            g.pending_action = "robber_move"
-            g.pending_pid = pid
-            g.pending_victims = []
-            return None
-        distribute_for_roll(g, roll)
-        return None
+            cmd = dict(cmd)
+            cmd["roll"] = int(forced)
+        elif cmd.get("roll") is None:
+            cmd = dict(cmd)
+            cmd["roll"] = random.randint(1, 6) + random.randint(1, 6)
 
-    if ctype == "move_robber":
-        tile = int(cmd.get("tile"))
-        victim = cmd.get("victim_pid")
-        if g.pending_action not in ("robber_move",):
-            return net_protocol.error_message("illegal", "No robber move pending")
-        if g.pending_pid is not None and pid != g.pending_pid:
-            return net_protocol.error_message("illegal", "Not your robber move")
-        if tile == g.robber_tile:
-            return net_protocol.error_message("illegal", "Same robber tile")
-        g.robber_tile = tile
-        victims = _victims_for_tile(g, tile, pid)
-        if victims:
-            if isinstance(victim, int) and victim in victims:
-                victim_pid = victim
-            else:
-                victim_pid = random.choice(victims)
-            _steal_one(g, pid, victim_pid)
-        g.pending_action = None
-        g.pending_pid = None
-        g.pending_victims = []
-        return None
-
-    if ctype == "end_turn":
-        if g.turn != pid:
-            return net_protocol.error_message("illegal", "Not your turn")
-        if g.pending_action is not None:
-            return net_protocol.error_message("illegal", "Resolve pending action first")
-        g.turn = (g.turn + 1) % len(g.players)
-        g.rolled = False
-        g.last_roll = None
-        return None
-
-    return net_protocol.error_message("invalid", f"Unknown cmd: {ctype}")
+    try:
+        apply_cmd(g, pid, cmd)
+    except RuleError as exc:
+        return net_protocol.error_message(exc.code, exc.message, exc.details)
+    return None
 
 
 @app.websocket("/ws")

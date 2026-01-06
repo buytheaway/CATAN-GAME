@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from app import ui_v6
+from app.engine import rules as engine_rules
 from tests.harness.engine import GameDriver
 
 
@@ -14,7 +14,7 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     port_kind = None
     for edge, kind in g.ports:
         for vid in edge:
-            if not ui_v6.can_place_settlement(g, 0, vid, require_road=False):
+            if not engine_rules.can_place_settlement(g, 0, vid, require_road=False):
                 continue
             g.setup_need = "settlement"
             g.phase = "setup"
@@ -33,7 +33,7 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     g.turn = 0
     g.rolled = False
 
-    ports = g.player_ports(0)
+    ports = engine_rules.player_ports(g, 0)
     if not ports:
         driver.fail("player_ports empty after port settlement", kind="assertion")
 
@@ -45,7 +45,7 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         give_res = port_kind.split(":", 2)[2]
         expected_rate = 2
 
-    rate = g.best_trade_rate(0, give_res)
+    rate = engine_rules.best_trade_rate(g, 0, give_res)
     if rate != expected_rate:
         driver.fail("trade rate mismatch", kind="assertion", details={"rate": rate, "expected": expected_rate})
 

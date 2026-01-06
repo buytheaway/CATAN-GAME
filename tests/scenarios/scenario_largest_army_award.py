@@ -26,9 +26,9 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         driver.do({"type": "end_turn", "pid": 0})
         driver.do({"type": "end_turn", "pid": 1})
 
-    if g.largest_army_pid != 0 or g.largest_army_size < 3:
+    if g.largest_army_owner != 0 or g.largest_army_size < 3:
         driver.fail("largest army not awarded", kind="assertion", details={
-            "owner": g.largest_army_pid,
+            "owner": g.largest_army_owner,
             "size": g.largest_army_size,
         })
 
@@ -45,8 +45,8 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         driver.do({"type": "end_turn", "pid": 1})
         driver.do({"type": "end_turn", "pid": 0})
 
-    if g.largest_army_pid != 1:
-        driver.fail("largest army did not transfer", kind="assertion", details={"owner": g.largest_army_pid})
+    if g.largest_army_owner != 1:
+        driver.fail("largest army did not transfer", kind="assertion", details={"owner": g.largest_army_owner})
 
     return {
         "steps": driver.steps,

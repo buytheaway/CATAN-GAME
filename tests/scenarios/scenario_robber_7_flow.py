@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from app import ui_v6
+from app.engine.state import TERRAIN_TO_RES
 from tests.harness.engine import GameDriver
 from tests.scenarios.utils import run_setup_snake
 
@@ -79,7 +79,7 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         for vid, (owner, level) in g.occupied_v.items():
             if target_tile not in g.vertex_adj_hexes.get(vid, []):
                 continue
-            res_name = ui_v6.TERRAIN_TO_RES.get(g.tiles[target_tile].terrain)
+            res_name = TERRAIN_TO_RES.get(g.tiles[target_tile].terrain)
             if not res_name:
                 continue
             if g.players[owner].res[res_name] != before[owner][res_name]:
