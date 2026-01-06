@@ -13,8 +13,8 @@ Controls:
 - Main phase: Roll -> Build (Road/Settlement/City) -> click highlighted place -> End
 
 Testing:
-- Scenario suite + reports: `python -m tests.run_all`
-- UI smoke (pytest): `pytest -q`
+- Install test deps: `pip install -r requirements-dev.txt`
+- Full suite: `pytest -q` and `python -m tests.run_all`
 - UI interactions (dev/trade/robber): `pytest -q tests/test_ui_interactions.py`
 - Multiplayer smoke: `pytest -q tests/test_multiplayer_basic.py`
 - Reports output: `tests/reports/report_<timestamp>.json` and `tests/reports/BUG_REPORT.md`

@@ -4,17 +4,8 @@ import socket
 import threading
 import time
 
-import pytest
-
-try:
-    import uvicorn
-except ModuleNotFoundError:
-    pytest.skip("uvicorn not installed", allow_module_level=True)
-
-try:
-    import websockets
-except ModuleNotFoundError:
-    pytest.skip("websockets not installed", allow_module_level=True)
+import uvicorn
+import websockets
 
 from app import net_protocol
 from app.rules_engine import build_game, can_place_road, can_place_settlement
