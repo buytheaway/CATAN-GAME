@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import replace
 
@@ -232,6 +233,31 @@ def main():
     apply_ui_scale(app, cfg.ui_scale)
     w = MainMenuWindow()
     w.show()
+    test_mode = os.getenv("CATAN_TEST_MODE")
+    if test_mode == "sp_quick":
+        w._launch_game(cfg)
+        if w._game_window:
+            w._game_window.close()
+        w.close()
+        app.processEvents()
+        return
+    if test_mode == "ui_full_init":
+        from app.game_launcher import start_game
+        win = start_game(cfg, on_back_to_menu=lambda: None)
+        if win:
+            win._restart_game()
+            win.close()
+        w.close()
+        app.processEvents()
+        return
+    if test_mode == "mp_lobby":
+        from app.lobby_ui import LobbyWindow
+        lobby = LobbyWindow(None)
+        lobby.show()
+        lobby.close()
+        w.close()
+        app.processEvents()
+        return
     sys.exit(app.exec())
 
 
