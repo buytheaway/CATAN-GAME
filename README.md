@@ -8,6 +8,9 @@ How to run:
 Note:
 - Legacy code moved to `app/_legacy/` (not used by UI v6).
 
+Core rules:
+- Shared engine lives in `app/engine/` (pure Python). Offline UI and server use the same rules.
+
 Controls:
 - Setup phase: click highlighted vertex to place Settlement, then click highlighted edge to place Road
 - Main phase: Roll -> Build (Road/Settlement/City) -> click highlighted place -> End
@@ -18,3 +21,9 @@ Testing:
 - UI interactions (dev/trade/robber): `pytest -q tests/test_ui_interactions.py`
 - Multiplayer smoke: `pytest -q tests/test_multiplayer_basic.py`
 - Reports output: `tests/reports/report_<timestamp>.json` and `tests/reports/BUG_REPORT.md`
+
+NO HACKS policy:
+- No `QTimer.singleShot` for "wait until UI ready"
+- No `runtime_patch` or `ports_bridge`
+- No monkey-patching via `Game.<name> = ...`
+- No widget lookup via `findChild(...)`
