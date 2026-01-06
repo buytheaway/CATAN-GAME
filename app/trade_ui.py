@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
-from app.runtime_patch import ensure_game_api
 
 RES_LIST = ["wood", "brick", "sheep", "wheat", "ore"]
 
@@ -14,9 +13,6 @@ class TradeDialog(QtWidgets.QDialog):
         self.game = game
         self.pid = pid
         self._applied = None
-
-        # ensure methods exist + override ports/trade logic
-        ensure_game_api(self.game, override_ports=True, override_trade=True)
 
         layout = QtWidgets.QVBoxLayout(self)
 
@@ -143,57 +139,29 @@ def _get_pid(win) -> int:
     return 0
 
 
-def attach_trade_button(win: QtWidgets.QWidget):
+def attach_trade_button(
+    win: QtWidgets.QWidget,
+    trade_btn: QtWidgets.QAbstractButton,
+    game=None,
+    pid_getter=None,
+):
     if getattr(win, "_trade_attached", False):
         return
-
-    game = _get_game(win)
+    if trade_btn is None:
+        _log(win, "[!] Trade attach: missing Trade button reference.")
+        return
+    game = game or _get_game(win)
     if game is None:
         _log(win, "[!] Trade attach: cannot find game object on window.")
         return
 
-    dev_btn = win.findChild(QtWidgets.QAbstractButton, "btn_dev_action")
-    if dev_btn is None:
-        for b in win.findChildren(QtWidgets.QAbstractButton):
-            t = (b.text() or "").strip().lower()
-            if t == "dev":
-                dev_btn = b
-                break
-    if dev_btn is None:
-        _log(win, "[!] Trade attach: cannot find Dev button (text=='Dev').")
-        return
-
-    parent = dev_btn.parentWidget()
-    lay = parent.layout() if parent else None
-    if lay is None:
-        _log(win, "[!] Trade attach: Dev parent has no layout.")
-        return
-
-    trade_btn = win.findChild(QtWidgets.QAbstractButton, "btn_trade_bank")
-    if trade_btn is None:
-        trade_btn = QtWidgets.QPushButton("Trade")
-        trade_btn.setObjectName("btn_trade_bank")
-
-    if trade_btn.parent() is None:
-        try:
-            idx = lay.indexOf(dev_btn)
-            if idx >= 0:
-                lay.insertWidget(idx + 1, trade_btn)
-            else:
-                lay.addWidget(trade_btn)
-        except Exception:
-            lay.addWidget(trade_btn)
-
     def _open():
-        # always ensure api right before dialog
-        ensure_game_api(game, override_ports=True, override_trade=True)
-
         phase = getattr(game, "phase", "")
         if str(phase).startswith("setup"):
             _log(win, "[!] Trade disabled during setup.")
             return
 
-        pid = _get_pid(win)
+        pid = pid_getter() if callable(pid_getter) else _get_pid(win)
         dlg = TradeDialog(win, game, pid)
         if dlg.exec() == QtWidgets.QDialog.Accepted and dlg._applied:
             give, get, qty, rate = dlg._applied

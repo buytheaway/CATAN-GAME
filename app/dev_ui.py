@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
-from app.runtime_patch import ensure_game_api
 
 RES = ["wood", "brick", "sheep", "wheat", "ore"]
 DEV_TYPES = ["knight", "road_building", "year_of_plenty", "monopoly", "victory_point"]
@@ -43,7 +42,6 @@ class DevDialog(QtWidgets.QDialog):
         self.setWindowTitle("Development Cards")
         self.setModal(True)
         self.game = game
-        ensure_game_api(self.game, override_ports=True, override_trade=True)
         self.pid = pid
 
         root = QtWidgets.QVBoxLayout(self)
@@ -166,26 +164,22 @@ class DevDialog(QtWidgets.QDialog):
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "Play failed", str(e))
 
-def attach_dev_dialog(win: QtWidgets.QWidget):
+def attach_dev_dialog(
+    win: QtWidgets.QWidget,
+    dev_btn: QtWidgets.QAbstractButton,
+    game=None,
+    pid_getter=None,
+):
     if getattr(win, "_dev_attached", False):
         return
-
-    game = _get_game(win)
+    if dev_btn is None:
+        _log(win, "[!] Dev attach: missing Dev button reference.")
+        return
+    game = game or _get_game(win)
     if game is None:
-        _log(win, "[!] Dev attach: cannot find game object on window (expected win.game or win._game).")
+        _log(win, "[!] Dev attach: cannot find game object on window.")
         return
 
-    dev_btn = win.findChild(QtWidgets.QAbstractButton, "btn_dev_action")
-    if dev_btn is None:
-        for b in win.findChildren(QtWidgets.QAbstractButton):
-            if (b.text() or "").strip().lower() == "dev":
-                dev_btn = b
-                break
-    if dev_btn is None:
-        _log(win, "[!] Dev attach: cannot find Dev button (text=='Dev').")
-        return
-
-    # Make Dev open dialog (disconnect any placeholder behavior)
     try:
         dev_btn.clicked.disconnect()
     except Exception:
@@ -196,12 +190,11 @@ def attach_dev_dialog(win: QtWidgets.QWidget):
         if str(phase).startswith("setup"):
             _log(win, "[!] Dev cards disabled during setup.")
             return
-        pid = _get_pid(win)
+        pid = pid_getter() if callable(pid_getter) else _get_pid(win)
         dlg = DevDialog(win, game, pid)
         dlg.exec()
         _render(win)
 
     dev_btn.clicked.connect(_open)
-
     win._dev_attached = True
     _log(win, "[SYS] Dev dialog attached.")

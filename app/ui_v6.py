@@ -3,11 +3,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Set
 
 from PySide6 import QtCore, QtGui, QtWidgets
-from app.ports_bridge import attach_ports_bridge
-from app.ui_tweaks import apply_ui_tweaks
 from app.dev_hand_overlay import attach_dev_hand_overlay
-from app.dev_ui import attach_dev_dialog
-from app.trade_ui import attach_trade_button
+from app.dev_ui import DevDialog
+from app.trade_ui import TradeDialog
 from app.config import GameConfig
 from app.assets_loader import load_svg
 from app.theme import get_ui_palette, get_player_colors
@@ -91,6 +89,42 @@ def set_ui_palette(theme_name: str) -> None:
     }
 
 set_ui_palette("midnight")
+
+def _normalize_port_kind(kind: Optional[str]) -> Optional[str]:
+    if kind is None:
+        return None
+    s = str(kind).strip().lower()
+    if s in RESOURCES:
+        return s
+    if s in ("3:1", "3", "generic", "any", "all", "none", "?"):
+        return "3:1"
+    if "3:1" in s or "3/1" in s or "3 to 1" in s or "3to1" in s:
+        return "3:1"
+    for r in RESOURCES:
+        if r in s:
+            return r
+    return None
+
+
+def _iter_ports(ports):
+    for p in ports:
+        a = b = kind = None
+        if isinstance(p, dict):
+            kind = p.get("kind")
+            a = p.get("a", p.get("v1"))
+            b = p.get("b", p.get("v2"))
+        elif isinstance(p, (tuple, list)) and len(p) == 2:
+            edge, kind = p
+            if isinstance(edge, (tuple, list)) and len(edge) == 2:
+                a, b = edge
+        if a is None or b is None:
+            continue
+        try:
+            a = int(a)
+            b = int(b)
+        except Exception:
+            continue
+        yield a, b, kind
 
 # pips like Colonist (2/12=1 ... 6/8=5)
 PIPS = {2:1,3:2,4:3,5:4,6:5,8:5,9:4,10:3,11:2,12:1}
@@ -326,6 +360,55 @@ class Game:
             if t in counts:
                 counts[t] += 1
         return counts
+
+    def _get_player_res_dict(self, pid: int) -> Dict[str, int]:
+        return self.players[pid].res
+
+    def player_ports(self, pid: int) -> set:
+        owned = {vid for vid, (owner, _lvl) in self.occupied_v.items() if owner == pid}
+        ports = set()
+        for a, b, kind in _iter_ports(self.ports):
+            if a in owned or b in owned:
+                norm = _normalize_port_kind(kind)
+                if norm:
+                    ports.add(norm)
+        return ports
+
+    def best_trade_rate(self, pid: int, give_res: str) -> int:
+        ports = self.player_ports(pid)
+        give_res = str(give_res).strip().lower()
+        if give_res in ports:
+            return 2
+        if "3:1" in ports:
+            return 3
+        return 4
+
+    def trade_with_bank(self, pid: int, give_res: str, get_res: str, get_qty: int) -> int:
+        if self.game_over:
+            raise ValueError("Game over.")
+        if self.phase != "main" or pid != self.turn:
+            raise ValueError("Not your turn.")
+        give_res = str(give_res).strip().lower()
+        get_res = str(get_res).strip().lower()
+        if give_res == get_res:
+            raise ValueError("Give and Get must be different.")
+        if give_res not in RESOURCES or get_res not in RESOURCES:
+            raise ValueError("Invalid resource.")
+        qty = int(get_qty)
+        if qty <= 0:
+            raise ValueError("Invalid quantity.")
+        rate = self.best_trade_rate(pid, give_res)
+        give_qty = rate * qty
+        pres = self._get_player_res_dict(pid)
+        if pres.get(give_res, 0) < give_qty:
+            raise ValueError("Not enough resources.")
+        if self.bank.get(get_res, 0) < qty:
+            raise ValueError("Bank has not enough resources.")
+        pres[give_res] -= give_qty
+        pres[get_res] += qty
+        self.bank[give_res] += give_qty
+        self.bank[get_res] -= qty
+        return rate
 
     def _find_dev_idx(self, pid: int, card_type: str, allow_new: bool = False) -> Optional[int]:
         card_type = str(card_type).strip().lower()
@@ -1460,6 +1543,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_trade = action_btn("trade", "Trade with bank", checkable=False)
         self.btn_dev.setObjectName("btn_dev_action")
         self.btn_trade.setObjectName("btn_trade_bank")
+        self.btn_dev.clicked.connect(self._open_dev_dialog)
+        self.btn_trade.clicked.connect(self._open_trade_dialog)
 
         bottom_l.addWidget(self.btn_sett)
         bottom_l.addWidget(self.btn_road)
@@ -1488,17 +1573,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self._draw_static_board()
         self._log(f"[SYS] New game seed={self.game.seed}. Setup: place settlement then road (x2).")
         self.select_action("settlement")
-        QtCore.QTimer.singleShot(30, self._fit_map)
+        self._fit_map()
         self._sync_ui()
+        attach_dev_hand_overlay(self, self.view)
 
     # ---------- Drawing ----------
     def _fit_map(self):
         rect = self.scene.itemsBoundingRect().adjusted(-80,-80,80,80)
+        if rect.isNull():
+            return
         self.view.fitInView(rect, QtCore.Qt.KeepAspectRatio)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._fit_map()
+        if hasattr(self, "victory_overlay"):
+            self.victory_overlay.setGeometry(self.centralWidget().rect())
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        QtCore.QTimer.singleShot(0, self._fit_map)
+        self._fit_map()
         if hasattr(self, "victory_overlay"):
             self.victory_overlay.setGeometry(self.centralWidget().rect())
 
@@ -1840,9 +1934,6 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.online_mode:
             self.btn_dev.setEnabled(False)
             self.btn_trade.setEnabled(False)
-        trade_btn = self.findChild(QtWidgets.QWidget, "btn_trade_bank")
-        if trade_btn:
-            trade_btn.setEnabled(not g.game_over)
 
     def _restart_game(self):
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
@@ -1859,19 +1950,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._draw_static_board()
         self._log(f"[SYS] New game seed={self.game.seed}. Setup: place settlement then road (x2).")
         self.select_action("settlement")
-        QtCore.QTimer.singleShot(30, self._fit_map)
+        self._fit_map()
         self._sync_ui()
-        attach_trade_button(self)
-        attach_dev_dialog(self)
-        attach_dev_hand_overlay(self)
-        attach_ports_bridge(self)
-        apply_ui_tweaks(self)
-
-        attach_trade_button(self)
-        attach_dev_dialog(self)
-        attach_dev_hand_overlay(self)
-        attach_ports_bridge(self)
-        apply_ui_tweaks(self)
+        attach_dev_hand_overlay(self, self.view)
 
     def _back_to_menu(self):
         if callable(self._on_back_to_menu):
@@ -1918,6 +1999,40 @@ class MainWindow(QtWidgets.QMainWindow):
         btn_back.clicked.connect(_back_menu)
         btn_quit.clicked.connect(_quit)
         dlg.exec()
+
+    def _open_dev_dialog(self):
+        g = self.game
+        if g.game_over:
+            self._log(f"Game over. Winner: P{g.winner_pid}")
+            return
+        if self.online_mode:
+            self._log("[!] Dev cards disabled in online mode.")
+            return
+        if str(g.phase).startswith("setup"):
+            self._log("[!] Dev cards disabled during setup.")
+            return
+        dlg = DevDialog(self, g, 0)
+        dlg.exec()
+        self._refresh_all_dynamic()
+        self._sync_ui()
+
+    def _open_trade_dialog(self):
+        g = self.game
+        if g.game_over:
+            self._log(f"Game over. Winner: P{g.winner_pid}")
+            return
+        if self.online_mode:
+            self._log("[!] Trade disabled in online mode.")
+            return
+        if str(g.phase).startswith("setup"):
+            self._log("[!] Trade disabled during setup.")
+            return
+        dlg = TradeDialog(self, g, 0)
+        if dlg.exec() == QtWidgets.QDialog.Accepted and dlg._applied:
+            give, get, qty, rate = dlg._applied
+            self._log(f"[TRADE] {rate}:1 gave {give} -> got {get} x{qty}")
+        self._refresh_all_dynamic()
+        self._sync_ui()
 
     def hand_size(self, pid: int) -> int:
         return sum(self.game.players[pid].res.values())

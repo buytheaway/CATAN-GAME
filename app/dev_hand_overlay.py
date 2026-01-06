@@ -222,11 +222,11 @@ QLabel {{ color: {PALETTE['dev_label_text']}; }}
         self._timer.start()
 
         viewport.installEventFilter(self)
-        QtCore.QTimer.singleShot(50, self._reposition)
+        self._reposition()
 
     def eventFilter(self, obj, ev):
-        if ev.type() == QtCore.QEvent.Resize:
-            QtCore.QTimer.singleShot(0, self._reposition)
+        if ev.type() in (QtCore.QEvent.Resize, QtCore.QEvent.Show):
+            self._reposition()
         return super().eventFilter(obj, ev)
 
     def _reposition(self):
@@ -252,14 +252,11 @@ QLabel {{ color: {PALETTE['dev_label_text']}; }}
         for k, chip in self.chips.items():
             chip.set_count(counts.get(k, 0), new_counts.get(k, 0))
 
-def attach_dev_hand_overlay(win: QtWidgets.QWidget):
+def attach_dev_hand_overlay(win: QtWidgets.QWidget, view: QtWidgets.QGraphicsView):
     if getattr(win, "_devhand_attached", False):
         return
-
-    views = win.findChildren(QtWidgets.QGraphicsView)
-    if not views:
+    if view is None:
         return
-    view = sorted(views, key=lambda v: v.width() * v.height(), reverse=True)[0]
     vp = view.viewport()
 
     overlay = DevHandOverlay(vp, win)
