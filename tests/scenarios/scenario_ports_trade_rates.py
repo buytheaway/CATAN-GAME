@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from app import ui_v6
-from app.runtime_patch import ensure_game_api
 from tests.harness.engine import GameDriver
 
 
@@ -34,7 +33,6 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     g.turn = 0
     g.rolled = False
 
-    ensure_game_api(g, override_ports=True, override_trade=True)
     ports = g.player_ports(0)
     if not ports:
         driver.fail("player_ports empty after port settlement", kind="assertion")

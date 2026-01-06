@@ -5,7 +5,6 @@ import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app import ui_v6
-from app.runtime_patch import ensure_game_api
 
 
 class ScenarioFailure(Exception):
@@ -291,7 +290,6 @@ class GameDriver:
                 return {"ok": True}
 
             if atype == "trade_bank":
-                ensure_game_api(g, override_ports=True, override_trade=True)
                 rate = g.trade_with_bank(pid, action["give"], action["get"], int(action.get("get_qty", 1)))
                 return {"ok": True, "rate": rate}
 
