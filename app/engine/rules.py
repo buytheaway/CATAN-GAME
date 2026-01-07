@@ -640,12 +640,36 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
                 raise RuleError("illegal", "Not settlement step")
             if not can_place_settlement(g, pid, vid, require_road=False):
                 raise RuleError("illegal", "Settlement not allowed")
+            before_count = sum(
+                1
+                for _vid, (owner, level) in g.occupied_v.items()
+                if owner == pid and level == 1
+            )
             g.occupied_v[vid] = (pid, 1)
             g.players[pid].vp += 1
             update_longest_road(g)
             check_win(g)
             g.setup_need = "road"
             g.setup_anchor_vid = vid
+            after_count = before_count + 1
+            if after_count == 2:
+                granted: Dict[str, int] = {}
+                for ti in g.vertex_adj_hexes.get(vid, []):
+                    t = g.tiles[ti]
+                    res = TERRAIN_TO_RES.get(t.terrain)
+                    if not res:
+                        continue
+                    if int(g.bank.get(res, 0)) <= 0:
+                        continue
+                    g.bank[res] -= 1
+                    g.players[pid].res[res] += 1
+                    granted[res] = int(granted.get(res, 0)) + 1
+                events.append({
+                    "type": "initial_resources",
+                    "pid": pid,
+                    "vertex": vid,
+                    "granted": granted,
+                })
             events.append({"type": "place_settlement", "pid": pid, "vid": vid})
             return g, events
 
