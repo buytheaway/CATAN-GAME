@@ -152,6 +152,8 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     ctype = cmd.get("type")
     if not isinstance(ctype, str):
         return net_protocol.error_message("invalid", "cmd.type required")
+    if ctype == "discard" and not isinstance(cmd.get("discards"), dict):
+        return net_protocol.error_message("invalid", "discards must be object")
 
     if ctype == "roll":
         forced = cmd.get("forced")
