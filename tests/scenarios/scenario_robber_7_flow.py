@@ -24,17 +24,33 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     if not res.get("ok"):
         driver.fail("roll 7 failed", kind="assertion", details=res)
 
-    after_sizes = [sum(p.res.values()) for p in g.players]
+    if g.pending_action != "discard":
+        driver.fail("discard should be pending after roll 7", kind="assertion", details={"pending": g.pending_action})
+
+    def _plan_discard(pid: int, need: int) -> Dict[str, int]:
+        pres = g.players[pid].res
+        plan = {r: 0 for r in pres.keys()}
+        remaining = need
+        for r in sorted(pres.keys()):
+            if remaining <= 0:
+                break
+            take = min(pres[r], remaining)
+            if take > 0:
+                plan[r] = take
+                remaining -= take
+        return plan
+
     for pid in range(len(g.players)):
         need = before_sizes[pid] // 2 if before_sizes[pid] > 7 else 0
-        expected = before_sizes[pid] - need
-        if after_sizes[pid] != expected:
-            driver.fail("discard count mismatch", kind="assertion", details={
-                "pid": pid,
-                "before": before_sizes[pid],
-                "after": after_sizes[pid],
-                "expected": expected,
-            })
+        if need <= 0:
+            continue
+        discards = _plan_discard(pid, need)
+        res = driver.do({"type": "discard", "pid": pid, "discards": discards})
+        if not res.get("ok"):
+            driver.fail("discard failed", kind="assertion", details=res)
+
+    if g.pending_action != "robber_move":
+        driver.fail("robber move not pending after discards", kind="assertion", details={"pending": g.pending_action})
 
     # pick a tile adjacent to player 1 to test stealing
     target_tile = None

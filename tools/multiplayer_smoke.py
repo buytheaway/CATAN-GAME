@@ -1,8 +1,17 @@
+﻿from __future__ import annotations
+
 import asyncio
 import json
 import socket
 import threading
 import time
+import sys
+from pathlib import Path
+from hashlib import sha256
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import uvicorn
 import websockets
@@ -49,6 +58,11 @@ async def _recv_type(ws, want: str, timeout: float = 5.0):
     raise AssertionError(f"Timed out waiting for {want}")
 
 
+def _state_hash(state: dict) -> str:
+    blob = json.dumps(state, sort_keys=True).encode("utf-8")
+    return sha256(blob).hexdigest()
+
+
 def _apply_snapshot(g, state: dict):
     g.occupied_v = {int(k): (int(v[0]), int(v[1])) for k, v in state.get("occupied_v", {}).items()}
     g.occupied_e = {}
@@ -80,7 +94,6 @@ def _pick_road(g, pid: int, anchor_vid: int) -> tuple:
             return e
     raise AssertionError("No legal road found")
 
-
 def _plan_discard_from_state(state: dict, pid: int, need: int) -> dict:
     res = (state.get("players", [{}])[pid].get("res", {}) if state.get("players") else {})
     plan = {r: 0 for r in res.keys()}
@@ -93,16 +106,6 @@ def _plan_discard_from_state(state: dict, pid: int, need: int) -> dict:
             plan[r] = take
             remaining -= take
     return plan
-
-
-def test_multiplayer_basic():
-    port = _find_free_port()
-    server, thread = _start_server(port)
-    try:
-        asyncio.run(_run_clients(port))
-    finally:
-        server.should_exit = True
-        thread.join(timeout=5)
 
 
 async def _run_clients(port: int):
@@ -124,6 +127,11 @@ async def _run_clients(port: int):
         await _send(ws1, {"type": "start_match"})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
+        if ms1["tick"] != ms2["tick"]:
+            raise AssertionError("tick mismatch after start")
+        if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+            raise AssertionError("state hash mismatch after start")
+
         match_id = int(ms1.get("match_id", 0))
         state = ms1.get("state", {})
         seed = int(ms1.get("seed", 0))
@@ -148,7 +156,10 @@ async def _run_clients(port: int):
 
             ms1 = await _recv_type(ws1, "match_state")
             ms2 = await _recv_type(ws2, "match_state")
-            assert ms1["tick"] == ms2["tick"]
+            if ms1["tick"] != ms2["tick"]:
+                raise AssertionError("tick mismatch during setup")
+            if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+                raise AssertionError("state hash mismatch during setup")
             state = ms1.get("state", {})
             _apply_snapshot(g, state)
 
@@ -158,7 +169,10 @@ async def _run_clients(port: int):
         await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "roll"}})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
-        assert ms1["tick"] == ms2["tick"]
+        if ms1["tick"] != ms2["tick"]:
+            raise AssertionError("tick mismatch after roll")
+        if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+            raise AssertionError("state hash mismatch after roll")
         state = ms1.get("state", {})
 
         if state.get("pending_action") == "discard":
@@ -170,7 +184,10 @@ async def _run_clients(port: int):
                 await _send(clients[pid], {"type": "cmd", "match_id": match_id, "seq": seq[pid], "cmd": {"type": "discard", "discards": plan}})
                 ms1 = await _recv_type(ws1, "match_state")
                 ms2 = await _recv_type(ws2, "match_state")
-                assert ms1["tick"] == ms2["tick"]
+                if ms1["tick"] != ms2["tick"]:
+                    raise AssertionError("tick mismatch after discard")
+                if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+                    raise AssertionError("state hash mismatch after discard")
                 state = ms1.get("state", {})
 
         if state.get("pending_action") == "robber_move":
@@ -180,11 +197,37 @@ async def _run_clients(port: int):
             await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "move_robber", "tile": new_tile}})
             ms1 = await _recv_type(ws1, "match_state")
             ms2 = await _recv_type(ws2, "match_state")
-            assert ms1["tick"] == ms2["tick"]
+            if ms1["tick"] != ms2["tick"]:
+                raise AssertionError("tick mismatch after robber move")
+            if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+                raise AssertionError("state hash mismatch after robber move")
             state = ms1.get("state", {})
 
         seq[current_pid] += 1
         await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "end_turn"}})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
-        assert ms1["tick"] == ms2["tick"]
+        if ms1["tick"] != ms2["tick"]:
+            raise AssertionError("tick mismatch after end_turn")
+        if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+            raise AssertionError("state hash mismatch after end_turn")
+
+
+async def _run(port: int):
+    await _run_clients(port)
+
+
+def main() -> int:
+    port = _find_free_port()
+    server, thread = _start_server(port)
+    try:
+        asyncio.run(_run(port))
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+    print("PASS: multiplayer smoke")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
