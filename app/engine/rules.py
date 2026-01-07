@@ -615,7 +615,9 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
     if g.game_over and ctype not in ("noop",):
         raise RuleError("game_over", "Game over")
 
-    if g.pending_action is not None and ctype not in ("move_robber",):
+    if g.pending_action == "discard" and ctype != "discard":
+        raise RuleError("pending_action", "Resolve discard first")
+    if g.pending_action is not None and g.pending_action != "discard" and ctype != "move_robber":
         raise RuleError("pending_action", "Resolve pending action first")
 
     if ctype == "grant_resources":
@@ -758,19 +760,19 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         g.rolled = True
         g.roll_history.append(roll)
         if roll == 7:
-            discards = cmd.get("discards")
-            if discards is None:
-                discards = {}
+            required = {}
             for opid in range(len(g.players)):
                 need = _discard_needed(g, opid)
-                if need <= 0:
-                    continue
-                raw = discards.get(opid, discards.get(str(opid)))
-                if raw is None:
-                    raw = _auto_discard(g, opid, need)
-                if sum(int(v) for v in raw.values()) != need:
-                    raise RuleError("invalid", "Discard count mismatch", {"pid": opid, "need": need})
-                _apply_discard(g, opid, raw)
+                if need > 0:
+                    required[int(opid)] = int(need)
+            if required:
+                g.pending_action = "discard"
+                g.pending_pid = pid
+                g.pending_victims = []
+                g.discard_required = dict(required)
+                g.discard_submitted = set()
+                events.append({"type": "roll", "roll": roll, "pending": "discard", "required": dict(required)})
+                return g, events
             g.pending_action = "robber_move"
             g.pending_pid = pid
             g.pending_victims = []
@@ -778,6 +780,36 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             return g, events
         distribute_for_roll(g, roll)
         events.append({"type": "roll", "roll": roll})
+        return g, events
+
+    if ctype == "discard":
+        if g.pending_action != "discard":
+            raise RuleError("illegal", "No discard pending")
+        required = int(g.discard_required.get(pid, 0))
+        if required <= 0:
+            raise RuleError("illegal", "No discard required for player")
+        discards = cmd.get("discards")
+        if not isinstance(discards, dict):
+            raise RuleError("invalid", "discards must be a dict")
+        total = sum(int(v) for v in discards.values())
+        if total != required:
+            raise RuleError("invalid", "Discard count mismatch", {"pid": pid, "need": required})
+        pres = g.players[pid].res
+        for r, n in discards.items():
+            if r not in RESOURCES:
+                raise RuleError("invalid", "Invalid resource")
+            if int(n) < 0:
+                raise RuleError("invalid", "Negative discard")
+            if pres.get(r, 0) < int(n):
+                raise RuleError("illegal", "Not enough resources")
+        _apply_discard(g, pid, discards)
+        g.discard_submitted.add(pid)
+        events.append({"type": "discard", "pid": pid, "discards": dict(discards)})
+        if set(g.discard_submitted) >= set(g.discard_required.keys()):
+            g.discard_required = {}
+            g.discard_submitted = set()
+            g.pending_action = "robber_move"
+            events.append({"type": "discard_complete", "pending": "robber_move"})
         return g, events
 
     if ctype == "move_robber":

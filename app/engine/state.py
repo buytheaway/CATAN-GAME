@@ -86,6 +86,8 @@ class GameState:
     pending_action: Optional[str] = None
     pending_pid: Optional[int] = None
     pending_victims: List[int] = field(default_factory=list)
+    discard_required: Dict[int, int] = field(default_factory=dict)
+    discard_submitted: Set[int] = field(default_factory=set)
 
     achievements: AchievementState = field(default_factory=AchievementState)
     game_over: bool = False

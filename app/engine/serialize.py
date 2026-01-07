@@ -34,6 +34,8 @@ def to_dict(g: GameState) -> Dict:
         "pending_action": g.pending_action,
         "pending_pid": g.pending_pid,
         "pending_victims": list(g.pending_victims),
+        "discard_required": {str(k): int(v) for k, v in g.discard_required.items()},
+        "discard_submitted": [int(x) for x in g.discard_submitted],
         "longest_road_owner": g.longest_road_owner,
         "longest_road_len": g.longest_road_len,
         "largest_army_owner": g.largest_army_owner,
@@ -131,6 +133,8 @@ def from_dict(data: Dict) -> GameState:
     g.pending_action = data.get("pending_action", None)
     g.pending_pid = data.get("pending_pid", None)
     g.pending_victims = list(data.get("pending_victims", []))
+    g.discard_required = {int(k): int(v) for k, v in data.get("discard_required", {}).items()}
+    g.discard_submitted = set(int(x) for x in data.get("discard_submitted", []))
     g.longest_road_owner = data.get("longest_road_owner", None)
     g.longest_road_len = int(data.get("longest_road_len", 0))
     g.largest_army_owner = data.get("largest_army_owner", None)
