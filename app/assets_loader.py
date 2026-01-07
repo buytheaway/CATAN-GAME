@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
 from PySide6 import QtCore, QtGui, QtSvg
+from app.resource_path import resource_path
 
 
 def _base_dir() -> Path:
-    if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "app"
-    return Path(__file__).resolve().parent
+    return resource_path("app")
 
 
 def asset_path(rel: str) -> Path:

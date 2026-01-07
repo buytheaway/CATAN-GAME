@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import math
-import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.engine.board_geom import axial_to_pixel, build_graph_from_tiles
 from app.engine.state import RESOURCES, TERRAIN_TO_RES, Tile, BoardState
+from app.resource_path import resource_path
 
 
 MAP_VERSION = 1
@@ -34,14 +34,8 @@ class MapValidationError(Exception):
         self.details = details or {}
 
 
-def _base_dir() -> Path:
-    if hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "app"
-    return Path(__file__).resolve().parents[1]
-
-
 def maps_dir() -> Path:
-    return _base_dir() / "assets" / "maps"
+    return resource_path("app/assets/maps")
 
 
 def load_map_file(path: Path) -> Dict[str, Any]:
