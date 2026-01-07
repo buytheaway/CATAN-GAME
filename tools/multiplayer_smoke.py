@@ -203,6 +203,44 @@ async def _run_clients(port: int):
                 raise AssertionError("state hash mismatch after robber move")
             state = ms1.get("state", {})
 
+        # ensure resources for trade offer
+        other_pid = 1 - current_pid
+        seq[current_pid] += 1
+        await _send(clients[current_pid], {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "grant_resources", "res": {"wood": 1}}})
+        ms1 = await _recv_type(ws1, "match_state")
+        ms2 = await _recv_type(ws2, "match_state")
+        if ms1["tick"] != ms2["tick"]:
+            raise AssertionError("tick mismatch after grant_resources (current)")
+        state = ms1.get("state", {})
+
+        seq[other_pid] += 1
+        await _send(clients[other_pid], {"type": "cmd", "match_id": match_id, "seq": seq[other_pid], "cmd": {"type": "grant_resources", "res": {"brick": 1}}})
+        ms1 = await _recv_type(ws1, "match_state")
+        ms2 = await _recv_type(ws2, "match_state")
+        if ms1["tick"] != ms2["tick"]:
+            raise AssertionError("tick mismatch after grant_resources (other)")
+        state = ms1.get("state", {})
+
+        # trade offer flow
+        seq[current_pid] += 1
+        await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "trade_offer_create", "give": {"wood": 1}, "get": {"brick": 1}, "to_pid": other_pid}})
+        ms1 = await _recv_type(ws1, "match_state")
+        ms2 = await _recv_type(ws2, "match_state")
+        if ms1["tick"] != ms2["tick"]:
+            raise AssertionError("tick mismatch after trade_offer_create")
+        state = ms1.get("state", {})
+        offer_id = int(state.get("trade_offers", [{}])[-1].get("offer_id", 0))
+
+        seq[other_pid] += 1
+        await _send(clients[other_pid], {"type": "cmd", "match_id": match_id, "seq": seq[other_pid], "cmd": {"type": "trade_offer_accept", "offer_id": offer_id}})
+        ms1 = await _recv_type(ws1, "match_state")
+        ms2 = await _recv_type(ws2, "match_state")
+        if ms1["tick"] != ms2["tick"]:
+            raise AssertionError("tick mismatch after trade_offer_accept")
+        if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+            raise AssertionError("state hash mismatch after trade_offer_accept")
+        state = ms1.get("state", {})
+
         seq[current_pid] += 1
         await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "end_turn"}})
         ms1 = await _recv_type(ws1, "match_state")
