@@ -8,7 +8,7 @@ from app.dev_ui import DevDialog
 from app.trade_ui import TradeDialog
 from app.config import GameConfig
 from app.engine import rules as engine_rules
-from app.engine.state import COST, RESOURCES, TERRAIN_TO_RES
+from app.engine.state import COST, RESOURCES, TERRAIN_TO_RES, TradeOffer
 from app.assets_loader import load_svg
 from app.theme import get_ui_palette, get_player_colors
 
@@ -308,6 +308,8 @@ class Game:
     free_roads: Dict[int, int] = field(default_factory=dict)
     largest_army_owner: Optional[int] = None
     largest_army_size: int = 0
+    trade_offers: List[TradeOffer] = field(default_factory=list)
+    trade_offer_next_id: int = 1
 
     def dev_summary(self, pid: int) -> Dict[str,int]:
         counts = {k: 0 for k in ["knight","victory_point","road_building","year_of_plenty","monopoly"]}
@@ -403,6 +405,8 @@ def build_board(seed: int, size: float) -> Game:
     g.dev_deck = list(base.dev_deck)
     g.dev_played_turn = dict(base.dev_played_turn)
     g.free_roads = dict(base.free_roads)
+    g.trade_offers = list(base.trade_offers)
+    g.trade_offer_next_id = int(base.trade_offer_next_id)
     return g
 
 def edge_neighbors_of_vertex(edges: Set[Tuple[int,int]], vid: int) -> Set[int]:
@@ -1001,6 +1005,200 @@ class ResourcesPanel(QtWidgets.QFrame):
             self.hand_chips[r].set_count(g.players[0].res[r])
             self.bank_chips[r].set_count(g.bank[r])
 
+class TradeOffersPanel(QtWidgets.QFrame):
+    def __init__(self, on_create, on_accept, on_decline, on_cancel):
+        super().__init__()
+        self._on_create = on_create
+        self._on_accept = on_accept
+        self._on_decline = on_decline
+        self._on_cancel = on_cancel
+        self._offer_by_row: Dict[int, Dict[str, Any]] = {}
+        self._player_names: List[str] = []
+        self._you_pid = 0
+
+        self.setStyleSheet(f"""
+            TradeOffersPanel {{
+                background: qlineargradient(
+                  x1:0, y1:0, x2:1, y2:1,
+                  stop:0 {PALETTE['ui_panel_soft']},
+                  stop:1 {PALETTE['ui_panel_input']});
+                border: 1px solid {PALETTE['ui_panel_outline']};
+                border-radius: 16px;
+            }}
+        """)
+
+        root = QtWidgets.QVBoxLayout(self)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(8)
+
+        title = QtWidgets.QLabel("Player Trade")
+        title.setStyleSheet("font-weight:700; font-size:12px;")
+        root.addWidget(title)
+
+        form = QtWidgets.QGridLayout()
+        form.setHorizontalSpacing(6)
+        form.setVerticalSpacing(4)
+
+        self.give_spins = {}
+        self.get_spins = {}
+        for i, res in enumerate(RESOURCES):
+            give_lbl = QtWidgets.QLabel(res)
+            give_lbl.setStyleSheet("font-size:11px; opacity:0.9;")
+            give_sp = QtWidgets.QSpinBox()
+            give_sp.setRange(0, 10)
+            give_sp.setFixedWidth(52)
+            get_sp = QtWidgets.QSpinBox()
+            get_sp.setRange(0, 10)
+            get_sp.setFixedWidth(52)
+            self.give_spins[res] = give_sp
+            self.get_spins[res] = get_sp
+            form.addWidget(give_lbl, i, 0)
+            form.addWidget(give_sp, i, 1)
+            form.addWidget(get_sp, i, 2)
+            if i == 0:
+                form.addWidget(QtWidgets.QLabel("Give"), 0, 1)
+                form.addWidget(QtWidgets.QLabel("Get"), 0, 2)
+
+        self.cb_to = QtWidgets.QComboBox()
+        self.cb_to.addItem("Any")
+        form.addWidget(QtWidgets.QLabel("To"), len(RESOURCES), 0)
+        form.addWidget(self.cb_to, len(RESOURCES), 1, 1, 2)
+        root.addLayout(form)
+
+        self.btn_create = QtWidgets.QPushButton("Create Offer")
+        self.btn_create.clicked.connect(self._create_offer)
+        root.addWidget(self.btn_create)
+
+        self.list_offers = QtWidgets.QListWidget()
+        self.list_offers.setStyleSheet(f"background:{PALETTE['ui_panel_input']}; border-radius:10px;")
+        self.list_offers.itemSelectionChanged.connect(self._refresh_buttons)
+        root.addWidget(self.list_offers, 1)
+
+        row = QtWidgets.QHBoxLayout()
+        self.btn_accept = QtWidgets.QPushButton("Accept")
+        self.btn_decline = QtWidgets.QPushButton("Decline")
+        self.btn_cancel = QtWidgets.QPushButton("Cancel")
+        self.btn_accept.clicked.connect(self._accept_offer)
+        self.btn_decline.clicked.connect(self._decline_offer)
+        self.btn_cancel.clicked.connect(self._cancel_offer)
+        row.addWidget(self.btn_accept)
+        row.addWidget(self.btn_decline)
+        row.addWidget(self.btn_cancel)
+        root.addLayout(row)
+
+    def _payload_from_spins(self, spins: Dict[str, QtWidgets.QSpinBox]) -> Dict[str, int]:
+        payload = {}
+        for res, sp in spins.items():
+            val = int(sp.value())
+            if val > 0:
+                payload[res] = val
+        return payload
+
+    def _reset_spins(self):
+        for sp in list(self.give_spins.values()) + list(self.get_spins.values()):
+            sp.setValue(0)
+
+    def _create_offer(self):
+        give = self._payload_from_spins(self.give_spins)
+        get = self._payload_from_spins(self.get_spins)
+        if not give or not get:
+            return
+        to_idx = self.cb_to.currentIndex()
+        to_pid = None
+        if to_idx > 0:
+            to_pid = to_idx - 1
+        self._on_create(give, get, to_pid)
+        self._reset_spins()
+
+    def _selected_offer(self) -> Optional[Dict[str, Any]]:
+        row = self.list_offers.currentRow()
+        return self._offer_by_row.get(row)
+
+    def _accept_offer(self):
+        offer = self._selected_offer()
+        if offer:
+            self._on_accept(int(offer["offer_id"]))
+
+    def _decline_offer(self):
+        offer = self._selected_offer()
+        if offer:
+            self._on_decline(int(offer["offer_id"]))
+
+    def _cancel_offer(self):
+        offer = self._selected_offer()
+        if offer:
+            self._on_cancel(int(offer["offer_id"]))
+
+    def _fmt_payload(self, payload: Dict[str, int]) -> str:
+        parts = []
+        for r in RESOURCES:
+            q = int(payload.get(r, 0))
+            if q:
+                parts.append(f"{q} {r}")
+        return ", ".join(parts) if parts else "-"
+
+    def _offer_dict(self, offer: Any) -> Dict[str, Any]:
+        if isinstance(offer, dict):
+            return offer
+        return {
+            "offer_id": getattr(offer, "offer_id", -1),
+            "from_pid": getattr(offer, "from_pid", 0),
+            "to_pid": getattr(offer, "to_pid", None),
+            "give": dict(getattr(offer, "give", {}) or {}),
+            "get": dict(getattr(offer, "get", {}) or {}),
+            "status": getattr(offer, "status", "active"),
+            "created_turn": getattr(offer, "created_turn", 0),
+            "created_tick": getattr(offer, "created_tick", 0),
+        }
+
+    def update_from_game(self, g, you_pid: int):
+        self._you_pid = int(you_pid)
+        self._player_names = [p.name for p in g.players]
+        self.cb_to.blockSignals(True)
+        self.cb_to.clear()
+        self.cb_to.addItem("Any")
+        for idx, p in enumerate(g.players):
+            label = f"P{idx + 1}: {p.name}"
+            self.cb_to.addItem(label)
+        self.cb_to.blockSignals(False)
+
+        self.list_offers.clear()
+        self._offer_by_row.clear()
+        row = 0
+        for raw in g.trade_offers:
+            offer = self._offer_dict(raw)
+            if offer.get("status") != "active":
+                continue
+            from_pid = int(offer.get("from_pid", 0))
+            to_pid = offer.get("to_pid", None)
+            give_txt = self._fmt_payload(offer.get("give", {}))
+            get_txt = self._fmt_payload(offer.get("get", {}))
+            to_txt = "any" if to_pid is None else f"P{int(to_pid) + 1}"
+            text = f"P{from_pid + 1} offers {give_txt} for {get_txt} ({to_txt})"
+            self.list_offers.addItem(text)
+            self._offer_by_row[row] = offer
+            row += 1
+        self._refresh_buttons()
+
+    def _refresh_buttons(self):
+        offer = self._selected_offer()
+        you_pid = self._you_pid
+        can_accept = False
+        can_decline = False
+        can_cancel = False
+        if offer and offer.get("status") == "active":
+            from_pid = int(offer.get("from_pid", -1))
+            to_pid = offer.get("to_pid", None)
+            allowed = (to_pid is None or int(to_pid) == int(you_pid))
+            if int(you_pid) == from_pid:
+                can_cancel = True
+            elif allowed:
+                can_accept = True
+                can_decline = True
+        self.btn_accept.setEnabled(can_accept)
+        self.btn_decline.setEnabled(can_decline)
+        self.btn_cancel.setEnabled(can_cancel)
+
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(
         self,
@@ -1034,6 +1232,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.piece_items: List[QtWidgets.QGraphicsItem] = []
         self._shown_game_over = False
         self._discard_modal_open = False
+        self._bot_seen_offers: Set[int] = set()
 
         root = QtWidgets.QWidget()
         root.setStyleSheet(f"background:{BG}; color:{TEXT};")
@@ -1067,6 +1266,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.resources_panel = ResourcesPanel()
         right_layout.addWidget(self.resources_panel)
+
+        self.trade_offers_panel = TradeOffersPanel(
+            self._create_trade_offer,
+            self._accept_trade_offer,
+            self._decline_trade_offer,
+            self._cancel_trade_offer,
+        )
+        right_layout.addWidget(self.trade_offers_panel)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setMaximumHeight(300)
@@ -1575,6 +1782,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.status_panel.update_from_game(g)
         self.resources_panel.update_from_game(g)
+        self.trade_offers_panel.update_from_game(g, self.you_pid if self.online_mode else 0)
 
         # hint text
         if g.game_over:
@@ -1598,15 +1806,25 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.online_mode:
             self.btn_dev.setEnabled(False)
             self.btn_trade.setEnabled(False)
+        can_create_offer = (
+            not g.game_over
+            and g.phase == "main"
+            and g.pending_action is None
+            and ((self.online_mode and g.turn == self.you_pid) or (not self.online_mode and g.turn == 0))
+        )
+        self.trade_offers_panel.btn_create.setEnabled(bool(can_create_offer))
 
         if g.pending_action == "discard":
             pid = self.you_pid if self.online_mode else 0
             if self._needs_discard(pid):
                 self._prompt_discard(pid)
+        if not self.online_mode and self.bot_enabled:
+            self._handle_trade_offers_bot()
 
     def _restart_game(self):
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
         self._shown_game_over = False
+        self._bot_seen_offers.clear()
         if hasattr(self, "victory_overlay"):
             self.victory_overlay.hide()
         self.selected_action = None
@@ -1706,6 +1924,54 @@ class MainWindow(QtWidgets.QMainWindow):
                 give, get, qty, rate = dlg._applied
                 self._log(f"[TRADE] {rate}:1 gave {give} -> got {get} x{qty}")
         self._refresh_all_dynamic()
+        self._sync_ui()
+
+    def _create_trade_offer(self, give: Dict[str, int], get: Dict[str, int], to_pid: Optional[int]) -> None:
+        g = self.game
+        if g.game_over:
+            self._log(f"Game over. Winner: P{g.winner_pid}")
+            return
+        cmd = {"type": "trade_offer_create", "give": dict(give), "get": dict(get), "to_pid": to_pid}
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_trade_offer_create(give, get, to_pid)
+        else:
+            events = self._apply_cmd(cmd, pid=0)
+            if events is None:
+                return
+            self._log("[TRADE] Offer created.")
+        self._sync_ui()
+
+    def _accept_trade_offer(self, offer_id: int) -> None:
+        cmd = {"type": "trade_offer_accept", "offer_id": int(offer_id)}
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_trade_offer_accept(offer_id)
+        else:
+            events = self._apply_cmd(cmd, pid=0)
+            if events is None:
+                return
+            self._log("[TRADE] Offer accepted.")
+        self._sync_ui()
+
+    def _decline_trade_offer(self, offer_id: int) -> None:
+        cmd = {"type": "trade_offer_decline", "offer_id": int(offer_id)}
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_trade_offer_decline(offer_id)
+        else:
+            events = self._apply_cmd(cmd, pid=0)
+            if events is None:
+                return
+            self._log("[TRADE] Offer declined.")
+        self._sync_ui()
+
+    def _cancel_trade_offer(self, offer_id: int) -> None:
+        cmd = {"type": "trade_offer_cancel", "offer_id": int(offer_id)}
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_trade_offer_cancel(offer_id)
+        else:
+            events = self._apply_cmd(cmd, pid=0)
+            if events is None:
+                return
+            self._log("[TRADE] Offer canceled.")
         self._sync_ui()
 
     def hand_size(self, pid: int) -> int:
@@ -1836,6 +2102,42 @@ class MainWindow(QtWidgets.QMainWindow):
         for r, q in plan.items():
             pres[r] += q
         return plan
+
+    def _handle_trade_offers_bot(self) -> None:
+        g = self.game
+        for raw in g.trade_offers:
+            offer = raw if isinstance(raw, dict) else {
+                "offer_id": getattr(raw, "offer_id", -1),
+                "from_pid": getattr(raw, "from_pid", -1),
+                "to_pid": getattr(raw, "to_pid", None),
+                "give": dict(getattr(raw, "give", {}) or {}),
+                "get": dict(getattr(raw, "get", {}) or {}),
+                "status": getattr(raw, "status", "active"),
+            }
+            if offer.get("status") != "active":
+                continue
+            offer_id = int(offer.get("offer_id", -1))
+            if offer_id in self._bot_seen_offers:
+                continue
+            from_pid = int(offer.get("from_pid", -1))
+            if from_pid == 1:
+                continue
+            to_pid = offer.get("to_pid", None)
+            if to_pid is not None and int(to_pid) != 1:
+                continue
+            give = offer.get("give", {})
+            get = offer.get("get", {})
+            bot_res = g.players[1].res
+            can_pay = all(bot_res.get(r, 0) >= int(q) for r, q in get.items())
+            total_get = sum(int(q) for q in give.values())
+            total_give = sum(int(q) for q in get.values())
+            if can_pay and total_get >= total_give:
+                if self._apply_cmd({"type": "trade_offer_accept", "offer_id": offer_id}, pid=1) is not None:
+                    self._log("[TRADE] Bot accepted offer.")
+            else:
+                if self._apply_cmd({"type": "trade_offer_decline", "offer_id": offer_id}, pid=1) is not None:
+                    self._log("[TRADE] Bot declined offer.")
+            self._bot_seen_offers.add(offer_id)
 
     def _bot_choose_victim(self, victims: List[int]) -> int:
         best = None

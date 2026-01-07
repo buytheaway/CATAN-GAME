@@ -71,6 +71,21 @@ class OnlineGameController(QtCore.QObject):
     def cmd_discard(self, discards: Dict[str, int]):
         self._send_cmd({"type": "discard", "discards": {k: int(v) for k, v in discards.items()}})
 
+    def cmd_trade_offer_create(self, give: Dict[str, int], get: Dict[str, int], to_pid: Optional[int]):
+        payload = {"type": "trade_offer_create", "give": dict(give), "get": dict(get)}
+        if to_pid is not None:
+            payload["to_pid"] = int(to_pid)
+        self._send_cmd(payload)
+
+    def cmd_trade_offer_accept(self, offer_id: int):
+        self._send_cmd({"type": "trade_offer_accept", "offer_id": int(offer_id)})
+
+    def cmd_trade_offer_decline(self, offer_id: int):
+        self._send_cmd({"type": "trade_offer_decline", "offer_id": int(offer_id)})
+
+    def cmd_trade_offer_cancel(self, offer_id: int):
+        self._send_cmd({"type": "trade_offer_cancel", "offer_id": int(offer_id)})
+
     def cmd_end_turn(self):
         if not self.current_state:
             return
@@ -134,6 +149,8 @@ class OnlineGameController(QtCore.QObject):
         g.largest_army_size = int(state.get("largest_army_size", 0))
         g.game_over = bool(state.get("game_over", False))
         g.winner_pid = state.get("winner_pid", None)
+        g.trade_offers = list(state.get("trade_offers", []))
+        g.trade_offer_next_id = int(state.get("trade_offer_next_id", 1))
 
         self.window.game = g
         self.window._draw_static_board()
