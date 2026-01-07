@@ -68,6 +68,9 @@ class OnlineGameController(QtCore.QObject):
     def cmd_move_robber(self, tile: int):
         self._send_cmd({"type": "move_robber", "tile": int(tile)})
 
+    def cmd_discard(self, discards: Dict[str, int]):
+        self._send_cmd({"type": "discard", "discards": {k: int(v) for k, v in discards.items()}})
+
     def cmd_end_turn(self):
         if not self.current_state:
             return
@@ -122,6 +125,8 @@ class OnlineGameController(QtCore.QObject):
         g.pending_action = state.get("pending_action", None)
         g.pending_pid = state.get("pending_pid", None)
         g.pending_victims = list(state.get("pending_victims", []))
+        g.discard_required = {int(k): int(v) for k, v in state.get("discard_required", {}).items()}
+        g.discard_submitted = set(int(x) for x in state.get("discard_submitted", []))
 
         g.longest_road_owner = state.get("longest_road_owner", None)
         g.longest_road_len = int(state.get("longest_road_len", 0))

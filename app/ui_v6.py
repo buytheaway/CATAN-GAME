@@ -1,6 +1,6 @@
-import sys, math, random
+import os, sys, math, random
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple, Optional, Set
+from typing import Any, Callable, Dict, List, Tuple, Optional, Set
 
 from PySide6 import QtCore, QtGui, QtWidgets
 from app.dev_hand_overlay import attach_dev_hand_overlay
@@ -296,6 +296,8 @@ class Game:
     pending_action: Optional[str] = None   # "discard" | "robber_move" | "robber_steal" | None
     pending_pid: Optional[int] = None
     pending_victims: List[int] = field(default_factory=list)
+    discard_required: Dict[int, int] = field(default_factory=dict)
+    discard_submitted: Set[int] = field(default_factory=set)
     longest_road_owner: Optional[int] = None
     longest_road_len: int = 0
     game_over: bool = False
@@ -389,6 +391,8 @@ def build_board(seed: int, size: float) -> Game:
     g.pending_action = base.pending_action
     g.pending_pid = base.pending_pid
     g.pending_victims = list(base.pending_victims)
+    g.discard_required = dict(base.discard_required)
+    g.discard_submitted = set(base.discard_submitted)
     g.longest_road_owner = base.longest_road_owner
     g.longest_road_len = int(base.longest_road_len)
     g.largest_army_owner = base.largest_army_owner
@@ -998,7 +1002,15 @@ class ResourcesPanel(QtWidgets.QFrame):
             self.bank_chips[r].set_count(g.bank[r])
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, config: Optional[GameConfig] = None, on_back_to_menu=None, online_controller=None, online_pid: int = 0):
+    def __init__(
+        self,
+        config: Optional[GameConfig] = None,
+        on_back_to_menu=None,
+        online_controller=None,
+        online_pid: int = 0,
+        dev_dialog_factory: Optional[Callable[..., QtWidgets.QDialog]] = None,
+        trade_dialog_factory: Optional[Callable[..., QtWidgets.QDialog]] = None,
+    ):
         super().__init__()
         self.setWindowTitle("CATAN Desktop (UI v6)")
         self.resize(1400, 820)
@@ -1010,6 +1022,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.online_controller = online_controller
         self.online_mode = online_controller is not None
         self.you_pid = int(online_pid)
+        self._dev_dialog_factory = dev_dialog_factory or DevDialog
+        self._trade_dialog_factory = trade_dialog_factory or TradeDialog
 
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
 
@@ -1019,6 +1033,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.overlay_hex: Dict[int, QtWidgets.QGraphicsItem] = {}
         self.piece_items: List[QtWidgets.QGraphicsItem] = []
         self._shown_game_over = False
+        self._discard_modal_open = False
 
         root = QtWidgets.QWidget()
         root.setStyleSheet(f"background:{BG}; color:{TEXT};")
@@ -1522,6 +1537,28 @@ class MainWindow(QtWidgets.QMainWindow):
             self._log(f"[!] {msg}")
             return None
 
+    def _test_force_roll(self, roll: int, discards: Optional[Dict[int, Dict[str, int]]] = None) -> None:
+        if os.getenv("CATAN_TEST_MODE") is None:
+            return
+        g = self.game
+        if g.game_over or g.pending_action is not None:
+            return
+        a = b = 1
+        for aa in range(1, 7):
+            bb = int(roll) - aa
+            if 1 <= bb <= 6:
+                a, b = aa, bb
+                break
+        self.d1.setIcon(QtGui.QIcon(dice_face(a)))
+        self.d2.setIcon(QtGui.QIcon(dice_face(b)))
+        cmd = {"type": "roll", "roll": int(roll)}
+        if discards is not None:
+            cmd["discards"] = discards
+        if self._apply_cmd(cmd, pid=g.turn) is None:
+            return
+        self._refresh_all_dynamic()
+        self._sync_ui()
+
     def _sync_ui(self):
         g = self.game
         if g.game_over:
@@ -1542,6 +1579,13 @@ class MainWindow(QtWidgets.QMainWindow):
         # hint text
         if g.game_over:
             self.lbl_hint.setText("Game over.")
+        elif g.pending_action == "discard":
+            pid = self.you_pid if self.online_mode else 0
+            need = int(g.discard_required.get(pid, 0))
+            if need > 0:
+                self.lbl_hint.setText(f"Discard {need} cards.")
+            else:
+                self.lbl_hint.setText("Waiting for other players to discard.")
         elif g.pending_action == "robber_move":
             self.lbl_hint.setText("Robber: click a hex to move it.")
         elif g.phase == "setup":
@@ -1554,6 +1598,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.online_mode:
             self.btn_dev.setEnabled(False)
             self.btn_trade.setEnabled(False)
+
+        if g.pending_action == "discard":
+            pid = self.you_pid if self.online_mode else 0
+            if self._needs_discard(pid):
+                self._prompt_discard(pid)
 
     def _restart_game(self):
         self.game = build_board(seed=random.randint(1, 999999), size=62.0)
@@ -1630,8 +1679,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if str(g.phase).startswith("setup"):
             self._log("[!] Dev cards disabled during setup.")
             return
-        dlg = DevDialog(self, g, 0)
-        dlg.exec()
+        dlg = self._dev_dialog_factory(self, g, 0)
+        if hasattr(dlg, "open_nonmodal") and callable(getattr(dlg, "open_nonmodal")):
+            dlg.open_nonmodal()
+        else:
+            dlg.exec()
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -1646,10 +1698,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if str(g.phase).startswith("setup"):
             self._log("[!] Trade disabled during setup.")
             return
-        dlg = TradeDialog(self, g, 0)
-        if dlg.exec() == QtWidgets.QDialog.Accepted and dlg._applied:
-            give, get, qty, rate = dlg._applied
-            self._log(f"[TRADE] {rate}:1 gave {give} -> got {get} x{qty}")
+        dlg = self._trade_dialog_factory(self, g, 0)
+        if hasattr(dlg, "open_nonmodal") and callable(getattr(dlg, "open_nonmodal")):
+            dlg.open_nonmodal()
+        else:
+            if dlg.exec() == QtWidgets.QDialog.Accepted and dlg._applied:
+                give, get, qty, rate = dlg._applied
+                self._log(f"[TRADE] {rate}:1 gave {give} -> got {get} x{qty}")
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -1659,6 +1714,51 @@ class MainWindow(QtWidgets.QMainWindow):
     def discard_needed(self, pid: int) -> int:
         total = self.hand_size(pid)
         return total // 2 if total > 7 else 0
+
+    def _needs_discard(self, pid: int) -> bool:
+        g = self.game
+        return g.pending_action == "discard" and pid in g.discard_required and pid not in g.discard_submitted
+
+    def _submit_discard(self, pid: int, discards: Dict[str, int]) -> bool:
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_discard(discards)
+            return True
+        return self._apply_cmd({"type": "discard", "discards": discards}, pid=pid) is not None
+
+    def _prompt_discard(self, pid: int) -> None:
+        g = self.game
+        if self._discard_modal_open:
+            return
+        need = int(g.discard_required.get(pid, 0))
+        if need <= 0:
+            return
+        self._discard_modal_open = True
+        dlg = DiscardDialog(self, g.players[pid].res, need)
+        ok = dlg.exec() == QtWidgets.QDialog.Accepted
+        self._discard_modal_open = False
+        if not ok:
+            self._log("[7] Discard canceled.")
+            return
+        discards = dlg.selected()
+        if self._submit_discard(pid, discards):
+            self._log(f"[7] P{pid + 1} discarded {need}.")
+
+    def _handle_discard_flow(self) -> None:
+        g = self.game
+        if g.pending_action != "discard":
+            return
+        pid = self.you_pid if self.online_mode else 0
+        if self._needs_discard(pid):
+            self._prompt_discard(pid)
+        if not self.online_mode and self._needs_discard(1):
+            need = int(g.discard_required.get(1, 0))
+            discards = self._bot_discard_plan(1, need)
+            if self._submit_discard(1, discards):
+                self._log(f"[7] Bot discarded {need}.")
+        if g.pending_action == "robber_move":
+            self._log("[7] Move the robber.")
+            self._refresh_all_dynamic()
+            self._sync_ui()
 
     def _victims_for_tile(self, ti: int, pid: int) -> List[int]:
         g = self.game
@@ -1994,6 +2094,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if g.game_over:
             self._log(f"Game over. Winner: P{g.winner_pid}")
             return
+        if g.pending_action == "discard":
+            self._handle_discard_flow()
+            return
         if self.online_mode and self.online_controller:
             self.online_controller.cmd_roll()
             return
@@ -2013,24 +2116,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.d2.setIcon(QtGui.QIcon(dice_face(b)))
         self._log(f"You rolled {roll}.")
         if roll == 7:
-            discards: Dict[int, Dict[str, int]] = {}
-            need = self.discard_needed(0)
-            if need > 0:
-                dlg = DiscardDialog(self, g.players[0].res, need)
-                if dlg.exec() != QtWidgets.QDialog.Accepted:
-                    self._log("[7] Discard canceled.")
-                    return
-                discards[0] = dlg.selected()
-                self._log(f"[7] You discarded {need}.")
-            bot_need = self.discard_needed(1)
-            if bot_need > 0:
-                discards[1] = self._bot_discard_plan(1, bot_need)
-                self._log(f"[7] Bot discarded {bot_need}.")
-            if self._apply_cmd({"type": "roll", "roll": roll, "discards": discards}, pid=0) is None:
+            if self._apply_cmd({"type": "roll", "roll": roll}, pid=0) is None:
                 return
-            self._log("[7] Move the robber.")
             self._refresh_all_dynamic()
             self._sync_ui()
+            self._handle_discard_flow()
             return
         if self._apply_cmd({"type": "roll", "roll": roll}, pid=0) is None:
             return
@@ -2082,17 +2172,13 @@ class MainWindow(QtWidgets.QMainWindow):
             b = random.randint(1,6)
             roll = a + b
             self._log(f"Bot rolled {roll}.")
-            cmd = {"type": "roll", "roll": roll}
-            if roll == 7:
-                bot_need = self.discard_needed(1)
-                if bot_need > 0:
-                    cmd["discards"] = {1: self._bot_discard_plan(1, bot_need)}
-                    self._log(f"[7] Bot discarded {bot_need}.")
-            if self._apply_cmd(cmd, pid=1) is None:
+            if self._apply_cmd({"type": "roll", "roll": roll}, pid=1) is None:
                 return
-            if g.pending_action == "robber_move":
-                target = self._bot_choose_robber_tile()
-                self._bot_move_robber(1, target)
+            if roll == 7:
+                self._handle_discard_flow()
+                if g.pending_action == "robber_move" and g.pending_pid == 1:
+                    target = self._bot_choose_robber_tile()
+                    self._bot_move_robber(1, target)
 
         if g.game_over or g.pending_action is not None:
             return
