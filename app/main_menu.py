@@ -134,7 +134,7 @@ class SettingsDialog(QtWidgets.QDialog):
         )
 
 
-class LobbyWindow(QtWidgets.QDialog):
+class ComingSoonDialog(QtWidgets.QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Multiplayer Lobby")
