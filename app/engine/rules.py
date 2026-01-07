@@ -1,30 +1,19 @@
 from __future__ import annotations
 
-import math
 import random
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
+from app.engine import maps as map_loader
 from app.engine.state import (
     AchievementState,
-    BoardState,
     COST,
     DEV_TYPES,
     GameState,
     PlayerState,
     RESOURCES,
     TERRAIN_TO_RES,
-    Tile,
     TradeOffer,
-)
-
-
-# Base board axial coords: rows 3-4-5-4-3
-BASE_AXIAL: List[Tuple[int, int]] = (
-    [(0, -2), (1, -2), (2, -2)]
-    + [(-1, -1), (0, -1), (1, -1), (2, -1)]
-    + [(-2, 0), (-1, 0), (0, 0), (1, 0), (2, 0)]
-    + [(-2, 1), (-1, 1), (0, 1), (1, 1)]
-    + [(-2, 2), (-1, 2), (0, 2)]
 )
 
 
@@ -34,25 +23,6 @@ class RuleError(Exception):
         self.code = code
         self.message = message
         self.details = details or {}
-
-
-def axial_to_pixel(q: int, r: int, size: float) -> Tuple[float, float]:
-    x = size * 1.7320508075688772 * (q + r / 2.0)
-    y = size * 1.5 * r
-    return (x, y)
-
-
-def hex_corners(center: Tuple[float, float], size: float) -> List[Tuple[float, float]]:
-    cx, cy = center
-    pts = []
-    for i in range(6):
-        ang = math.radians(30 + 60 * i)
-        pts.append((cx + size * math.cos(ang), cy + size * math.sin(ang)))
-    return pts
-
-
-def quant_key(p: Tuple[float, float], step: float = 0.5) -> Tuple[int, int]:
-    return (int(round(p[0] / step)), int(round(p[1] / step)))
 
 
 def edge_neighbors_of_vertex(edges: set[Tuple[int, int]], vid: int) -> set[int]:
@@ -74,95 +44,24 @@ def build_game(
     max_players: int = 4,
     size: float = 58.0,
     player_names: Optional[List[str]] = None,
+    map_name: Optional[str] = None,
+    map_data: Optional[Dict[str, Any]] = None,
+    map_path: Optional[str] = None,
 ) -> GameState:
     rng = random.Random(seed)
     g = GameState(seed=seed, size=size, max_players=max_players)
 
-    terrains = (
-        ["forest"] * 4
-        + ["hills"] * 3
-        + ["pasture"] * 4
-        + ["fields"] * 4
-        + ["mountains"] * 3
-        + ["desert"] * 1
-    )
-    rng.shuffle(terrains)
-
-    numbers = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12]
-    rng.shuffle(numbers)
-
-    tiles: List[Tile] = []
-    desert_idx = None
-    ni = 0
-    for (q, r), terr in zip(BASE_AXIAL, terrains):
-        c = axial_to_pixel(q, r, size)
-        num = None
-        if terr != "desert":
-            num = numbers[ni]
-            ni += 1
+    if map_data is None:
+        if map_path is not None:
+            map_data = map_loader.load_map_file(Path(map_path))
         else:
-            desert_idx = len(tiles)
-        tiles.append(Tile(q=q, r=r, terrain=terr, number=num, center=c))
-
-    v_map: Dict[Tuple[int, int], int] = {}
-    v_points: List[Tuple[float, float]] = []
-    v_hexes: Dict[int, List[int]] = {}
-    edges: set[Tuple[int, int]] = set()
-    edge_hexes: Dict[Tuple[int, int], List[int]] = {}
-
-    for ti, t in enumerate(tiles):
-        corners = hex_corners(t.center, size)
-        vids = []
-        for p in corners:
-            k = quant_key(p, 0.5)
-            if k not in v_map:
-                vid = len(v_points)
-                v_map[k] = vid
-                v_points.append(p)
-                v_hexes[vid] = []
-            vid = v_map[k]
-            vids.append(vid)
-            v_hexes[vid].append(ti)
-
-        for i in range(6):
-            a = vids[i]
-            b = vids[(i + 1) % 6]
-            e = (a, b) if a < b else (b, a)
-            edges.add(e)
-            edge_hexes.setdefault(e, []).append(ti)
-
-    coast = [e for e, hx in edge_hexes.items() if len(hx) == 1]
-    center = (0.0, 0.0)
-
-    def angle_of_edge(e):
-        a, b = e
-        p = ((v_points[a][0] + v_points[b][0]) * 0.5, (v_points[a][1] + v_points[b][1]) * 0.5)
-        return math.atan2(p[1] - center[1], p[0] - center[0])
-
-    coast.sort(key=angle_of_edge)
-    if len(coast) >= 9:
-        pick_idx = [int(i * len(coast) / 9) for i in range(9)]
-        coast9 = [coast[i % len(coast)] for i in pick_idx]
-    else:
-        coast9 = coast
-
-    port_types = ["3:1"] * 4 + [f"2:1:{r}" for r in RESOURCES]
-    rng.shuffle(port_types)
-    port_types = port_types[: len(coast9)]
-    ports = list(zip(coast9, port_types))
-
-    g.board = BoardState(
-        tiles=tiles,
-        vertices={i: p for i, p in enumerate(v_points)},
-        vertex_adj_hexes=v_hexes,
-        edges=edges,
-        edge_adj_hexes=edge_hexes,
-        ports=ports,
-        occupied_v={},
-        occupied_e={},
-    )
-
-    g.robber_tile = desert_idx if desert_idx is not None else 0
+            map_name = map_name or "base_standard"
+            map_data = map_loader.get_preset_map(map_name)
+    board, robber_tile, rules = map_loader.build_board_from_map(map_data, rng, size)
+    g.board = board
+    g.robber_tile = robber_tile
+    g.map_name = str(map_data.get("name", map_name or "custom"))
+    g.rules = dict(rules)
 
     if player_names is None:
         player_names = [f"P{i+1}" for i in range(max_players)]

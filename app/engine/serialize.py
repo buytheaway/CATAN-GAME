@@ -23,6 +23,8 @@ def to_dict(g: GameState) -> Dict:
         "state_version": g.state_version,
         "max_players": g.max_players,
         "size": g.size,
+        "map_name": g.map_name,
+        "rules": dict(getattr(g, "rules", {}) or {}),
         "phase": g.phase,
         "turn": g.turn,
         "rolled": g.rolled,
@@ -136,6 +138,8 @@ def from_dict(data: Dict) -> GameState:
         players.append(pl)
 
     g = GameState(seed=seed, size=size, max_players=max_players, board=board, players=players)
+    g.map_name = str(data.get("map_name", "base_standard"))
+    g.rules = dict(data.get("rules", {}) or {})
     g.phase = data.get("phase", "setup")
     g.turn = int(data.get("turn", 0))
     g.rolled = bool(data.get("rolled", False))

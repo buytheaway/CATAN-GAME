@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Any, Dict, List, Optional, Tuple, Set
 
 
 RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"]
@@ -13,6 +13,7 @@ TERRAIN_TO_RES = {
     "fields": "wheat",
     "mountains": "ore",
     "desert": None,
+    "sea": None,
 }
 
 COST = {
@@ -81,6 +82,8 @@ class GameState:
     seed: int
     size: float = 58.0
     max_players: int = 4
+    map_name: str = "base_standard"
+    rules: Dict[str, Any] = field(default_factory=dict)
     board: BoardState = field(default_factory=BoardState)
     players: List[PlayerState] = field(default_factory=list)
     bank: Dict[str, int] = field(default_factory=lambda: {r: 19 for r in RESOURCES})

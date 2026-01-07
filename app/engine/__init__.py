@@ -32,6 +32,12 @@ from app.engine.rules import (
     update_largest_army,
     update_longest_road,
 )
+from app.engine.maps import (
+    MapValidationError,
+    get_preset_map,
+    load_map_file,
+    validate_map_data,
+)
 from app.engine.serialize import from_dict, to_dict
 
 __all__ = [
@@ -65,6 +71,10 @@ __all__ = [
     "trade_with_bank",
     "update_largest_army",
     "update_longest_road",
+    "MapValidationError",
+    "get_preset_map",
+    "load_map_file",
+    "validate_map_data",
     "from_dict",
     "to_dict",
 ]
