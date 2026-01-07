@@ -3,6 +3,7 @@ import json
 import socket
 import threading
 import time
+import uuid
 
 import uvicorn
 import websockets
@@ -47,6 +48,32 @@ async def _recv_type(ws, want: str, timeout: float = 5.0):
         if data.get("type") == want:
             return data
     raise AssertionError(f"Timed out waiting for {want}")
+
+
+async def _recv_error(ws, want_code: str, timeout: float = 5.0) -> dict:
+    end = time.time() + timeout
+    while time.time() < end:
+        raw = await asyncio.wait_for(ws.recv(), timeout=end - time.time())
+        data = json.loads(raw)
+        if data.get("type") == "error" and data.get("code") == want_code:
+            return data
+    raise AssertionError(f"Timed out waiting for error {want_code}")
+
+
+async def _recv_cmd_ack(ws, cmd_id: str, timeout: float = 5.0) -> dict:
+    end = time.time() + timeout
+    while time.time() < end:
+        raw = await asyncio.wait_for(ws.recv(), timeout=end - time.time())
+        data = json.loads(raw)
+        if data.get("type") == "cmd_ack" and data.get("cmd_id") == cmd_id:
+            return data
+    raise AssertionError(f"Timed out waiting for cmd_ack {cmd_id}")
+
+
+async def _send_cmd(ws, match_id: int, seq: int, cmd: dict, cmd_id: str | None = None) -> str:
+    cid = cmd_id or uuid.uuid4().hex
+    await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq, "cmd_id": cid, "cmd": cmd})
+    return cid
 
 
 def _apply_snapshot(g, state: dict):
@@ -115,10 +142,12 @@ async def _run_clients(port: int):
 
         await _send(ws1, {"type": "create_room", "name": "Alice", "max_players": 2, "ruleset": {"base": True, "max_players": 2}})
         room_state = await _recv_type(ws1, "room_state")
+        token1 = await _recv_type(ws1, "reconnect_token")
         room_code = room_state["room_code"]
 
         await _send(ws2, {"type": "join_room", "room_code": room_code, "name": "Bob"})
         await _recv_type(ws2, "room_state")
+        token2 = await _recv_type(ws2, "reconnect_token")
         await _recv_type(ws1, "room_state")
 
         await _send(ws1, {"type": "start_match"})
@@ -139,12 +168,12 @@ async def _run_clients(port: int):
             if state.get("setup_need") == "settlement":
                 vid = _pick_settlement(g, pid)
                 seq[pid] += 1
-                await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[pid], "cmd": {"type": "place_settlement", "vid": vid, "setup": True}})
+                await _send_cmd(ws, match_id, seq[pid], {"type": "place_settlement", "vid": vid, "setup": True})
             else:
                 anchor = int(state.get("setup_anchor_vid"))
                 e = _pick_road(g, pid, anchor)
                 seq[pid] += 1
-                await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[pid], "cmd": {"type": "place_road", "eid": [e[0], e[1]], "setup": True}})
+                await _send_cmd(ws, match_id, seq[pid], {"type": "place_road", "eid": [e[0], e[1]], "setup": True})
 
             ms1 = await _recv_type(ws1, "match_state")
             ms2 = await _recv_type(ws2, "match_state")
@@ -155,7 +184,7 @@ async def _run_clients(port: int):
         current_pid = int(state.get("turn", 0))
         ws = clients[current_pid]
         seq[current_pid] += 1
-        await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "roll"}})
+        await _send_cmd(ws, match_id, seq[current_pid], {"type": "roll"})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         assert ms1["tick"] == ms2["tick"]
@@ -167,7 +196,7 @@ async def _run_clients(port: int):
                 pid = int(pid_key)
                 seq[pid] += 1
                 plan = _plan_discard_from_state(state, pid, int(need))
-                await _send(clients[pid], {"type": "cmd", "match_id": match_id, "seq": seq[pid], "cmd": {"type": "discard", "discards": plan}})
+                await _send_cmd(clients[pid], match_id, seq[pid], {"type": "discard", "discards": plan})
                 ms1 = await _recv_type(ws1, "match_state")
                 ms2 = await _recv_type(ws2, "match_state")
                 assert ms1["tick"] == ms2["tick"]
@@ -177,7 +206,7 @@ async def _run_clients(port: int):
             tile = int(state.get("robber_tile", 0))
             new_tile = tile + 1 if tile + 1 < len(state.get("tiles", [])) else max(0, tile - 1)
             seq[current_pid] += 1
-            await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "move_robber", "tile": new_tile}})
+            await _send_cmd(ws, match_id, seq[current_pid], {"type": "move_robber", "tile": new_tile})
             ms1 = await _recv_type(ws1, "match_state")
             ms2 = await _recv_type(ws2, "match_state")
             assert ms1["tick"] == ms2["tick"]
@@ -186,14 +215,14 @@ async def _run_clients(port: int):
         # ensure resources for trade offer
         other_pid = 1 - current_pid
         seq[current_pid] += 1
-        await _send(clients[current_pid], {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "grant_resources", "res": {"wood": 1}}})
+        await _send_cmd(clients[current_pid], match_id, seq[current_pid], {"type": "grant_resources", "res": {"wood": 1}})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         assert ms1["tick"] == ms2["tick"]
         state = ms1.get("state", {})
 
         seq[other_pid] += 1
-        await _send(clients[other_pid], {"type": "cmd", "match_id": match_id, "seq": seq[other_pid], "cmd": {"type": "grant_resources", "res": {"brick": 1}}})
+        await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "grant_resources", "res": {"brick": 1}})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         assert ms1["tick"] == ms2["tick"]
@@ -201,7 +230,7 @@ async def _run_clients(port: int):
 
         # trade offer flow
         seq[current_pid] += 1
-        await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "trade_offer_create", "give": {"wood": 1}, "get": {"brick": 1}, "to_pid": other_pid}})
+        await _send_cmd(ws, match_id, seq[current_pid], {"type": "trade_offer_create", "give": {"wood": 1}, "get": {"brick": 1}, "to_pid": other_pid})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         assert ms1["tick"] == ms2["tick"]
@@ -209,14 +238,116 @@ async def _run_clients(port: int):
         offer_id = int(state.get("trade_offers", [{}])[-1].get("offer_id", 0))
 
         seq[other_pid] += 1
-        await _send(clients[other_pid], {"type": "cmd", "match_id": match_id, "seq": seq[other_pid], "cmd": {"type": "trade_offer_accept", "offer_id": offer_id}})
+        await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "trade_offer_accept", "offer_id": offer_id})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         assert ms1["tick"] == ms2["tick"]
         state = ms1.get("state", {})
 
         seq[current_pid] += 1
-        await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "end_turn"}})
+        await _send_cmd(ws, match_id, seq[current_pid], {"type": "end_turn"})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         assert ms1["tick"] == ms2["tick"]
+
+
+def test_multiplayer_duplicate_and_out_of_order():
+    port = _find_free_port()
+    server, thread = _start_server(port)
+    try:
+        asyncio.run(_run_duplicate_and_out_of_order(port))
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+
+
+async def _run_duplicate_and_out_of_order(port: int):
+    url = f"ws://127.0.0.1:{port}/ws"
+    async with websockets.connect(url) as ws1, websockets.connect(url) as ws2:
+        await _send(ws1, {"type": "hello", "version": net_protocol.VERSION, "name": "DupAlice"})
+        await _recv_type(ws1, "hello")
+        await _send(ws2, {"type": "hello", "version": net_protocol.VERSION, "name": "DupBob"})
+        await _recv_type(ws2, "hello")
+
+        await _send(ws1, {"type": "create_room", "name": "DupAlice", "max_players": 2, "ruleset": {"base": True, "max_players": 2}})
+        room_state = await _recv_type(ws1, "room_state")
+        await _recv_type(ws1, "reconnect_token")
+        room_code = room_state["room_code"]
+
+        await _send(ws2, {"type": "join_room", "room_code": room_code, "name": "DupBob"})
+        await _recv_type(ws2, "room_state")
+        await _recv_type(ws2, "reconnect_token")
+        await _recv_type(ws1, "room_state")
+
+        await _send(ws1, {"type": "start_match"})
+        ms1 = await _recv_type(ws1, "match_state")
+        await _recv_type(ws2, "match_state")
+        match_id = int(ms1.get("match_id", 0))
+
+        seq = 1
+        cmd = {"type": "grant_resources", "res": {"wood": 1}}
+        cmd_id = uuid.uuid4().hex
+        await _send(ws1, {"type": "cmd", "match_id": match_id, "seq": seq, "cmd_id": cmd_id, "cmd": cmd})
+        await _recv_type(ws1, "match_state")
+        await _recv_cmd_ack(ws1, cmd_id)
+
+        # duplicate: same cmd_id + seq should not advance tick
+        await _send(ws1, {"type": "cmd", "match_id": match_id, "seq": seq, "cmd_id": cmd_id, "cmd": cmd})
+        ack = await _recv_cmd_ack(ws1, cmd_id)
+        assert ack.get("duplicate") is True
+
+        # out-of-order: skip seq 2
+        bad_seq = seq + 2
+        bad_id = uuid.uuid4().hex
+        await _send(ws1, {"type": "cmd", "match_id": match_id, "seq": bad_seq, "cmd_id": bad_id, "cmd": cmd})
+        err = await _recv_error(ws1, "out_of_order")
+        assert err.get("detail", {}).get("expected_seq") == seq + 1
+
+
+def test_multiplayer_reconnect():
+    port = _find_free_port()
+    server, thread = _start_server(port)
+    try:
+        asyncio.run(_run_reconnect(port))
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+
+
+async def _run_reconnect(port: int):
+    url = f"ws://127.0.0.1:{port}/ws"
+    async with websockets.connect(url) as ws1, websockets.connect(url) as ws2:
+        await _send(ws1, {"type": "hello", "version": net_protocol.VERSION, "name": "RecAlice"})
+        await _recv_type(ws1, "hello")
+        await _send(ws2, {"type": "hello", "version": net_protocol.VERSION, "name": "RecBob"})
+        await _recv_type(ws2, "hello")
+
+        await _send(ws1, {"type": "create_room", "name": "RecAlice", "max_players": 2, "ruleset": {"base": True, "max_players": 2}})
+        room_state = await _recv_type(ws1, "room_state")
+        token1 = await _recv_type(ws1, "reconnect_token")
+        room_code = room_state["room_code"]
+
+        await _send(ws2, {"type": "join_room", "room_code": room_code, "name": "RecBob"})
+        await _recv_type(ws2, "room_state")
+        token2 = await _recv_type(ws2, "reconnect_token")
+        await _recv_type(ws1, "room_state")
+
+        await _send(ws1, {"type": "start_match"})
+        ms1 = await _recv_type(ws1, "match_state")
+        await _recv_type(ws2, "match_state")
+        match_id = int(ms1.get("match_id", 0))
+
+    # reconnect with new websocket using token
+    async with websockets.connect(url) as ws_re:
+        await _send(ws_re, {"type": "hello", "version": net_protocol.VERSION, "name": "RecBob"})
+        await _recv_type(ws_re, "hello")
+        await _send(ws_re, {"type": "reconnect", "room_code": room_code, "reconnect_token": token2.get("reconnect_token")})
+        await _recv_type(ws_re, "room_state")
+        await _recv_type(ws_re, "reconnect_token")
+        ms = await _recv_type(ws_re, "match_state")
+        assert int(ms.get("match_id", 0)) == match_id
+
+        seq = int(token2.get("last_seq_applied", 0)) + 1
+        cmd_id = await _send_cmd(ws_re, match_id, seq, {"type": "grant_resources", "res": {"brick": 1}})
+        await _recv_type(ws_re, "match_state")
+        await _recv_cmd_ack(ws_re, cmd_id)

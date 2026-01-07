@@ -6,6 +6,7 @@ import socket
 import threading
 import time
 import sys
+import uuid
 from pathlib import Path
 from hashlib import sha256
 
@@ -56,6 +57,12 @@ async def _recv_type(ws, want: str, timeout: float = 5.0):
         if data.get("type") == want:
             return data
     raise AssertionError(f"Timed out waiting for {want}")
+
+
+async def _send_cmd(ws, match_id: int, seq: int, cmd: dict, cmd_id: str | None = None) -> str:
+    cid = cmd_id or uuid.uuid4().hex
+    await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq, "cmd_id": cid, "cmd": cmd})
+    return cid
 
 
 def _state_hash(state: dict) -> str:
@@ -147,12 +154,12 @@ async def _run_clients(port: int):
             if state.get("setup_need") == "settlement":
                 vid = _pick_settlement(g, pid)
                 seq[pid] += 1
-                await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[pid], "cmd": {"type": "place_settlement", "vid": vid, "setup": True}})
+                await _send_cmd(ws, match_id, seq[pid], {"type": "place_settlement", "vid": vid, "setup": True})
             else:
                 anchor = int(state.get("setup_anchor_vid"))
                 e = _pick_road(g, pid, anchor)
                 seq[pid] += 1
-                await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[pid], "cmd": {"type": "place_road", "eid": [e[0], e[1]], "setup": True}})
+                await _send_cmd(ws, match_id, seq[pid], {"type": "place_road", "eid": [e[0], e[1]], "setup": True})
 
             ms1 = await _recv_type(ws1, "match_state")
             ms2 = await _recv_type(ws2, "match_state")
@@ -166,7 +173,7 @@ async def _run_clients(port: int):
         current_pid = int(state.get("turn", 0))
         ws = clients[current_pid]
         seq[current_pid] += 1
-        await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "roll"}})
+        await _send_cmd(ws, match_id, seq[current_pid], {"type": "roll"})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         if ms1["tick"] != ms2["tick"]:
@@ -181,7 +188,7 @@ async def _run_clients(port: int):
                 pid = int(pid_key)
                 seq[pid] += 1
                 plan = _plan_discard_from_state(state, pid, int(need))
-                await _send(clients[pid], {"type": "cmd", "match_id": match_id, "seq": seq[pid], "cmd": {"type": "discard", "discards": plan}})
+                await _send_cmd(clients[pid], match_id, seq[pid], {"type": "discard", "discards": plan})
                 ms1 = await _recv_type(ws1, "match_state")
                 ms2 = await _recv_type(ws2, "match_state")
                 if ms1["tick"] != ms2["tick"]:
@@ -194,7 +201,7 @@ async def _run_clients(port: int):
             tile = int(state.get("robber_tile", 0))
             new_tile = tile + 1 if tile + 1 < len(state.get("tiles", [])) else max(0, tile - 1)
             seq[current_pid] += 1
-            await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "move_robber", "tile": new_tile}})
+            await _send_cmd(ws, match_id, seq[current_pid], {"type": "move_robber", "tile": new_tile})
             ms1 = await _recv_type(ws1, "match_state")
             ms2 = await _recv_type(ws2, "match_state")
             if ms1["tick"] != ms2["tick"]:
@@ -206,7 +213,7 @@ async def _run_clients(port: int):
         # ensure resources for trade offer
         other_pid = 1 - current_pid
         seq[current_pid] += 1
-        await _send(clients[current_pid], {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "grant_resources", "res": {"wood": 1}}})
+        await _send_cmd(clients[current_pid], match_id, seq[current_pid], {"type": "grant_resources", "res": {"wood": 1}})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         if ms1["tick"] != ms2["tick"]:
@@ -214,7 +221,7 @@ async def _run_clients(port: int):
         state = ms1.get("state", {})
 
         seq[other_pid] += 1
-        await _send(clients[other_pid], {"type": "cmd", "match_id": match_id, "seq": seq[other_pid], "cmd": {"type": "grant_resources", "res": {"brick": 1}}})
+        await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "grant_resources", "res": {"brick": 1}})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         if ms1["tick"] != ms2["tick"]:
@@ -223,7 +230,7 @@ async def _run_clients(port: int):
 
         # trade offer flow
         seq[current_pid] += 1
-        await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "trade_offer_create", "give": {"wood": 1}, "get": {"brick": 1}, "to_pid": other_pid}})
+        await _send_cmd(ws, match_id, seq[current_pid], {"type": "trade_offer_create", "give": {"wood": 1}, "get": {"brick": 1}, "to_pid": other_pid})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         if ms1["tick"] != ms2["tick"]:
@@ -232,7 +239,7 @@ async def _run_clients(port: int):
         offer_id = int(state.get("trade_offers", [{}])[-1].get("offer_id", 0))
 
         seq[other_pid] += 1
-        await _send(clients[other_pid], {"type": "cmd", "match_id": match_id, "seq": seq[other_pid], "cmd": {"type": "trade_offer_accept", "offer_id": offer_id}})
+        await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "trade_offer_accept", "offer_id": offer_id})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         if ms1["tick"] != ms2["tick"]:
@@ -242,7 +249,7 @@ async def _run_clients(port: int):
         state = ms1.get("state", {})
 
         seq[current_pid] += 1
-        await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq[current_pid], "cmd": {"type": "end_turn"}})
+        await _send_cmd(ws, match_id, seq[current_pid], {"type": "end_turn"})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         if ms1["tick"] != ms2["tick"]:
