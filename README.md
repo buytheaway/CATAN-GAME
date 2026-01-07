@@ -22,6 +22,17 @@ Testing:
 - Multiplayer smoke: `pytest -q tests/test_multiplayer_basic.py`
 - Reports output: `tests/reports/report_<timestamp>.json` and `tests/reports/BUG_REPORT.md`
 
+Windows build (PyInstaller):
+- Install builder: `pip install pyinstaller`
+- Build server: `powershell -ExecutionPolicy Bypass -File tools/build/build_server.ps1`
+- Build client: `powershell -ExecutionPolicy Bypass -File tools/build/build_client.ps1`
+- Output:
+  - `dist/CatanServer/CatanServer.exe`
+  - `dist/CatanClient/CatanClient.exe`
+- Run:
+  - Start `CatanServer.exe` (default port 8000)
+  - Start `CatanClient.exe` and connect via Multiplayer -> Host/Join
+
 NO HACKS policy:
 - No `QTimer.singleShot` for "wait until UI ready"
 - No `runtime_patch` or `ports_bridge`
