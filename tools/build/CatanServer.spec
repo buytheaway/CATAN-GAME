@@ -4,8 +4,9 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
-ROOT = Path(__file__).resolve().parents[2]
-ENTRY = Path(__file__).resolve().parent / "entry_server.py"
+# PyInstaller defines SPECPATH = directory containing the spec file
+ROOT = Path(SPECPATH).resolve().parents[1]  # <repo>/tools/build -> parents[1] == <repo>
+ENTRY = Path(SPECPATH) / "entry_server.py"
 
 datas = [(str(ROOT / "app" / "assets"), "app/assets")]
 binaries = []
