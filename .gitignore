@@ -5,3 +5,18 @@
 *.log
 *.bak_*
 *.bak
+tests/reports/report_*.json
+tools/reports/*.json
+report_*.json
+# generated test reports
+tests/reports/report_*.json
+tests/reports/*.json
+
+# generated tool reports (если там только автогенерация)
+tools/reports/*.json
+tools/reports/*.png
+tools/reports/*.log
+
+# PyInstaller output
+/dist/
+/build/
