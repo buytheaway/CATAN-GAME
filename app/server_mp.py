@@ -6,8 +6,10 @@ import os
 import random
 import string
 import time
+import uuid
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Deque, Dict, List, Optional, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
@@ -20,6 +22,10 @@ class PlayerSlot:
     pid: int
     name: str = ""
     connected: bool = False
+    reconnect_token: Optional[str] = None
+    last_seq_applied: int = 0
+    seen_cmd_ids: Deque[str] = field(default_factory=deque)
+    seen_cmd_set: Set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -28,7 +34,6 @@ class ClientConn:
     name: str = ""
     room_code: Optional[str] = None
     pid: Optional[int] = None
-    last_seq: int = -1
 
 
 @dataclass
@@ -68,6 +73,8 @@ class RoomManager:
         slot = room.players[pid]
         slot.name = name
         slot.connected = connected
+        if not slot.reconnect_token:
+            slot.reconnect_token = uuid.uuid4().hex
 
     def join_room(self, room_code: str, name: str) -> Optional[Room]:
         room = self.rooms.get(room_code)
@@ -77,11 +84,15 @@ class RoomManager:
         for slot in room.players:
             if slot.name == name:
                 slot.connected = True
+                if not slot.reconnect_token:
+                    slot.reconnect_token = uuid.uuid4().hex
                 return room
         for slot in room.players:
             if not slot.name:
                 slot.name = name
                 slot.connected = True
+                if not slot.reconnect_token:
+                    slot.reconnect_token = uuid.uuid4().hex
                 return room
         return None
 
@@ -97,6 +108,7 @@ class RoomManager:
 
 app = FastAPI()
 manager = RoomManager()
+CMD_ID_LRU = 256
 
 
 def _snapshot_state(game: GameState, room: Room) -> Dict:
@@ -129,6 +141,35 @@ async def _send_match_state(room: Room) -> None:
     await _broadcast(room, net_protocol.match_state_message(room, state))
 
 
+async def _send_match_state_to(ws: WebSocket, room: Room) -> None:
+    if not room.game:
+        return
+    state = _snapshot_state(room.game, room)
+    await _send(ws, net_protocol.match_state_message(room, state))
+
+
+async def _send_reconnect_token(ws: WebSocket, room: Room, pid: int) -> None:
+    slot = room.players[pid]
+    await _send(ws, {
+        "type": "reconnect_token",
+        "room_code": room.room_code,
+        "pid": pid,
+        "reconnect_token": slot.reconnect_token,
+        "last_seq_applied": slot.last_seq_applied,
+    })
+
+
+async def _send_cmd_ack(ws: WebSocket, cmd_id: str, seq: int, last_seq_applied: int, applied: bool, duplicate: bool = False) -> None:
+    await _send(ws, {
+        "type": "cmd_ack",
+        "cmd_id": cmd_id,
+        "seq": int(seq),
+        "last_seq_applied": int(last_seq_applied),
+        "applied": bool(applied),
+        "duplicate": bool(duplicate),
+    })
+
+
 def _get_conn(ws: WebSocket) -> ClientConn:
     return manager.connections[ws]
 
@@ -141,6 +182,9 @@ def _start_match(room: Room) -> None:
     for slot in room.players:
         if slot.name:
             room.game.players[slot.pid].name = slot.name
+        slot.last_seq_applied = 0
+        slot.seen_cmd_ids.clear()
+        slot.seen_cmd_set.clear()
     room.status = "in_match"
 
 
@@ -171,6 +215,16 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     except RuleError as exc:
         return net_protocol.error_message(exc.code, exc.message, exc.details)
     return None
+
+
+def _remember_cmd_id(slot: PlayerSlot, cmd_id: str) -> None:
+    if cmd_id in slot.seen_cmd_set:
+        return
+    if len(slot.seen_cmd_ids) >= CMD_ID_LRU:
+        old = slot.seen_cmd_ids.popleft()
+        slot.seen_cmd_set.discard(old)
+    slot.seen_cmd_ids.append(cmd_id)
+    slot.seen_cmd_set.add(cmd_id)
 
 
 @app.websocket("/ws")
@@ -204,6 +258,7 @@ async def websocket_endpoint(ws: WebSocket):
                 conn.room_code = room.room_code
                 conn.pid = 0
                 await _send(ws, net_protocol.room_state_message(room))
+                await _send_reconnect_token(ws, room, 0)
                 continue
 
             if mtype == "join_room":
@@ -221,7 +276,33 @@ async def websocket_endpoint(ws: WebSocket):
                 conn.room_code = room.room_code
                 conn.pid = pid
                 await _send(ws, net_protocol.room_state_message(room))
+                if pid is not None:
+                    await _send_reconnect_token(ws, room, pid)
                 await _send_room_state(room)
+                continue
+
+            if mtype == "reconnect":
+                room_code = data.get("room_code")
+                token = data.get("reconnect_token")
+                room = manager.rooms.get(room_code)
+                if not room:
+                    await _send(ws, net_protocol.error_message("not_found", "Room not found"))
+                    continue
+                pid = None
+                for slot in room.players:
+                    if slot.reconnect_token == token:
+                        pid = slot.pid
+                        slot.connected = True
+                        break
+                if pid is None:
+                    await _send(ws, net_protocol.error_message("forbidden", "Invalid reconnect token"))
+                    continue
+                conn.room_code = room.room_code
+                conn.pid = pid
+                await _send(ws, net_protocol.room_state_message(room))
+                await _send_reconnect_token(ws, room, pid)
+                if room.status == "in_match":
+                    await _send_match_state_to(ws, room)
                 continue
 
             if mtype == "leave_room":
@@ -267,22 +348,39 @@ async def websocket_endpoint(ws: WebSocket):
                 if not room:
                     await _send(ws, net_protocol.error_message("not_found", "Room not found"))
                     continue
+                if data.get("room_code") is not None and data.get("room_code") != room.room_code:
+                    await _send(ws, net_protocol.error_message("invalid", "room_code mismatch"))
+                    continue
                 if data.get("match_id") != room.match_id:
                     await _send(ws, net_protocol.error_message("invalid", "match_id mismatch"))
                     continue
-                seq = int(data.get("seq"))
-                if seq <= conn.last_seq:
+                if conn.pid is None:
+                    await _send(ws, net_protocol.error_message("invalid", "No player slot assigned"))
                     continue
-                conn.last_seq = seq
+                cmd_id = data.get("cmd_id")
+                seq = int(data.get("seq"))
+                slot = room.players[conn.pid]
+                expected_seq = slot.last_seq_applied + 1
+
+                if cmd_id in slot.seen_cmd_set or seq <= slot.last_seq_applied:
+                    await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=False, duplicate=True)
+                    continue
+                if seq > expected_seq:
+                    await _send(ws, net_protocol.error_message("out_of_order", "Out of order seq", {"expected_seq": expected_seq}))
+                    continue
+
+                slot.last_seq_applied = seq
+                _remember_cmd_id(slot, cmd_id)
 
                 err = _apply_cmd(room, conn.pid, data.get("cmd", {}))
                 if err:
                     await _send(ws, err)
-                    continue
-
-                room.tick += 1
-                room.last_activity_ts = time.time()
-                await _send_match_state(room)
+                    await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=False)
+                else:
+                    room.tick += 1
+                    room.last_activity_ts = time.time()
+                    await _send_match_state(room)
+                    await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=True)
                 continue
 
     except WebSocketDisconnect:

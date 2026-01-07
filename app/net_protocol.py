@@ -44,6 +44,13 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "name required")
         return {"ok": True}
 
+    if mtype == "reconnect":
+        if not isinstance(msg.get("room_code"), str):
+            return _err("invalid", "room_code required")
+        if not isinstance(msg.get("reconnect_token"), str):
+            return _err("invalid", "reconnect_token required")
+        return {"ok": True}
+
     if mtype in ("leave_room", "start_match", "rematch"):
         return {"ok": True}
 
@@ -52,6 +59,10 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "match_id required")
         if not isinstance(msg.get("seq"), int):
             return _err("invalid", "seq required")
+        if not isinstance(msg.get("cmd_id"), str):
+            return _err("invalid", "cmd_id required")
+        if "room_code" in msg and not isinstance(msg.get("room_code"), str):
+            return _err("invalid", "room_code must be string")
         cmd = msg.get("cmd")
         if not isinstance(cmd, dict):
             return _err("invalid", "cmd must be object")
