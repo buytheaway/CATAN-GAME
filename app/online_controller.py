@@ -25,6 +25,8 @@ class OnlineGameController(QtCore.QObject):
 
         self.net.match_state_received.connect(self._on_match_state)
         self.net.room_state_received.connect(self._on_room_state)
+        self.net.seq_state_received.connect(self._on_seq_state)
+        self.net.out_of_order_received.connect(self._on_out_of_order)
 
         self.window.set_online(self, self.you_pid)
 
@@ -32,10 +34,19 @@ class OnlineGameController(QtCore.QObject):
         self.room_code = data.get("room_code")
 
     def _on_match_state(self, data: Dict[str, Any]):
-        self.match_id = int(data.get("match_id", 0))
+        new_match_id = int(data.get("match_id", 0))
+        if new_match_id != self.match_id:
+            self.seq = 0
+        self.match_id = new_match_id
         self.current_state = data.get("state") or {}
         seed = int(data.get("seed", 0))
         self.apply_snapshot(self.current_state, seed=seed)
+
+    def _on_seq_state(self, last_seq_applied: int):
+        self.seq = max(self.seq, int(last_seq_applied))
+
+    def _on_out_of_order(self, expected_seq: int):
+        self.seq = max(self.seq, int(expected_seq) - 1)
 
     def _next_seq(self) -> int:
         self.seq += 1
