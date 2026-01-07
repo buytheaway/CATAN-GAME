@@ -8,6 +8,7 @@ from app.engine.state import (
     RESOURCES,
     TERRAIN_TO_RES,
     Tile,
+    TradeOffer,
 )
 from app.engine.rules import (
     RuleError,
@@ -43,6 +44,7 @@ __all__ = [
     "RESOURCES",
     "TERRAIN_TO_RES",
     "Tile",
+    "TradeOffer",
     "RuleError",
     "apply_cmd",
     "best_trade_rate",

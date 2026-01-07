@@ -9,6 +9,7 @@ from app.engine.state import (
     PlayerState,
     RESOURCES,
     Tile,
+    TradeOffer,
 )
 
 
@@ -36,6 +37,20 @@ def to_dict(g: GameState) -> Dict:
         "pending_victims": list(g.pending_victims),
         "discard_required": {str(k): int(v) for k, v in g.discard_required.items()},
         "discard_submitted": [int(x) for x in g.discard_submitted],
+        "trade_offers": [
+            {
+                "offer_id": o.offer_id,
+                "from_pid": o.from_pid,
+                "to_pid": o.to_pid,
+                "give": dict(o.give),
+                "get": dict(o.get),
+                "status": o.status,
+                "created_turn": o.created_turn,
+                "created_tick": o.created_tick,
+            }
+            for o in g.trade_offers
+        ],
+        "trade_offer_next_id": g.trade_offer_next_id,
         "longest_road_owner": g.longest_road_owner,
         "longest_road_len": g.longest_road_len,
         "largest_army_owner": g.largest_army_owner,
@@ -135,6 +150,19 @@ def from_dict(data: Dict) -> GameState:
     g.pending_victims = list(data.get("pending_victims", []))
     g.discard_required = {int(k): int(v) for k, v in data.get("discard_required", {}).items()}
     g.discard_submitted = set(int(x) for x in data.get("discard_submitted", []))
+    g.trade_offers = []
+    for o in data.get("trade_offers", []):
+        g.trade_offers.append(TradeOffer(
+            offer_id=int(o.get("offer_id", 0)),
+            from_pid=int(o.get("from_pid", 0)),
+            to_pid=o.get("to_pid", None),
+            give={r: int(q) for r, q in o.get("give", {}).items()},
+            get={r: int(q) for r, q in o.get("get", {}).items()},
+            status=str(o.get("status", "active")),
+            created_turn=int(o.get("created_turn", 0)),
+            created_tick=int(o.get("created_tick", 0)),
+        ))
+    g.trade_offer_next_id = int(data.get("trade_offer_next_id", 1))
     g.longest_road_owner = data.get("longest_road_owner", None)
     g.longest_road_len = int(data.get("longest_road_len", 0))
     g.largest_army_owner = data.get("largest_army_owner", None)

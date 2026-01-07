@@ -14,6 +14,7 @@ from app.engine.state import (
     RESOURCES,
     TERRAIN_TO_RES,
     Tile,
+    TradeOffer,
 )
 
 
@@ -606,6 +607,44 @@ def _steal_one(g: GameState, thief_pid: int, victim_pid: int) -> Optional[str]:
     return r
 
 
+def _clean_trade_payload(payload: Dict) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    if not isinstance(payload, dict):
+        return out
+    for r, n in payload.items():
+        if r not in RESOURCES:
+            continue
+        q = int(n)
+        if q > 0:
+            out[r] = q
+    return out
+
+
+def _ensure_trade_payload(payload: Dict, label: str) -> Dict[str, int]:
+    clean = _clean_trade_payload(payload)
+    if not clean:
+        raise RuleError("invalid", f"{label} must have at least one resource")
+    return clean
+
+
+def _sum_payload(payload: Dict[str, int]) -> int:
+    return sum(int(v) for v in payload.values())
+
+
+def _has_resources(res: Dict[str, int], payload: Dict[str, int]) -> bool:
+    for r, q in payload.items():
+        if int(res.get(r, 0)) < int(q):
+            return False
+    return True
+
+
+def _find_offer(g: GameState, offer_id: int) -> Optional[TradeOffer]:
+    for o in g.trade_offers:
+        if o.offer_id == offer_id:
+            return o
+    return None
+
+
 def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]:
     events: List[Dict] = []
     ctype = cmd.get("type")
@@ -812,6 +851,80 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             events.append({"type": "discard_complete", "pending": "robber_move"})
         return g, events
 
+    if ctype == "trade_offer_create":
+        if g.phase != "main" or g.turn != pid:
+            raise RuleError("illegal", "Not your turn")
+        give = _ensure_trade_payload(cmd.get("give", {}), "give")
+        get = _ensure_trade_payload(cmd.get("get", {}), "get")
+        if not _has_resources(g.players[pid].res, give):
+            raise RuleError("illegal", "Not enough resources for offer")
+        to_pid = cmd.get("to_pid", cmd.get("to"))
+        if to_pid is not None:
+            to_pid = int(to_pid)
+            if to_pid < 0 or to_pid >= len(g.players):
+                raise RuleError("invalid", "Invalid to_pid")
+            if to_pid == pid:
+                raise RuleError("invalid", "Cannot trade with self")
+        offer = TradeOffer(
+            offer_id=int(g.trade_offer_next_id),
+            from_pid=int(pid),
+            to_pid=to_pid,
+            give=dict(give),
+            get=dict(get),
+            status="active",
+            created_turn=int(g.turn),
+            created_tick=int(g.tick),
+        )
+        g.trade_offer_next_id += 1
+        g.trade_offers.append(offer)
+        events.append({"type": "trade_offer_created", "offer_id": offer.offer_id})
+        return g, events
+
+    if ctype in ("trade_offer_accept", "trade_offer_decline", "trade_offer_cancel"):
+        offer_id = int(cmd.get("offer_id", cmd.get("id", -1)))
+        offer = _find_offer(g, offer_id)
+        if offer is None:
+            raise RuleError("invalid", "Offer not found")
+        if offer.status != "active":
+            raise RuleError("illegal", "Offer not active")
+
+        if ctype == "trade_offer_cancel":
+            if offer.from_pid != pid:
+                raise RuleError("illegal", "Only creator can cancel")
+            offer.status = "canceled"
+            events.append({"type": "trade_offer_canceled", "offer_id": offer.offer_id})
+            return g, events
+
+        if offer.to_pid is not None and pid != offer.to_pid:
+            raise RuleError("illegal", "Offer not addressed to player")
+        if offer.from_pid == pid:
+            raise RuleError("illegal", "Creator cannot accept/decline own offer")
+
+        if g.phase != "main" or g.turn != offer.from_pid:
+            raise RuleError("illegal", "Offer expired")
+
+        if ctype == "trade_offer_decline":
+            offer.status = "declined"
+            events.append({"type": "trade_offer_declined", "offer_id": offer.offer_id, "pid": pid})
+            return g, events
+
+        # accept
+        from_p = g.players[offer.from_pid].res
+        to_p = g.players[pid].res
+        if not _has_resources(from_p, offer.give):
+            raise RuleError("illegal", "Offerer lacks resources")
+        if not _has_resources(to_p, offer.get):
+            raise RuleError("illegal", "Acceptor lacks resources")
+        for r, q in offer.give.items():
+            from_p[r] -= int(q)
+            to_p[r] += int(q)
+        for r, q in offer.get.items():
+            to_p[r] -= int(q)
+            from_p[r] += int(q)
+        offer.status = "accepted"
+        events.append({"type": "trade_offer_accepted", "offer_id": offer.offer_id, "pid": pid})
+        return g, events
+
     if ctype == "move_robber":
         tile = int(cmd.get("tile"))
         victim = cmd.get("victim", cmd.get("victim_pid"))
@@ -858,6 +971,13 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Not your turn")
         if g.pending_action is not None:
             raise RuleError("pending_action", "Resolve pending action first")
+        canceled = []
+        for offer in g.trade_offers:
+            if offer.status == "active":
+                offer.status = "canceled"
+                canceled.append(offer.offer_id)
+        if canceled:
+            events.append({"type": "trade_offer_canceled_bulk", "offer_ids": list(canceled)})
         end_turn_cleanup(g, pid)
         g.turn = (g.turn + 1) % len(g.players)
         g.rolled = False

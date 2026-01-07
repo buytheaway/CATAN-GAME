@@ -26,6 +26,18 @@ DEV_TYPES = ["knight", "victory_point", "road_building", "year_of_plenty", "mono
 
 
 @dataclass
+class TradeOffer:
+    offer_id: int
+    from_pid: int
+    to_pid: Optional[int]
+    give: Dict[str, int]
+    get: Dict[str, int]
+    status: str = "active"
+    created_turn: int = 0
+    created_tick: int = 0
+
+
+@dataclass
 class Tile:
     q: int
     r: int
@@ -100,6 +112,8 @@ class GameState:
 
     tick: int = 0
     state_version: int = 1
+    trade_offers: List[TradeOffer] = field(default_factory=list)
+    trade_offer_next_id: int = 1
 
     def dev_summary(self, pid: int) -> Dict[str, int]:
         counts = {k: 0 for k in DEV_TYPES}
