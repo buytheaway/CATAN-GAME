@@ -16,6 +16,8 @@ tests/reports/*.json
 tools/reports/*.json
 tools/reports/*.png
 tools/reports/*.log
+/web/node_modules/
+/web/dist/
 
 # PyInstaller output
 /dist/
