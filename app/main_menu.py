@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from app.config import GameConfig
 from app.game_launcher import start_game
 from app.lobby_ui import LobbyWindow
+from app.engine.maps import list_presets
 from app.theme import apply_theme, apply_ui_scale
 
 
@@ -34,7 +35,12 @@ class ModeSelectDialog(QtWidgets.QDialog):
         self.cb_expansion.setModel(model)
 
         self.cb_map = QtWidgets.QComboBox()
-        self.cb_map.addItem("Classic 19")
+        self._map_presets = list_presets()
+        if not self._map_presets:
+            self.cb_map.addItem("Base Standard", "base_standard")
+        else:
+            for preset in self._map_presets:
+                self.cb_map.addItem(preset["name"], preset["id"])
 
         self.chk_bot = QtWidgets.QCheckBox("Enable Bot")
         self.chk_bot.setChecked(config.bot_enabled)
@@ -73,7 +79,7 @@ class ModeSelectDialog(QtWidgets.QDialog):
             self._config,
             mode=self._mode,
             expansion=expansion,
-            map_preset="classic_19",
+            map_preset=str(self.cb_map.currentData() or "base_standard"),
             bot_enabled=self.chk_bot.isChecked(),
             bot_difficulty=int(self.sp_difficulty.value()),
         )

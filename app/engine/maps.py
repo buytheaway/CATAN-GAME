@@ -11,6 +11,52 @@ from app.resource_path import resource_path
 
 
 MAP_VERSION = 1
+DEFAULT_PRESET_ID = "base_standard"
+
+PRESET_REGISTRY = [
+    {
+        "id": "base_standard",
+        "name": "Base Standard",
+        "description": "Classic 19-hex base map with standard decks.",
+        "file": "base_standard.json",
+    },
+    {
+        "id": "base_rich_ore",
+        "name": "Base: Ore Rich",
+        "description": "Extra mountains, fewer fields (resource skew).",
+        "file": "base_rich_ore.json",
+    },
+    {
+        "id": "base_high_prob",
+        "name": "Base: High Probability",
+        "description": "More 6/8 tiles, fewer low rolls (faster economy).",
+        "file": "base_high_prob.json",
+    },
+    {
+        "id": "base_12vp",
+        "name": "Base: 12 VP",
+        "description": "Standard base map with victory target 12.",
+        "file": "base_12vp.json",
+    },
+    {
+        "id": "base_20vp_multi_robbers",
+        "name": "Base: 20 VP (Multi-Robber)",
+        "description": "Higher VP target with two robbers blocking tiles.",
+        "file": "base_20vp_multi_robbers.json",
+    },
+    {
+        "id": "seafarers_simple_1",
+        "name": "Seafarers: Coastal Lanes",
+        "description": "Sea lanes on the sides with larger land core.",
+        "file": "seafarers_simple_1.json",
+    },
+    {
+        "id": "seafarers_simple_2",
+        "name": "Seafarers: Simple Sea Ring",
+        "description": "Coastal ring of sea tiles for ships (MVP).",
+        "file": "seafarers_simple_2.json",
+    },
+]
 
 DEFAULT_TERRAIN_DECK = (
     ["forest"] * 4
@@ -51,8 +97,21 @@ def load_map_file(path: Path) -> Dict[str, Any]:
 
 
 def get_preset_map(name: str) -> Dict[str, Any]:
-    path = maps_dir() / f"{name}.json"
+    preset = next((p for p in PRESET_REGISTRY if p["id"] == name), None)
+    filename = preset["file"] if preset else f"{name}.json"
+    path = maps_dir() / filename
     return load_map_file(path)
+
+
+def list_presets() -> List[Dict[str, str]]:
+    return [{"id": p["id"], "name": p["name"], "description": p["description"]} for p in PRESET_REGISTRY]
+
+
+def get_preset_meta(name: str) -> Optional[Dict[str, str]]:
+    preset = next((p for p in PRESET_REGISTRY if p["id"] == name), None)
+    if not preset:
+        return None
+    return {"id": preset["id"], "name": preset["name"], "description": preset["description"]}
 
 
 def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -134,6 +193,24 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     rules = data.get("rules")
     if rules is not None and not isinstance(rules, dict):
         raise MapValidationError("rules must be object")
+    if isinstance(rules, dict):
+        if "target_vp" in rules and not isinstance(rules.get("target_vp"), int):
+            raise MapValidationError("rules.target_vp must be int")
+        if "victory_points" in rules and not isinstance(rules.get("victory_points"), int):
+            raise MapValidationError("rules.victory_points must be int")
+        if "robber_count" in rules and not isinstance(rules.get("robber_count"), int):
+            raise MapValidationError("rules.robber_count must be int")
+        if "enable_seafarers" in rules and not isinstance(rules.get("enable_seafarers"), bool):
+            raise MapValidationError("rules.enable_seafarers must be bool")
+        if "max_ships" in rules and not isinstance(rules.get("max_ships"), int):
+            raise MapValidationError("rules.max_ships must be int")
+        limits = rules.get("limits")
+        if limits is not None:
+            if not isinstance(limits, dict):
+                raise MapValidationError("rules.limits must be object")
+            for key in ("roads", "settlements", "cities", "ships"):
+                if key in limits and not isinstance(limits.get(key), int):
+                    raise MapValidationError("rules.limits values must be int", {"key": key})
 
     robber_tile = data.get("robber_tile")
     if robber_tile is not None and not isinstance(robber_tile, int):

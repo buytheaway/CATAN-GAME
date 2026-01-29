@@ -139,6 +139,9 @@ class NetClient(QtCore.QObject):
     def rematch(self):
         self.send({"type": "rematch"})
 
+    def set_map(self, map_id: str):
+        self.send({"type": "set_map", "map_id": str(map_id)})
+
     def send_cmd(self, match_id: int, seq: int, cmd_obj: Dict[str, Any], cmd_id: Optional[str] = None):
         if not cmd_id:
             cmd_id = uuid.uuid4().hex

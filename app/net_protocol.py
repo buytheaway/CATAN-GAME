@@ -54,6 +54,11 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
     if mtype in ("leave_room", "start_match", "rematch"):
         return {"ok": True}
 
+    if mtype == "set_map":
+        if not isinstance(msg.get("map_id"), str):
+            return _err("invalid", "map_id required")
+        return {"ok": True}
+
     if mtype == "cmd":
         if not isinstance(msg.get("match_id"), int):
             return _err("invalid", "match_id required")
@@ -78,7 +83,7 @@ def error_message(code: str, message: str, detail: Optional[Dict[str, Any]] = No
 
 
 def room_state_message(room) -> Dict[str, Any]:
-    return {
+    msg = {
         "type": "room_state",
         "room_code": room.room_code,
         "host_pid": room.host_pid,
@@ -89,6 +94,15 @@ def room_state_message(room) -> Dict[str, Any]:
         "max_players": room.max_players,
         "status": room.status,
     }
+    if hasattr(room, "selected_map_id"):
+        msg["map_id"] = getattr(room, "selected_map_id")
+    if hasattr(room, "selected_map_meta"):
+        msg["map_meta"] = getattr(room, "selected_map_meta")
+    if hasattr(room, "map_presets"):
+        msg["map_presets"] = getattr(room, "map_presets")
+    if hasattr(room, "selected_rules_config"):
+        msg["map_rules"] = getattr(room, "selected_rules_config")
+    return msg
 
 
 def match_state_message(room, state: Dict[str, Any]) -> Dict[str, Any]:

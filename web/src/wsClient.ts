@@ -1,10 +1,22 @@
-﻿export type RoomState = {
+export type RoomState = {
   type: "room_state";
   room_code: string;
   host_pid: number;
   players: { pid: number; name: string; connected: boolean }[];
   max_players: number;
   status: "lobby" | "in_match";
+  map_id?: string;
+  map_meta?: { id?: string; name?: string; description?: string };
+  map_presets?: { id: string; name: string; description?: string }[];
+  map_rules?: {
+    target_vp?: number;
+    robber_count?: number;
+    max_roads?: number;
+    max_settlements?: number;
+    max_cities?: number;
+    enable_seafarers?: boolean;
+    max_ships?: number;
+  };
 };
 
 export type MatchState = {
@@ -105,6 +117,11 @@ export class WSClient {
   rematch() {
     this.send({ type: "rematch" });
   }
+
+  setMap(mapId: string) {
+    this.send({ type: "set_map", map_id: mapId });
+  }
+
 
   sendCmd(cmd: Record<string, any>) {
     if (!this.matchId) {

@@ -5,6 +5,7 @@ from typing import Optional
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.config import GameConfig
+from app.engine.maps import list_presets
 from app.net_client import NetClient
 from app.online_controller import OnlineGameController
 from app import ui_v6
@@ -33,10 +34,18 @@ class LobbyWindow(QtWidgets.QDialog):
         self.sp_players = QtWidgets.QSpinBox()
         self.sp_players.setRange(2, 6)
         self.sp_players.setValue(4)
+        self.cb_map = QtWidgets.QComboBox()
+        self._map_presets = list_presets()
+        if self._map_presets:
+            for preset in self._map_presets:
+                self.cb_map.addItem(preset["name"], preset["id"])
+        else:
+            self.cb_map.addItem("Base Standard", "base_standard")
         form.addRow("Server URL:", self.ed_url)
         form.addRow("Name:", self.ed_name)
         form.addRow("Room code:", self.ed_room)
         form.addRow("Max players:", self.sp_players)
+        form.addRow("Map preset:", self.cb_map)
         root.addLayout(form)
 
         row = QtWidgets.QHBoxLayout()
@@ -52,23 +61,29 @@ class LobbyWindow(QtWidgets.QDialog):
         row2 = QtWidgets.QHBoxLayout()
         self.btn_start = QtWidgets.QPushButton("Start Match")
         self.btn_rematch = QtWidgets.QPushButton("Rematch")
+        self.btn_set_map = QtWidgets.QPushButton("Set Map")
         self.btn_close = QtWidgets.QPushButton("Close")
         self.btn_start.setEnabled(False)
         self.btn_rematch.setEnabled(False)
+        self.btn_set_map.setEnabled(False)
         row2.addWidget(self.btn_start)
         row2.addWidget(self.btn_rematch)
+        row2.addWidget(self.btn_set_map)
         row2.addStretch(1)
         row2.addWidget(self.btn_close)
         root.addLayout(row2)
 
         self.lbl_status = QtWidgets.QLabel("")
         root.addWidget(self.lbl_status)
+        self.lbl_map = QtWidgets.QLabel("")
+        root.addWidget(self.lbl_map)
 
         self.btn_close.clicked.connect(self.reject)
         self.btn_host.clicked.connect(self._on_host)
         self.btn_join.clicked.connect(self._on_join)
         self.btn_start.clicked.connect(self._on_start)
         self.btn_rematch.clicked.connect(self._on_rematch)
+        self.btn_set_map.clicked.connect(self._on_set_map)
 
         self.net.connected.connect(self._on_connected)
         self.net.disconnected.connect(self._on_disconnected)
@@ -116,6 +131,10 @@ class LobbyWindow(QtWidgets.QDialog):
     def _on_rematch(self):
         self.net.rematch()
 
+    def _on_set_map(self):
+        map_id = self.cb_map.currentData() or "base_standard"
+        self.net.set_map(str(map_id))
+
     def _on_room_state(self, data: dict):
         self.room_state = data
         self.list_players.clear()
@@ -133,9 +152,38 @@ class LobbyWindow(QtWidgets.QDialog):
                 self.you_pid = p["pid"]
             self.list_players.addItem(label)
 
+        presets = data.get("map_presets")
+        if isinstance(presets, list) and presets:
+            self.cb_map.blockSignals(True)
+            self.cb_map.clear()
+            for preset in presets:
+                self.cb_map.addItem(preset.get("name", preset.get("id", "map")), preset.get("id"))
+            self.cb_map.blockSignals(False)
+        map_id = data.get("map_id")
+        if isinstance(map_id, str):
+            idx = self.cb_map.findData(map_id)
+            if idx >= 0:
+                self.cb_map.setCurrentIndex(idx)
+        meta = data.get("map_meta") or {}
+        rules = data.get("map_rules") or {}
+        rule_bits = []
+        if "target_vp" in rules:
+            rule_bits.append(f"Target VP {rules.get('target_vp')}")
+        if "robber_count" in rules:
+            rule_bits.append(f"Robbers {rules.get('robber_count')}")
+        rule_text = f" | {' · '.join(rule_bits)}" if rule_bits else ""
+        if meta:
+            desc = meta.get("description", "")
+            desc_text = f" — {desc}" if desc else ""
+            self.lbl_map.setText(f"Map: {meta.get('name', map_id)}{desc_text}{rule_text}")
+        elif map_id:
+            self.lbl_map.setText(f"Map: {map_id}{rule_text}")
+
         can_start = self.you_pid == host_pid and sum(1 for p in players if p.get("name")) >= 2
         self.btn_start.setEnabled(bool(can_start))
         self.btn_rematch.setEnabled(data.get("status") == "in_match" and self.you_pid == host_pid)
+        self.btn_set_map.setEnabled(self.you_pid == host_pid and data.get("status") == "lobby")
+        self.cb_map.setEnabled(self.you_pid == host_pid and data.get("status") == "lobby")
         if data.get("room_code"):
             self.ed_room.setText(data.get("room_code"))
 

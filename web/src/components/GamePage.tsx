@@ -25,9 +25,17 @@ export default function GamePage({
   const pendingPid = state.pending_pid;
   const required = state.discard_required || {};
   const needDiscard = pending === "discard" && required[String(youPid)] > 0;
+  const mapMeta = state.map_meta || room?.map_meta || {};
+  const mapId = state.map_id || room?.map_id || "";
+  const rules = state.rules_config || {};
+  const targetVp = rules.target_vp ?? 10;
+  const robberCount = rules.robber_count ?? (state.robbers ? state.robbers.length : 1);
+  const seafarersEnabled = !!rules.enable_seafarers;
 
   const [robberTile, setRobberTile] = useState(0);
   const [discard, setDiscard] = useState<Record<string, number>>({});
+  const [shipA, setShipA] = useState(0);
+  const [shipB, setShipB] = useState(0);
 
   const resKeys = useMemo(() => Object.keys(res), [res]);
 
@@ -42,6 +50,10 @@ export default function GamePage({
     client.sendCmd({ type: "move_robber", tile: Number(robberTile) });
   };
 
+  const handleBuildShip = () => {
+    client.sendCmd({ type: "build_ship", eid: [Number(shipA), Number(shipB)] });
+  };
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div>
@@ -51,6 +63,12 @@ export default function GamePage({
         <div>Turn: P{state.turn + 1}</div>
         <div>Phase: {state.phase}</div>
         <div>Pending: {pending}</div>
+        <div>Target VP: {targetVp}</div>
+        <div>Robbers: {robberCount}</div>
+        <div>Seafarers: {seafarersEnabled ? "on" : "off"}</div>
+        {mapId ? (
+          <div>Map: {mapMeta.name || mapId} {mapMeta.description ? `— ${mapMeta.description}` : ""}</div>
+        ) : null}
         {error ? <div style={{ color: "crimson" }}>Error: {error.message}</div> : null}
       </div>
 
@@ -69,6 +87,20 @@ export default function GamePage({
         <button onClick={() => client.sendCmd({ type: "roll" })} disabled={!canRoll}>Roll</button>
         <button onClick={() => client.sendCmd({ type: "end_turn" })} disabled={!canEnd}>End Turn</button>
       </div>
+
+      {seafarersEnabled ? (
+        <div style={{ border: "1px solid #ddd", padding: 12 }}>
+          <h4>Build Ship (edge)</h4>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span>Vertex A</span>
+            <input type="number" value={shipA} onChange={(e) => setShipA(Number(e.target.value))} />
+            <span>Vertex B</span>
+            <input type="number" value={shipB} onChange={(e) => setShipB(Number(e.target.value))} />
+            <button onClick={handleBuildShip}>Build Ship</button>
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Ship cost: wood + sheep</div>
+        </div>
+      ) : null}
 
       {needDiscard ? (
         <div style={{ border: "1px solid #ddd", padding: 12 }}>

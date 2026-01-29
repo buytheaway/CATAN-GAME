@@ -8,6 +8,7 @@ from app.engine.state import (
     GameState,
     PlayerState,
     RESOURCES,
+    RulesConfig,
     Tile,
     TradeOffer,
 )
@@ -19,12 +20,24 @@ def _edge_key(e: Tuple[int, int]) -> str:
 
 
 def to_dict(g: GameState) -> Dict:
+    cfg = getattr(g, "rules_config", RulesConfig())
     return {
         "state_version": g.state_version,
         "max_players": g.max_players,
         "size": g.size,
         "map_name": g.map_name,
+        "map_id": getattr(g, "map_id", g.map_name),
+        "map_meta": dict(getattr(g, "map_meta", {}) or {}),
         "rules": dict(getattr(g, "rules", {}) or {}),
+        "rules_config": {
+            "target_vp": int(getattr(cfg, "target_vp", 10)),
+            "max_roads": int(getattr(cfg, "max_roads", 15)),
+            "max_settlements": int(getattr(cfg, "max_settlements", 5)),
+            "max_cities": int(getattr(cfg, "max_cities", 4)),
+            "robber_count": int(getattr(cfg, "robber_count", 1)),
+            "enable_seafarers": bool(getattr(cfg, "enable_seafarers", False)),
+            "max_ships": int(getattr(cfg, "max_ships", 15)),
+        },
         "phase": g.phase,
         "turn": g.turn,
         "rolled": g.rolled,
@@ -34,6 +47,7 @@ def to_dict(g: GameState) -> Dict:
         "setup_anchor_vid": g.setup_anchor_vid,
         "last_roll": g.last_roll,
         "robber_tile": g.robber_tile,
+        "robbers": list(getattr(g, "robbers", []) or [g.robber_tile]),
         "pending_action": g.pending_action,
         "pending_pid": g.pending_pid,
         "pending_victims": list(g.pending_victims),
@@ -72,6 +86,7 @@ def to_dict(g: GameState) -> Dict:
         "bank": dict(g.bank),
         "occupied_v": {str(k): [v[0], v[1]] for k, v in g.occupied_v.items()},
         "occupied_e": {_edge_key((a, b)): owner for (a, b), owner in g.occupied_e.items()},
+        "occupied_ships": {_edge_key((a, b)): owner for (a, b), owner in g.occupied_ships.items()},
         "tiles": [
             {
                 "q": t.q,
@@ -116,6 +131,12 @@ def from_dict(data: Dict) -> GameState:
             a, b = k.split(",", 1)
             e = (int(a), int(b))
             occupied_e[e] = int(owner)
+    occupied_ships = {}
+    for k, owner in data.get("occupied_ships", {}).items():
+        if isinstance(k, str) and "," in k:
+            a, b = k.split(",", 1)
+            e = (int(a), int(b))
+            occupied_ships[e] = int(owner)
 
     board = BoardState(
         tiles=tiles,
@@ -126,6 +147,7 @@ def from_dict(data: Dict) -> GameState:
         ports=ports,
         occupied_v=occupied_v,
         occupied_e=occupied_e,
+        occupied_ships=occupied_ships,
     )
 
     players = []
@@ -139,7 +161,19 @@ def from_dict(data: Dict) -> GameState:
 
     g = GameState(seed=seed, size=size, max_players=max_players, board=board, players=players)
     g.map_name = str(data.get("map_name", "base_standard"))
+    g.map_id = str(data.get("map_id", g.map_name))
+    g.map_meta = dict(data.get("map_meta", {}) or {})
     g.rules = dict(data.get("rules", {}) or {})
+    rc = data.get("rules_config", {}) or {}
+    g.rules_config = RulesConfig(
+        target_vp=int(rc.get("target_vp", g.rules.get("target_vp", g.rules.get("victory_points", 10)))),
+        max_roads=int(rc.get("max_roads", g.rules.get("max_roads", 15))),
+        max_settlements=int(rc.get("max_settlements", g.rules.get("max_settlements", 5))),
+        max_cities=int(rc.get("max_cities", g.rules.get("max_cities", 4))),
+        robber_count=int(rc.get("robber_count", g.rules.get("robber_count", 1))),
+        enable_seafarers=bool(rc.get("enable_seafarers", g.rules.get("enable_seafarers", False))),
+        max_ships=int(rc.get("max_ships", g.rules.get("max_ships", 15))),
+    )
     g.phase = data.get("phase", "setup")
     g.turn = int(data.get("turn", 0))
     g.rolled = bool(data.get("rolled", False))
@@ -149,6 +183,9 @@ def from_dict(data: Dict) -> GameState:
     g.setup_anchor_vid = data.get("setup_anchor_vid", None)
     g.last_roll = data.get("last_roll", None)
     g.robber_tile = int(data.get("robber_tile", 0))
+    g.robbers = [int(x) for x in data.get("robbers", [])] if data.get("robbers") is not None else [g.robber_tile]
+    while len(g.robbers) < int(getattr(g.rules_config, "robber_count", 1)):
+        g.robbers.append(g.robber_tile)
     g.pending_action = data.get("pending_action", None)
     g.pending_pid = data.get("pending_pid", None)
     g.pending_victims = list(data.get("pending_victims", []))

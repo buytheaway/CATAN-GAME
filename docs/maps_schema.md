@@ -13,7 +13,7 @@ This document describes the data-driven map format used by the engine.
 - `ports` (list, optional): explicit ports list (edge + type).
 - `ports_auto` (object, optional): auto-port settings.
 - `robber_tile` (int, optional): fixed robber tile index. If omitted, desert tile is used.
-- `rules` (object, optional): scenario parameters (e.g., `victory_points`).
+- `rules` (object, optional): scenario parameters (e.g., `target_vp`, `limits`, `robber_count`, `enable_seafarers`, `max_ships`).
 
 ## Tile Entry
 
@@ -56,5 +56,10 @@ If neither is provided, a default 9-port deck is used.
 ## Notes
 
 - Graph data (vertices/edges/adjacency) is derived from tile geometry in v1.
-- For scenario rules, add fields inside `rules` (e.g., `victory_points`).
+- For scenario rules, add fields inside `rules`:
+  - `target_vp` (int, default 10)
+  - `limits` (object): `{ "roads": 15, "settlements": 5, "cities": 4 }`
+  - `robber_count` (int, default 1)
+  - `enable_seafarers` (bool, default false)
+  - `max_ships` (int, default 15)
 - Base map preset is located at `app/assets/maps/base_standard.json`.

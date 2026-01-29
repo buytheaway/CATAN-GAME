@@ -65,6 +65,10 @@ class OnlineGameController(QtCore.QObject):
     def cmd_upgrade_city(self, vid: int):
         self._send_cmd({"type": "upgrade_city", "vid": int(vid)})
 
+    def cmd_build_ship(self, eid):
+        a, b = eid
+        self._send_cmd({"type": "build_ship", "eid": [int(a), int(b)]})
+
     def cmd_roll(self):
         if not self.current_state:
             return
@@ -112,6 +116,9 @@ class OnlineGameController(QtCore.QObject):
     def apply_snapshot(self, state: Dict[str, Any], seed: int = 0):
         size = float(state.get("size", 58.0))
         g = ui_v6.Game(seed=seed, size=size)
+        g.map_id = str(state.get("map_id", "base_standard"))
+        g.map_meta = dict(state.get("map_meta", {}) or {})
+        g.rules_config = state.get("rules_config", {})
 
         g.tiles = []
         for t in state.get("tiles", []):
@@ -137,6 +144,7 @@ class OnlineGameController(QtCore.QObject):
         g.bank = {r: int(state.get("bank", {}).get(r, 0)) for r in ui_v6.RESOURCES}
         g.occupied_v = {int(k): (int(v[0]), int(v[1])) for k, v in state.get("occupied_v", {}).items()}
         g.occupied_e = {self._edge_key(k): int(v) for k, v in state.get("occupied_e", {}).items()}
+        g.occupied_ships = {self._edge_key(k): int(v) for k, v in state.get("occupied_ships", {}).items()}
 
         g.turn = int(state.get("turn", 0))
         g.phase = state.get("phase", "setup")
@@ -148,6 +156,7 @@ class OnlineGameController(QtCore.QObject):
         g.last_roll = state.get("last_roll", None)
 
         g.robber_tile = int(state.get("robber_tile", 0))
+        g.robbers = [int(x) for x in state.get("robbers", [])] if state.get("robbers") is not None else [g.robber_tile]
         g.pending_action = state.get("pending_action", None)
         g.pending_pid = state.get("pending_pid", None)
         g.pending_victims = list(state.get("pending_victims", []))

@@ -18,7 +18,7 @@ import uvicorn
 import websockets
 
 from app import net_protocol
-from app.engine import build_game, can_place_road, can_place_settlement
+from app.engine import build_game, can_place_road, can_place_settlement, can_place_ship, list_presets
 
 
 def _find_free_port() -> int:
@@ -77,6 +77,11 @@ def _apply_snapshot(g, state: dict):
         a, b = [int(x) for x in str(k).split(",", 1)]
         e = (a, b) if a < b else (b, a)
         g.occupied_e[e] = int(owner)
+    g.occupied_ships = {}
+    for k, owner in state.get("occupied_ships", {}).items():
+        a, b = [int(x) for x in str(k).split(",", 1)]
+        e = (a, b) if a < b else (b, a)
+        g.occupied_ships[e] = int(owner)
     g.setup_order = [int(x) for x in state.get("setup_order", [])]
     g.setup_idx = int(state.get("setup_idx", 0))
     g.setup_need = state.get("setup_need", "settlement")
@@ -85,6 +90,31 @@ def _apply_snapshot(g, state: dict):
     g.turn = int(state.get("turn", 0))
     g.rolled = bool(state.get("rolled", False))
     g.robber_tile = int(state.get("robber_tile", 0))
+    g.robbers = list(state.get("robbers", [])) if state.get("robbers") is not None else [g.robber_tile]
+
+
+def _edge_is_sea(g, e: tuple) -> bool:
+    for ti in g.edge_adj_hexes.get(e, []):
+        if g.tiles[ti].terrain == "sea":
+            return True
+    return False
+
+
+def _edge_is_sea_only(g, e: tuple) -> bool:
+    adj = g.edge_adj_hexes.get(e, [])
+    if not adj:
+        return False
+    return all(g.tiles[ti].terrain == "sea" for ti in adj)
+
+
+def _vertex_has_sea_edge(g, vid: int) -> bool:
+    for e in g.edges:
+        if vid not in e:
+            continue
+        ek = (e[0], e[1]) if e[0] < e[1] else (e[1], e[0])
+        if _edge_is_sea(g, ek):
+            return True
+    return False
 
 
 def _pick_settlement(g, pid: int) -> int:
@@ -92,6 +122,25 @@ def _pick_settlement(g, pid: int) -> int:
         if can_place_settlement(g, pid, vid, require_road=False):
             return vid
     raise AssertionError("No legal settlement found")
+
+
+def _pick_settlement_sea(g, pid: int) -> int:
+    for vid in sorted(g.vertices.keys()):
+        if not can_place_settlement(g, pid, vid, require_road=False):
+            continue
+        if not _vertex_has_sea_edge(g, vid):
+            continue
+        has_land_edge = False
+        for a, b in sorted(g.edges):
+            e = (a, b) if a < b else (b, a)
+            if vid not in e:
+                continue
+            if not _edge_is_sea_only(g, e):
+                has_land_edge = True
+                break
+        if has_land_edge:
+            return vid
+    return _pick_settlement(g, pid)
 
 
 def _pick_road(g, pid: int, anchor_vid: int) -> tuple:
@@ -115,7 +164,7 @@ def _plan_discard_from_state(state: dict, pid: int, need: int) -> dict:
     return plan
 
 
-async def _run_clients(port: int, max_players: int = 2):
+async def _run_clients(port: int, max_players: int = 2, map_id: str | None = None, do_ship: bool = False):
     url = f"ws://127.0.0.1:{port}/ws"
     conns = [await websockets.connect(url) for _ in range(max_players)]
     try:
@@ -134,6 +183,11 @@ async def _run_clients(port: int, max_players: int = 2):
             await _recv_type(conns[idx], "room_state")
             room_state = await _recv_type(host, "room_state")
 
+        if map_id:
+            await _send(host, {"type": "set_map", "map_id": map_id})
+            await _recv_type(host, "room_state")
+            await _recv_type(conns[1], "room_state")
+
         await _send(host, {"type": "start_match"})
         ms1 = await _recv_type(host, "match_state")
         ms2 = await _recv_type(conns[1], "match_state")
@@ -145,7 +199,7 @@ async def _run_clients(port: int, max_players: int = 2):
         match_id = int(ms1.get("match_id", 0))
         state = ms1.get("state", {})
         seed = int(ms1.get("seed", 0))
-        g = build_game(seed=seed, max_players=max_players, size=float(state.get("size", 58.0)))
+        g = build_game(seed=seed, max_players=max_players, size=float(state.get("size", 58.0)), map_id=map_id)
         _apply_snapshot(g, state)
 
         clients = {}
@@ -160,7 +214,10 @@ async def _run_clients(port: int, max_players: int = 2):
             pid = state["setup_order"][state["setup_idx"]]
             ws = clients[pid]
             if state.get("setup_need") == "settlement":
-                vid = _pick_settlement(g, pid)
+                if do_ship and pid == 0 and state.get("setup_idx") == 0:
+                    vid = _pick_settlement_sea(g, pid)
+                else:
+                    vid = _pick_settlement(g, pid)
                 seq[pid] += 1
                 await _send_cmd(ws, match_id, seq[pid], {"type": "place_settlement", "vid": vid, "setup": True})
             else:
@@ -177,6 +234,33 @@ async def _run_clients(port: int, max_players: int = 2):
                 raise AssertionError("state hash mismatch during setup")
             state = ms1.get("state", {})
             _apply_snapshot(g, state)
+
+        if do_ship and state.get("rules_config", {}).get("enable_seafarers"):
+            ship_pid = int(state.get("turn", 0))
+            if ship_pid in clients:
+                seq[ship_pid] += 1
+                await _send_cmd(clients[ship_pid], match_id, seq[ship_pid], {"type": "grant_resources", "res": {"wood": 1, "sheep": 1}})
+                ms1 = await _recv_type(host, "match_state")
+                ms2 = await _recv_type(conns[1], "match_state")
+                state = ms1.get("state", {})
+                _apply_snapshot(g, state)
+
+                ship_edge = None
+                for e in sorted(g.edges):
+                    if can_place_ship(g, ship_pid, e):
+                        ship_edge = e
+                        break
+                if ship_edge is None:
+                    raise AssertionError("No legal ship edge found in seafarers smoke")
+                seq[ship_pid] += 1
+                await _send_cmd(clients[ship_pid], match_id, seq[ship_pid], {"type": "build_ship", "eid": [ship_edge[0], ship_edge[1]]})
+                ms1 = await _recv_type(host, "match_state")
+                ms2 = await _recv_type(conns[1], "match_state")
+                if ms1["tick"] != ms2["tick"]:
+                    raise AssertionError("tick mismatch after build_ship")
+                if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+                    raise AssertionError("state hash mismatch after build_ship")
+                state = ms1.get("state", {})
 
         current_pid = int(state.get("turn", 0))
         ws = clients[current_pid]
@@ -272,8 +356,16 @@ async def _run_clients(port: int, max_players: int = 2):
 
 
 async def _run(port: int):
-    await _run_clients(port, max_players=2)
-    await _run_clients(port, max_players=5)
+    presets = list_presets()
+    map_ids = [p.get("id") for p in presets if p.get("id")]
+    if len(map_ids) < 2:
+        map_ids = ["base_standard", "base_standard"]
+    await _run_clients(port, max_players=2, map_id=map_ids[0])
+    await _run_clients(port, max_players=2, map_id=map_ids[1])
+    await _run_clients(port, max_players=5, map_id=map_ids[0])
+    sea_id = next((mid for mid in map_ids if str(mid).startswith("seafarers_")), None)
+    if sea_id:
+        await _run_clients(port, max_players=2, map_id=sea_id, do_ship=True)
 
 
 def main() -> int:

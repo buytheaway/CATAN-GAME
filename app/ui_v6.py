@@ -71,6 +71,7 @@ def set_ui_palette(theme_name: str) -> None:
         "fields": PALETTE["terrain_fields"],
         "mountains": PALETTE["terrain_mountains"],
         "desert": PALETTE["terrain_desert"],
+        "sea": PALETTE["terrain_sea"],
     }
     RESOURCE_COLORS = {
         "wood": PALETTE["res_wood"],
@@ -155,6 +156,14 @@ def resource_icon_pixmap(name: str, size: int = 28) -> QtGui.QPixmap:
     p.end()
     return pm
 
+
+def _rules_value(cfg: Any, key: str, default: Any) -> Any:
+    if isinstance(cfg, dict):
+        return cfg.get(key, default)
+    if cfg is None:
+        return default
+    return getattr(cfg, key, default)
+
 def dice_face(n: int, size: int = 42) -> QtGui.QPixmap:
     pm = QtGui.QPixmap(size, size)
     pm.fill(QtCore.Qt.transparent)
@@ -223,6 +232,23 @@ def make_action_icon(name: str, size: int = 34) -> QtGui.QPixmap:
     elif name == "city":
         p.drawRoundedRect(QtCore.QRectF(size*0.22, size*0.48, size*0.56, size*0.32), 4, 4)
         p.drawRect(QtCore.QRectF(size*0.32, size*0.3, size*0.36, size*0.2))
+    elif name == "ship":
+        hull = QtGui.QPolygonF([
+            QtCore.QPointF(size*0.18, size*0.62),
+            QtCore.QPointF(size*0.82, size*0.62),
+            QtCore.QPointF(size*0.70, size*0.78),
+            QtCore.QPointF(size*0.30, size*0.78),
+        ])
+        p.drawPolygon(hull)
+        p.setBrush(QtCore.Qt.NoBrush)
+        p.drawLine(int(size*0.50), int(size*0.25), int(size*0.50), int(size*0.62))
+        p.setBrush(fg)
+        sail = QtGui.QPolygonF([
+            QtCore.QPointF(size*0.50, size*0.28),
+            QtCore.QPointF(size*0.72, size*0.58),
+            QtCore.QPointF(size*0.50, size*0.58),
+        ])
+        p.drawPolygon(sail)
     elif name == "dev":
         p.drawRoundedRect(QtCore.QRectF(size*0.28, size*0.2, size*0.42, size*0.6), 6, 6)
         p.drawRoundedRect(QtCore.QRectF(size*0.18, size*0.3, size*0.42, size*0.6), 6, 6)
@@ -268,6 +294,9 @@ class Player:
 class Game:
     seed: int
     size: float = 58.0  # map scale
+    map_id: str = "base_standard"
+    map_meta: Dict[str, Any] = field(default_factory=dict)
+    rules_config: Any = None
     tiles: List[HexTile] = field(default_factory=list)
     # geometry:
     vertices: Dict[int, QtCore.QPointF] = field(default_factory=dict)          # vid -> point
@@ -280,6 +309,7 @@ class Game:
     bank: Dict[str,int] = field(default_factory=lambda: {k:19 for k in RESOURCES})
     occupied_v: Dict[int, Tuple[int,int]] = field(default_factory=dict)        # vid -> (pid, level 1/2)
     occupied_e: Dict[Tuple[int,int], int] = field(default_factory=dict)        # (a,b)-> pid
+    occupied_ships: Dict[Tuple[int,int], int] = field(default_factory=dict)    # (a,b)-> pid
 
     turn: int = 0
     phase: str = "setup"  # setup/main
@@ -293,6 +323,7 @@ class Game:
 
     ports: List[Tuple[Tuple[int,int], str]] = field(default_factory=list)      # (edge, "3:1"/"2:1:wood"...)
     robber_tile: int = 0
+    robbers: List[int] = field(default_factory=list)
     pending_action: Optional[str] = None   # "discard" | "robber_move" | "robber_steal" | None
     pending_pid: Optional[int] = None
     pending_victims: List[int] = field(default_factory=list)
@@ -352,13 +383,18 @@ class Game:
         except engine_rules.RuleError as exc:
             raise ValueError(exc.message) from None
 
-def build_board(seed: int, size: float) -> Game:
-    base = engine_rules.build_game(seed=seed, max_players=2, size=size, player_names=["You", "Bot"])
+def build_board(seed: int, size: float, map_id: Optional[str] = None, player_names: Optional[List[str]] = None, max_players: int = 2) -> Game:
+    if player_names is None:
+        player_names = ["You", "Bot"]
+    base = engine_rules.build_game(seed=seed, max_players=max_players, size=size, player_names=player_names, map_id=map_id)
 
     def _pt(p):
         return QtCore.QPointF(float(p[0]), float(p[1]))
 
     g = Game(seed=base.seed, size=base.size)
+    g.map_id = str(base.map_id)
+    g.map_meta = dict(base.map_meta)
+    g.rules_config = getattr(base, "rules_config", None)
     g.tiles = [
         HexTile(q=t.q, r=t.r, terrain=t.terrain, number=t.number, center=_pt(t.center))
         for t in base.tiles
@@ -381,6 +417,7 @@ def build_board(seed: int, size: float) -> Game:
     g.bank = dict(base.bank)
     g.occupied_v = dict(base.occupied_v)
     g.occupied_e = dict(base.occupied_e)
+    g.occupied_ships = dict(getattr(base, "occupied_ships", {}))
     g.turn = int(base.turn)
     g.phase = base.phase
     g.rolled = bool(base.rolled)
@@ -390,6 +427,7 @@ def build_board(seed: int, size: float) -> Game:
     g.setup_anchor_vid = base.setup_anchor_vid
     g.last_roll = base.last_roll
     g.robber_tile = int(base.robber_tile)
+    g.robbers = list(getattr(base, "robbers", [g.robber_tile]))
     g.pending_action = base.pending_action
     g.pending_pid = base.pending_pid
     g.pending_victims = list(base.pending_victims)
@@ -417,6 +455,9 @@ def can_place_settlement(g: Game, pid: int, vid: int, require_road: bool) -> boo
 
 def can_place_road(g: Game, pid: int, e: Tuple[int,int], must_touch_vid: Optional[int]=None) -> bool:
     return engine_rules.can_place_road(g, pid, e, must_touch_vid=must_touch_vid)
+
+def can_place_ship(g: Game, pid: int, e: Tuple[int,int]) -> bool:
+    return engine_rules.can_place_ship(g, pid, e)
 
 def can_upgrade_city(g: Game, pid: int, vid: int) -> bool:
     return engine_rules.can_upgrade_city(g, pid, vid)
@@ -451,8 +492,9 @@ def check_win(g: Game, log_cb=None) -> None:
 
 def expected_vertex_yield(g: Game, vid: int, pid: int) -> int:
     score = 0
+    robbers = set(getattr(g, "robbers", []) or [g.robber_tile])
     for ti in g.vertex_adj_hexes.get(vid, []):
-        if ti == g.robber_tile:
+        if ti in robbers:
             continue
         t = g.tiles[ti]
         if t.number is None:
@@ -885,16 +927,24 @@ class StatusPanel(QtWidgets.QFrame):
         row.setVerticalSpacing(4)
         lbl_lr = QtWidgets.QLabel("Longest Road")
         lbl_la = QtWidgets.QLabel("Largest Army")
-        for lbl in (lbl_lr, lbl_la):
+        lbl_vp = QtWidgets.QLabel("Target VP")
+        lbl_rb = QtWidgets.QLabel("Robbers")
+        for lbl in (lbl_lr, lbl_la, lbl_vp, lbl_rb):
             lbl.setStyleSheet(f"color:{PALETTE['ui_text_muted']}; font-size:11px;")
         self.lbl_longest = QtWidgets.QLabel("none")
         self.lbl_army = QtWidgets.QLabel("none")
-        for lbl in (self.lbl_longest, self.lbl_army):
+        self.lbl_target = QtWidgets.QLabel("-")
+        self.lbl_robbers = QtWidgets.QLabel("-")
+        for lbl in (self.lbl_longest, self.lbl_army, self.lbl_target, self.lbl_robbers):
             lbl.setStyleSheet("font-size:12px; font-weight:600;")
         row.addWidget(lbl_lr, 0, 0)
         row.addWidget(self.lbl_longest, 0, 1)
         row.addWidget(lbl_la, 1, 0)
         row.addWidget(self.lbl_army, 1, 1)
+        row.addWidget(lbl_vp, 2, 0)
+        row.addWidget(self.lbl_target, 2, 1)
+        row.addWidget(lbl_rb, 3, 0)
+        row.addWidget(self.lbl_robbers, 3, 1)
         root.addLayout(row)
 
     def _ensure_badges(self, count: int):
@@ -929,6 +979,17 @@ class StatusPanel(QtWidgets.QFrame):
             self.badge_turn.setText(f"Turn: {g.players[g.turn].name}")
         pending = g.pending_action or "none"
         self.badge_pending.setText(f"Pending: {pending}")
+        cfg = getattr(g, "rules_config", None)
+        if isinstance(cfg, dict):
+            target_vp = int(cfg.get("target_vp", 10))
+            robber_count = int(cfg.get("robber_count", 1))
+        else:
+            target_vp = int(getattr(cfg, "target_vp", 10)) if cfg is not None else 10
+            robber_count = int(getattr(cfg, "robber_count", 1)) if cfg is not None else 1
+        self.lbl_target.setText(str(target_vp))
+        if robber_count <= 0:
+            robber_count = len(getattr(g, "robbers", []) or [])
+        self.lbl_robbers.setText(str(robber_count))
 
         lr = "none" if g.longest_road_owner is None else f"P{g.longest_road_owner + 1} (len {g.longest_road_len})"
         la = "none"
@@ -1234,7 +1295,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dev_dialog_factory = dev_dialog_factory or DevDialog
         self._trade_dialog_factory = trade_dialog_factory or TradeDialog
 
-        self.game = build_board(seed=random.randint(1, 999999), size=62.0)
+        self.game = build_board(seed=random.randint(1, 999999), size=62.0, map_id=self._last_config.map_preset)
 
         self.selected_action = None  # "settlement"/"road"/"city"/"dev"
         self.overlay_nodes: Dict[int, QtWidgets.QGraphicsItem] = {}
@@ -1380,6 +1441,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.btn_sett = action_btn("settlement", "Settlement (wood+brick+sheep+wheat)")
         self.btn_road = action_btn("road", "Road (wood+brick)")
+        self.btn_ship = action_btn("ship", "Ship (wood+sheep)")
         self.btn_city = action_btn("city", "City (2 wheat + 3 ore)")
         self.btn_dev  = action_btn("dev", "Dev card (sheep+wheat+ore)", checkable=False)
         self.btn_trade = action_btn("trade", "Trade with bank", checkable=False)
@@ -1390,6 +1452,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         bottom_l.addWidget(self.btn_sett)
         bottom_l.addWidget(self.btn_road)
+        bottom_l.addWidget(self.btn_ship)
         bottom_l.addWidget(self.btn_city)
         bottom_l.addWidget(self.btn_dev)
         bottom_l.addWidget(self.btn_trade)
@@ -1598,6 +1661,31 @@ class MainWindow(QtWidgets.QMainWindow):
             pen.setCapStyle(QtCore.Qt.RoundCap)
             it.setPen(pen)
             it.setZValue(11)
+            self.scene.addItem(it)
+            self.piece_items.append(it)
+
+        # ships (seafarers)
+        for (a, b), pid in getattr(self.game, "occupied_ships", {}).items():
+            pa = self.game.vertices[a]
+            pb = self.game.vertices[b]
+            path = QtGui.QPainterPath(pa)
+            path.lineTo(pb)
+            base = QtWidgets.QGraphicsPathItem(path)
+            dark = self.game.players[pid].color.darker(140)
+            pen_base = QtGui.QPen(dark, 9)
+            pen_base.setCapStyle(QtCore.Qt.RoundCap)
+            pen_base.setStyle(QtCore.Qt.DashLine)
+            base.setPen(pen_base)
+            base.setZValue(10.5)
+            self.scene.addItem(base)
+            self.piece_items.append(base)
+
+            it = QtWidgets.QGraphicsPathItem(path)
+            pen = QtGui.QPen(self.game.players[pid].color.lighter(130), 5)
+            pen.setCapStyle(QtCore.Qt.RoundCap)
+            pen.setStyle(QtCore.Qt.DashLine)
+            it.setPen(pen)
+            it.setZValue(11.2)
             self.scene.addItem(it)
             self.piece_items.append(it)
 
@@ -1812,8 +1900,13 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.lbl_hint.setText("Main: click dice to roll. Build by selecting card then clicking highlighted spots.")
 
-        for b in (self.btn_sett, self.btn_road, self.btn_city, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
+        for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_city, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
             b.setEnabled(not g.game_over)
+        enable_sea = bool(_rules_value(g.rules_config, "enable_seafarers", False))
+        self.btn_ship.setVisible(enable_sea)
+        if not enable_sea and self.selected_action == "ship":
+            self.selected_action = "road"
+            self.btn_road.setChecked(True)
         if self.online_mode:
             self.btn_dev.setEnabled(False)
             self.btn_trade.setEnabled(False)
@@ -1833,7 +1926,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._handle_trade_offers_bot()
 
     def _restart_game(self):
-        self.game = build_board(seed=random.randint(1, 999999), size=62.0)
+        self.game = build_board(seed=random.randint(1, 999999), size=62.0, map_id=self._last_config.map_preset)
         self._shown_game_over = False
         self._bot_seen_offers.clear()
         if hasattr(self, "victory_overlay"):
@@ -2385,11 +2478,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.game.game_over:
             self._log(f"Game over. Winner: P{self.game.winner_pid}")
             return
+        if key == "ship" and not bool(_rules_value(self.game.rules_config, "enable_seafarers", False)):
+            return
         self.selected_action = key
         # make checkable group
-        for b in (self.btn_sett, self.btn_road, self.btn_city):
+        for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_city):
             b.setChecked(False)
-        {"settlement":self.btn_sett,"road":self.btn_road,"city":self.btn_city}[key].setChecked(True)
+        {"settlement":self.btn_sett,"road":self.btn_road,"ship":self.btn_ship,"city":self.btn_city}[key].setChecked(True)
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -2576,6 +2671,10 @@ class MainWindow(QtWidgets.QMainWindow):
             for e in g.edges:
                 if can_place_road(g, 0, e):
                     self._add_edge_spot(e, forced_pid=0)
+        elif self.selected_action == "ship":
+            for e in g.edges:
+                if can_place_ship(g, 0, e):
+                    self._add_edge_spot(e, forced_pid=0)
         elif self.selected_action == "city":
             for vid in g.vertices.keys():
                 if can_upgrade_city(g, 0, vid):
@@ -2670,6 +2769,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
             if self.selected_action == "road":
                 self.online_controller.cmd_place_road(e, setup=False)
+            elif self.selected_action == "ship":
+                self.online_controller.cmd_build_ship(e)
             return
         if g.phase == "setup":
             if g.setup_need != "road":
@@ -2687,6 +2788,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if pid != 0:
             return
         if self.selected_action != "road":
+            if self.selected_action != "ship":
+                return
+        if self.selected_action == "ship":
+            if self._apply_cmd({"type": "build_ship", "eid": e}, pid=0) is None:
+                return
+            self._log("You built a ship.")
+            self._refresh_all_dynamic()
+            self._sync_ui()
             return
         free_left = int(g.free_roads.get(0, 0))
         cmd = {"type": "place_road", "eid": e, "free": free_left > 0}

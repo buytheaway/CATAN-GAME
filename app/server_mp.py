@@ -14,7 +14,18 @@ from typing import Deque, Dict, List, Optional, Set
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from app import net_protocol
-from app.engine import GameState, RuleError, apply_cmd, build_game, to_dict
+from app.engine import (
+    DEFAULT_PRESET_ID,
+    GameState,
+    RuleError,
+    apply_cmd,
+    build_game,
+    get_preset_meta,
+    get_preset_map,
+    list_presets,
+    parse_rules_config,
+    to_dict,
+)
 
 
 @dataclass
@@ -42,6 +53,10 @@ class Room:
     max_players: int
     host_pid: int
     players: List[PlayerSlot]
+    selected_map_id: str = DEFAULT_PRESET_ID
+    selected_map_meta: Dict[str, Any] = field(default_factory=dict)
+    map_presets: List[Dict[str, Any]] = field(default_factory=list)
+    selected_rules_config: Dict[str, Any] = field(default_factory=dict)
     status: str = "lobby"
     match_id: int = 0
     tick: int = 0
@@ -65,6 +80,11 @@ class RoomManager:
         code = self._gen_code()
         players = [PlayerSlot(pid=i) for i in range(max_players)]
         room = Room(room_code=code, max_players=max_players, host_pid=0, players=players)
+        room.map_presets = list_presets()
+        room.selected_map_id = DEFAULT_PRESET_ID
+        room.selected_map_meta = get_preset_meta(room.selected_map_id) or {"id": room.selected_map_id, "name": room.selected_map_id, "description": ""}
+        rules_raw = get_preset_map(room.selected_map_id).get("rules", {})
+        room.selected_rules_config = vars(parse_rules_config(rules_raw))
         self.rooms[code] = room
         self._assign_player(room, 0, name, connected=True)
         return room
@@ -178,7 +198,7 @@ def _start_match(room: Room) -> None:
     room.match_id += 1
     room.tick = 0
     room.seed = random.randint(1, 999999)
-    room.game = build_game(seed=room.seed, max_players=room.max_players, size=58.0)
+    room.game = build_game(seed=room.seed, max_players=room.max_players, size=58.0, map_id=room.selected_map_id)
     for slot in room.players:
         if slot.name:
             room.game.players[slot.pid].name = slot.name
@@ -329,6 +349,32 @@ async def websocket_endpoint(ws: WebSocket):
                 _start_match(room)
                 await _send_room_state(room)
                 await _send_match_state(room)
+                continue
+
+            if mtype == "set_map":
+                room = manager.rooms.get(conn.room_code or "")
+                if not room:
+                    await _send(ws, net_protocol.error_message("not_found", "Room not found"))
+                    continue
+                if conn.pid != room.host_pid:
+                    await _send(ws, net_protocol.error_message("forbidden", "Only host can set map"))
+                    continue
+                if room.status != "lobby":
+                    await _send(ws, net_protocol.error_message("invalid", "Cannot change map after start"))
+                    continue
+                map_id = data.get("map_id") or data.get("id")
+                if not isinstance(map_id, str):
+                    await _send(ws, net_protocol.error_message("invalid", "map_id required"))
+                    continue
+                meta = get_preset_meta(map_id)
+                if not meta:
+                    await _send(ws, net_protocol.error_message("invalid", "Unknown map_id"))
+                    continue
+                rules_raw = get_preset_map(map_id).get("rules", {})
+                room.selected_rules_config = vars(parse_rules_config(rules_raw))
+                room.selected_map_id = map_id
+                room.selected_map_meta = dict(meta)
+                await _send_room_state(room)
                 continue
 
             if mtype == "rematch":

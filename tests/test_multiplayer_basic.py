@@ -70,6 +70,21 @@ async def _recv_cmd_ack(ws, cmd_id: str, timeout: float = 5.0) -> dict:
     raise AssertionError(f"Timed out waiting for cmd_ack {cmd_id}")
 
 
+async def _recv_room_with_map(ws, map_id: str, timeout: float = 5.0) -> dict:
+    end = time.time() + timeout
+    last = None
+    while time.time() < end:
+        raw = await asyncio.wait_for(ws.recv(), timeout=end - time.time())
+        data = json.loads(raw)
+        if data.get("type") == "error":
+            raise AssertionError(f"Server error: {data.get('message')}")
+        if data.get("type") == "room_state":
+            last = data
+            if data.get("map_id") == map_id:
+                return data
+    raise AssertionError(f"Timed out waiting for room_state map_id={map_id} (last={last})")
+
+
 async def _send_cmd(ws, match_id: int, seq: int, cmd: dict, cmd_id: str | None = None) -> str:
     cid = cmd_id or uuid.uuid4().hex
     await _send(ws, {"type": "cmd", "match_id": match_id, "seq": seq, "cmd_id": cid, "cmd": cmd})
@@ -351,3 +366,54 @@ async def _run_reconnect(port: int):
         cmd_id = await _send_cmd(ws_re, match_id, seq, {"type": "grant_resources", "res": {"brick": 1}})
         await _recv_type(ws_re, "match_state")
         await _recv_cmd_ack(ws_re, cmd_id)
+
+
+def test_multiplayer_map_selection():
+    port = _find_free_port()
+    server, thread = _start_server(port)
+    try:
+        asyncio.run(_run_map_selection(port))
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+
+
+async def _run_map_selection(port: int):
+    url = f"ws://127.0.0.1:{port}/ws"
+    async with websockets.connect(url) as ws1, websockets.connect(url) as ws2:
+        await _send(ws1, {"type": "hello", "version": net_protocol.VERSION, "name": "MapHost"})
+        await _recv_type(ws1, "hello")
+        await _send(ws2, {"type": "hello", "version": net_protocol.VERSION, "name": "MapJoin"})
+        await _recv_type(ws2, "hello")
+
+        await _send(ws1, {"type": "create_room", "name": "MapHost", "max_players": 2, "ruleset": {"base": True, "max_players": 2}})
+        room_state = await _recv_type(ws1, "room_state")
+        await _recv_type(ws1, "reconnect_token")
+        room_code = room_state["room_code"]
+
+        presets = room_state.get("map_presets", [])
+        assert isinstance(presets, list) and len(presets) >= 2
+        pick_id = presets[1].get("id")
+        assert isinstance(pick_id, str)
+
+        await _send(ws2, {"type": "join_room", "room_code": room_code, "name": "MapJoin"})
+        await _recv_type(ws2, "room_state")
+        await _recv_type(ws2, "reconnect_token")
+        await _recv_type(ws1, "room_state")
+
+        # invalid map id rejected
+        await _send(ws1, {"type": "set_map", "map_id": "no_such_map"})
+        await _recv_error(ws1, "invalid")
+
+        # valid map id applied
+        await _send(ws1, {"type": "set_map", "map_id": pick_id})
+        rs1 = await _recv_type(ws1, "room_state")
+        rs2 = await _recv_room_with_map(ws2, pick_id)
+        assert rs1.get("map_id") == pick_id
+        assert rs2.get("map_id") == pick_id
+
+        await _send(ws1, {"type": "start_match"})
+        ms1 = await _recv_type(ws1, "match_state")
+        ms2 = await _recv_type(ws2, "match_state")
+        assert ms1.get("state", {}).get("map_id") == pick_id
+        assert ms2.get("state", {}).get("map_id") == pick_id

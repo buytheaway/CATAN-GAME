@@ -18,6 +18,7 @@ TERRAIN_TO_RES = {
 
 COST = {
     "road": {"wood": 1, "brick": 1},
+    "ship": {"wood": 1, "sheep": 1},
     "settlement": {"wood": 1, "brick": 1, "sheep": 1, "wheat": 1},
     "city": {"wheat": 2, "ore": 3},
     "dev": {"sheep": 1, "wheat": 1, "ore": 1},
@@ -66,6 +67,17 @@ class AchievementState:
 
 
 @dataclass
+class RulesConfig:
+    target_vp: int = 10
+    max_roads: int = 15
+    max_settlements: int = 5
+    max_cities: int = 4
+    robber_count: int = 1
+    enable_seafarers: bool = False
+    max_ships: int = 15
+
+
+@dataclass
 class BoardState:
     tiles: List[Tile] = field(default_factory=list)
     vertices: Dict[int, Tuple[float, float]] = field(default_factory=dict)
@@ -75,6 +87,7 @@ class BoardState:
     ports: List[Tuple[Tuple[int, int], str]] = field(default_factory=list)
     occupied_v: Dict[int, Tuple[int, int]] = field(default_factory=dict)
     occupied_e: Dict[Tuple[int, int], int] = field(default_factory=dict)
+    occupied_ships: Dict[Tuple[int, int], int] = field(default_factory=dict)
 
 
 @dataclass
@@ -83,7 +96,10 @@ class GameState:
     size: float = 58.0
     max_players: int = 4
     map_name: str = "base_standard"
+    map_id: str = "base_standard"
+    map_meta: Dict[str, Any] = field(default_factory=dict)
     rules: Dict[str, Any] = field(default_factory=dict)
+    rules_config: RulesConfig = field(default_factory=RulesConfig)
     board: BoardState = field(default_factory=BoardState)
     players: List[PlayerState] = field(default_factory=list)
     bank: Dict[str, int] = field(default_factory=lambda: {r: 19 for r in RESOURCES})
@@ -98,6 +114,7 @@ class GameState:
     last_roll: Optional[int] = None
 
     robber_tile: int = 0
+    robbers: List[int] = field(default_factory=list)
     pending_action: Optional[str] = None
     pending_pid: Optional[int] = None
     pending_victims: List[int] = field(default_factory=list)
@@ -192,6 +209,14 @@ class GameState:
     @occupied_e.setter
     def occupied_e(self, value: Dict[Tuple[int, int], int]) -> None:
         self.board.occupied_e = value
+
+    @property
+    def occupied_ships(self) -> Dict[Tuple[int, int], int]:
+        return self.board.occupied_ships
+
+    @occupied_ships.setter
+    def occupied_ships(self, value: Dict[Tuple[int, int], int]) -> None:
+        self.board.occupied_ships = value
 
     @property
     def longest_road_owner(self) -> Optional[int]:

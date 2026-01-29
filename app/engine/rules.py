@@ -12,6 +12,7 @@ from app.engine.state import (
     GameState,
     PlayerState,
     RESOURCES,
+    RulesConfig,
     TERRAIN_TO_RES,
     TradeOffer,
 )
@@ -39,12 +40,39 @@ def make_setup_order(n_players: int) -> List[int]:
     return list(range(n_players)) + list(range(n_players - 1, -1, -1))
 
 
+def parse_rules_config(rules: Dict[str, Any]) -> RulesConfig:
+    target_vp = int(rules.get("target_vp", rules.get("victory_points", 10)))
+    limits = rules.get("limits", {})
+    if not isinstance(limits, dict):
+        limits = {}
+    max_roads = int(limits.get("roads", limits.get("max_roads", rules.get("max_roads", 15))))
+    max_settlements = int(limits.get("settlements", limits.get("max_settlements", rules.get("max_settlements", 5))))
+    max_cities = int(limits.get("cities", limits.get("max_cities", rules.get("max_cities", 4))))
+    max_ships = int(limits.get("ships", limits.get("max_ships", rules.get("max_ships", 15))))
+    robber_count = int(rules.get("robber_count", 1))
+    if robber_count < 1:
+        robber_count = 1
+    enable_seafarers = bool(rules.get("enable_seafarers", False))
+    if max_ships < 0:
+        max_ships = 0
+    return RulesConfig(
+        target_vp=target_vp,
+        max_roads=max_roads,
+        max_settlements=max_settlements,
+        max_cities=max_cities,
+        robber_count=robber_count,
+        enable_seafarers=enable_seafarers,
+        max_ships=max_ships,
+    )
+
+
 def build_game(
     seed: int,
     max_players: int = 4,
     size: float = 58.0,
     player_names: Optional[List[str]] = None,
     map_name: Optional[str] = None,
+    map_id: Optional[str] = None,
     map_data: Optional[Dict[str, Any]] = None,
     map_path: Optional[str] = None,
 ) -> GameState:
@@ -55,13 +83,22 @@ def build_game(
         if map_path is not None:
             map_data = map_loader.load_map_file(Path(map_path))
         else:
-            map_name = map_name or "base_standard"
-            map_data = map_loader.get_preset_map(map_name)
+            map_id = map_id or map_name or map_loader.DEFAULT_PRESET_ID
+            map_data = map_loader.get_preset_map(map_id)
+    if map_id is None:
+        map_id = map_name or str(map_data.get("name", "custom"))
     board, robber_tile, rules = map_loader.build_board_from_map(map_data, rng, size)
     g.board = board
     g.robber_tile = robber_tile
-    g.map_name = str(map_data.get("name", map_name or "custom"))
+    g.map_name = str(map_data.get("name", map_id or "custom"))
+    g.map_id = str(map_id)
+    meta = map_loader.get_preset_meta(map_id)
+    if meta is None:
+        meta = {"id": str(map_id), "name": g.map_name, "description": str(map_data.get("description", ""))}
+    g.map_meta = dict(meta)
     g.rules = dict(rules)
+    g.rules_config = parse_rules_config(g.rules)
+    g.robbers = [g.robber_tile for _ in range(int(g.rules_config.robber_count))]
 
     if player_names is None:
         player_names = [f"P{i+1}" for i in range(max_players)]
@@ -101,6 +138,8 @@ def can_place_settlement(g: GameState, pid: int, vid: int, require_road: bool) -
 def can_place_road(g: GameState, pid: int, e: Tuple[int, int], must_touch_vid: Optional[int] = None) -> bool:
     if e in g.occupied_e:
         return False
+    if getattr(g.rules_config, "enable_seafarers", False) and _edge_is_sea(g, e):
+        return False
     a, b = e
     if must_touch_vid is not None and (a != must_touch_vid and b != must_touch_vid):
         return False
@@ -109,6 +148,41 @@ def can_place_road(g: GameState, pid: int, e: Tuple[int, int], must_touch_vid: O
         if occ and occ[0] == pid:
             return True
     for ee, owner in g.occupied_e.items():
+        if owner == pid and (a in ee or b in ee):
+            return True
+    return False
+
+
+def _edge_has_sea(g: GameState, e: Tuple[int, int]) -> bool:
+    for ti in g.edge_adj_hexes.get(e, []):
+        if g.tiles[ti].terrain == "sea":
+            return True
+    return False
+
+
+def _edge_is_sea(g: GameState, e: Tuple[int, int]) -> bool:
+    adj = g.edge_adj_hexes.get(e, [])
+    if not adj:
+        return False
+    return all(g.tiles[ti].terrain == "sea" for ti in adj)
+
+
+def can_place_ship(g: GameState, pid: int, e: Tuple[int, int]) -> bool:
+    if not getattr(g.rules_config, "enable_seafarers", False):
+        return False
+    if e in g.occupied_e or e in g.occupied_ships:
+        return False
+    if not _edge_has_sea(g, e):
+        return False
+    a, b = e
+    for v in (a, b):
+        occ = g.occupied_v.get(v)
+        if occ and occ[0] == pid:
+            return True
+    for ee, owner in g.occupied_e.items():
+        if owner == pid and (a in ee or b in ee):
+            return True
+    for ee, owner in g.occupied_ships.items():
         if owner == pid and (a in ee or b in ee):
             return True
     return False
@@ -123,6 +197,30 @@ def can_pay(p: PlayerState, cost: Dict[str, int]) -> bool:
     return all(p.res.get(r, 0) >= q for r, q in cost.items())
 
 
+def _target_vp(g: GameState) -> int:
+    cfg = getattr(g, "rules_config", None)
+    if cfg is not None and hasattr(cfg, "target_vp"):
+        return int(cfg.target_vp)
+    rules = getattr(g, "rules", {}) or {}
+    return int(rules.get("target_vp", rules.get("victory_points", 10)))
+
+
+def _count_roads(g: GameState, pid: int) -> int:
+    return sum(1 for owner in g.occupied_e.values() if owner == pid)
+
+
+def _count_settlements(g: GameState, pid: int) -> int:
+    return sum(1 for _vid, (owner, level) in g.occupied_v.items() if owner == pid and level == 1)
+
+
+def _count_cities(g: GameState, pid: int) -> int:
+    return sum(1 for _vid, (owner, level) in g.occupied_v.items() if owner == pid and level == 2)
+
+
+def _count_ships(g: GameState, pid: int) -> int:
+    return sum(1 for owner in g.occupied_ships.values() if owner == pid)
+
+
 def pay_to_bank(g: GameState, pid: int, cost: Dict[str, int]) -> None:
     for r, q in cost.items():
         g.players[pid].res[r] -= q
@@ -130,12 +228,13 @@ def pay_to_bank(g: GameState, pid: int, cost: Dict[str, int]) -> None:
 
 
 def distribute_for_roll(g: GameState, roll: int) -> None:
+    robbers = set(getattr(g, "robbers", []) or [g.robber_tile])
     for vid, (pid, level) in g.occupied_v.items():
         for ti in g.vertex_adj_hexes.get(vid, []):
             t = g.tiles[ti]
             if t.number != roll:
                 continue
-            if ti == g.robber_tile:
+            if ti in robbers:
                 continue
             res = TERRAIN_TO_RES.get(t.terrain)
             if not res:
@@ -244,8 +343,9 @@ def update_largest_army(g: GameState) -> None:
 def check_win(g: GameState) -> None:
     if g.game_over:
         return
+    target = _target_vp(g)
     for i, p in enumerate(g.players):
-        if p.vp >= 10:
+        if p.vp >= target:
             g.game_over = True
             g.winner_pid = i
             return
@@ -580,6 +680,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
                 raise RuleError("illegal", "Not settlement step")
             if not can_place_settlement(g, pid, vid, require_road=False):
                 raise RuleError("illegal", "Settlement not allowed")
+            if _count_settlements(g, pid) >= int(getattr(g.rules_config, "max_settlements", 5)):
+                raise RuleError("illegal", "Settlement limit reached")
             before_count = sum(
                 1
                 for _vid, (owner, level) in g.occupied_v.items()
@@ -617,6 +719,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Not your turn")
         if not can_place_settlement(g, pid, vid, require_road=True):
             raise RuleError("illegal", "Settlement not allowed")
+        if _count_settlements(g, pid) >= int(getattr(g.rules_config, "max_settlements", 5)):
+            raise RuleError("illegal", "Settlement limit reached")
         if not can_pay(g.players[pid], COST["settlement"]):
             raise RuleError("illegal", "Not enough resources")
         pay_to_bank(g, pid, COST["settlement"])
@@ -639,6 +743,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
                 raise RuleError("illegal", "Not road step")
             if not can_place_road(g, pid, e, must_touch_vid=g.setup_anchor_vid):
                 raise RuleError("illegal", "Road not allowed")
+            if _count_roads(g, pid) >= int(getattr(g.rules_config, "max_roads", 15)):
+                raise RuleError("illegal", "Road limit reached")
             g.occupied_e[e] = pid
             update_longest_road(g)
             check_win(g)
@@ -654,6 +760,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Not your turn")
         if not can_place_road(g, pid, e):
             raise RuleError("illegal", "Road not allowed")
+        if _count_roads(g, pid) >= int(getattr(g.rules_config, "max_roads", 15)):
+            raise RuleError("illegal", "Road limit reached")
         use_free = bool(cmd.get("free", False))
         if use_free:
             if int(g.free_roads.get(pid, 0)) <= 0:
@@ -669,12 +777,35 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         events.append({"type": "place_road", "pid": pid, "eid": [a, b]})
         return g, events
 
+    if ctype == "build_ship":
+        eid = cmd.get("eid")
+        if not isinstance(eid, (list, tuple)) or len(eid) != 2:
+            raise RuleError("invalid", "eid required")
+        a, b = int(eid[0]), int(eid[1])
+        e = (a, b) if a < b else (b, a)
+        if g.turn != pid or g.phase != "main":
+            raise RuleError("illegal", "Not your turn")
+        if not getattr(g.rules_config, "enable_seafarers", False):
+            raise RuleError("illegal", "Seafarers not enabled")
+        if not can_place_ship(g, pid, e):
+            raise RuleError("illegal", "Ship not allowed")
+        if _count_ships(g, pid) >= int(getattr(g.rules_config, "max_ships", 15)):
+            raise RuleError("illegal", "Ship limit reached")
+        if not can_pay(g.players[pid], COST["ship"]):
+            raise RuleError("illegal", "Not enough resources")
+        pay_to_bank(g, pid, COST["ship"])
+        g.occupied_ships[e] = pid
+        events.append({"type": "build_ship", "pid": pid, "eid": [a, b]})
+        return g, events
+
     if ctype == "upgrade_city":
         vid = int(cmd.get("vid"))
         if g.turn != pid or g.phase != "main":
             raise RuleError("illegal", "Not your turn")
         if not can_upgrade_city(g, pid, vid):
             raise RuleError("illegal", "City upgrade not allowed")
+        if _count_cities(g, pid) >= int(getattr(g.rules_config, "max_cities", 4)):
+            raise RuleError("illegal", "City limit reached")
         if not can_pay(g.players[pid], COST["city"]):
             raise RuleError("illegal", "Not enough resources")
         pay_to_bank(g, pid, COST["city"])
@@ -834,6 +965,11 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         if tile == g.robber_tile:
             raise RuleError("illegal", "Same robber tile")
         g.robber_tile = tile
+        if getattr(g, "robbers", None) is not None:
+            if not g.robbers:
+                g.robbers = [tile]
+            else:
+                g.robbers[0] = tile
         victims = _victims_for_tile(g, tile, pid)
         stolen = None
         if victims:

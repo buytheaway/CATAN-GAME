@@ -75,6 +75,9 @@ def check_invariants(game, expected_totals: Optional[Dict[str, int]] = None) -> 
     for e in game.occupied_e.keys():
         if _edge_key(e) not in edge_set:
             fails.append({"code": "invalid_edge", "message": "Occupied edge missing", "details": {"edge": e}})
+    for e in getattr(game, "occupied_ships", {}).keys():
+        if _edge_key(e) not in edge_set:
+            fails.append({"code": "invalid_edge", "message": "Occupied ship edge missing", "details": {"edge": e}})
 
     # distance rule
     for vid in game.occupied_v.keys():
@@ -116,8 +119,17 @@ def check_invariants(game, expected_totals: Optional[Dict[str, int]] = None) -> 
         if game.winner_pid is None:
             fails.append({"code": "game_over", "message": "Game over without winner", "details": {}})
         else:
-            if game.players[game.winner_pid].vp < 10:
-                fails.append({"code": "game_over", "message": "Winner has <10 VP", "details": {"pid": game.winner_pid}})
+            target = 10
+            cfg = getattr(game, "rules_config", None)
+            if isinstance(cfg, dict):
+                target = int(cfg.get("target_vp", target))
+            elif cfg is not None and hasattr(cfg, "target_vp"):
+                target = int(cfg.target_vp)
+            else:
+                rules = getattr(game, "rules", {}) or {}
+                target = int(rules.get("target_vp", rules.get("victory_points", target)))
+            if game.players[game.winner_pid].vp < target:
+                fails.append({"code": "game_over", "message": f"Winner has <{target} VP", "details": {"pid": game.winner_pid}})
 
     # pending action consistency
     if game.pending_action is not None and game.pending_pid is None:

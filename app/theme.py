@@ -101,6 +101,7 @@ UI_COLORS: Dict[str, str] = {
     "terrain_fields": "#facc15",
     "terrain_mountains": "#94a3b8",
     "terrain_desert": "#d6c8a0",
+    "terrain_sea": "#0b4a6f",
 
     "res_wood": "#16a34a",
     "res_brick": "#f97316",
