@@ -15,10 +15,10 @@ def _recompute_longest_road(g) -> Tuple[Optional[int], int]:
     lens = [engine_rules.longest_road_length(g, pid) for pid in range(len(g.players))]
     if not lens:
         return None, 0
-    if lens[0] >= 5 and lens[0] > lens[1]:
-        return 0, lens[0]
-    if lens[1] >= 5 and lens[1] > lens[0]:
-        return 1, lens[1]
+    max_len = max(lens)
+    leaders = [i for i, ln in enumerate(lens) if ln == max_len]
+    if max_len >= 5 and len(leaders) == 1:
+        return leaders[0], max_len
     return None, 0
 
 

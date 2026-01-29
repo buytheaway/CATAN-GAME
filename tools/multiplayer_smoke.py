@@ -115,25 +115,28 @@ def _plan_discard_from_state(state: dict, pid: int, need: int) -> dict:
     return plan
 
 
-async def _run_clients(port: int):
+async def _run_clients(port: int, max_players: int = 2):
     url = f"ws://127.0.0.1:{port}/ws"
-    async with websockets.connect(url) as ws1, websockets.connect(url) as ws2:
-        await _send(ws1, {"type": "hello", "version": net_protocol.VERSION, "name": "Alice"})
-        await _recv_type(ws1, "hello")
-        await _send(ws2, {"type": "hello", "version": net_protocol.VERSION, "name": "Bob"})
-        await _recv_type(ws2, "hello")
+    conns = [await websockets.connect(url) for _ in range(max_players)]
+    try:
+        names = [f"P{i+1}" for i in range(max_players)]
+        for ws, name in zip(conns, names):
+            await _send(ws, {"type": "hello", "version": net_protocol.VERSION, "name": name})
+            await _recv_type(ws, "hello")
 
-        await _send(ws1, {"type": "create_room", "name": "Alice", "max_players": 2, "ruleset": {"base": True, "max_players": 2}})
-        room_state = await _recv_type(ws1, "room_state")
+        host = conns[0]
+        await _send(host, {"type": "create_room", "name": names[0], "max_players": max_players, "ruleset": {"base": True, "max_players": max_players}})
+        room_state = await _recv_type(host, "room_state")
         room_code = room_state["room_code"]
 
-        await _send(ws2, {"type": "join_room", "room_code": room_code, "name": "Bob"})
-        await _recv_type(ws2, "room_state")
-        await _recv_type(ws1, "room_state")
+        for idx in range(1, max_players):
+            await _send(conns[idx], {"type": "join_room", "room_code": room_code, "name": names[idx]})
+            await _recv_type(conns[idx], "room_state")
+            room_state = await _recv_type(host, "room_state")
 
-        await _send(ws1, {"type": "start_match"})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
+        await _send(host, {"type": "start_match"})
+        ms1 = await _recv_type(host, "match_state")
+        ms2 = await _recv_type(conns[1], "match_state")
         if ms1["tick"] != ms2["tick"]:
             raise AssertionError("tick mismatch after start")
         if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
@@ -142,11 +145,16 @@ async def _run_clients(port: int):
         match_id = int(ms1.get("match_id", 0))
         state = ms1.get("state", {})
         seed = int(ms1.get("seed", 0))
-        g = build_game(seed=seed, max_players=2, size=float(state.get("size", 58.0)))
+        g = build_game(seed=seed, max_players=max_players, size=float(state.get("size", 58.0)))
         _apply_snapshot(g, state)
 
-        seq = {0: 0, 1: 0}
-        clients = {0: ws1, 1: ws2}
+        clients = {}
+        for p in room_state.get("players", []):
+            name = p.get("name")
+            if name in names:
+                pid = int(p["pid"])
+                clients[pid] = conns[names.index(name)]
+        seq = {pid: 0 for pid in clients.keys()}
 
         while state.get("phase") == "setup":
             pid = state["setup_order"][state["setup_idx"]]
@@ -161,8 +169,8 @@ async def _run_clients(port: int):
                 seq[pid] += 1
                 await _send_cmd(ws, match_id, seq[pid], {"type": "place_road", "eid": [e[0], e[1]], "setup": True})
 
-            ms1 = await _recv_type(ws1, "match_state")
-            ms2 = await _recv_type(ws2, "match_state")
+            ms1 = await _recv_type(host, "match_state")
+            ms2 = await _recv_type(conns[1], "match_state")
             if ms1["tick"] != ms2["tick"]:
                 raise AssertionError("tick mismatch during setup")
             if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
@@ -174,8 +182,8 @@ async def _run_clients(port: int):
         ws = clients[current_pid]
         seq[current_pid] += 1
         await _send_cmd(ws, match_id, seq[current_pid], {"type": "roll"})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
+        ms1 = await _recv_type(host, "match_state")
+        ms2 = await _recv_type(conns[1], "match_state")
         if ms1["tick"] != ms2["tick"]:
             raise AssertionError("tick mismatch after roll")
         if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
@@ -189,8 +197,8 @@ async def _run_clients(port: int):
                 seq[pid] += 1
                 plan = _plan_discard_from_state(state, pid, int(need))
                 await _send_cmd(clients[pid], match_id, seq[pid], {"type": "discard", "discards": plan})
-                ms1 = await _recv_type(ws1, "match_state")
-                ms2 = await _recv_type(ws2, "match_state")
+                ms1 = await _recv_type(host, "match_state")
+                ms2 = await _recv_type(conns[1], "match_state")
                 if ms1["tick"] != ms2["tick"]:
                     raise AssertionError("tick mismatch after discard")
                 if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
@@ -202,8 +210,8 @@ async def _run_clients(port: int):
             new_tile = tile + 1 if tile + 1 < len(state.get("tiles", [])) else max(0, tile - 1)
             seq[current_pid] += 1
             await _send_cmd(ws, match_id, seq[current_pid], {"type": "move_robber", "tile": new_tile})
-            ms1 = await _recv_type(ws1, "match_state")
-            ms2 = await _recv_type(ws2, "match_state")
+            ms1 = await _recv_type(host, "match_state")
+            ms2 = await _recv_type(conns[1], "match_state")
             if ms1["tick"] != ms2["tick"]:
                 raise AssertionError("tick mismatch after robber move")
             if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
@@ -214,52 +222,58 @@ async def _run_clients(port: int):
         other_pid = 1 - current_pid
         seq[current_pid] += 1
         await _send_cmd(clients[current_pid], match_id, seq[current_pid], {"type": "grant_resources", "res": {"wood": 1}})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
+        ms1 = await _recv_type(host, "match_state")
+        ms2 = await _recv_type(conns[1], "match_state")
         if ms1["tick"] != ms2["tick"]:
             raise AssertionError("tick mismatch after grant_resources (current)")
         state = ms1.get("state", {})
 
-        seq[other_pid] += 1
-        await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "grant_resources", "res": {"brick": 1}})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
-        if ms1["tick"] != ms2["tick"]:
-            raise AssertionError("tick mismatch after grant_resources (other)")
-        state = ms1.get("state", {})
+        if other_pid in clients:
+            seq[other_pid] += 1
+            await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "grant_resources", "res": {"brick": 1}})
+            ms1 = await _recv_type(host, "match_state")
+            ms2 = await _recv_type(conns[1], "match_state")
+            if ms1["tick"] != ms2["tick"]:
+                raise AssertionError("tick mismatch after grant_resources (other)")
+            state = ms1.get("state", {})
 
         # trade offer flow
         seq[current_pid] += 1
         await _send_cmd(ws, match_id, seq[current_pid], {"type": "trade_offer_create", "give": {"wood": 1}, "get": {"brick": 1}, "to_pid": other_pid})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
+        ms1 = await _recv_type(host, "match_state")
+        ms2 = await _recv_type(conns[1], "match_state")
         if ms1["tick"] != ms2["tick"]:
             raise AssertionError("tick mismatch after trade_offer_create")
         state = ms1.get("state", {})
         offer_id = int(state.get("trade_offers", [{}])[-1].get("offer_id", 0))
 
-        seq[other_pid] += 1
-        await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "trade_offer_accept", "offer_id": offer_id})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
-        if ms1["tick"] != ms2["tick"]:
-            raise AssertionError("tick mismatch after trade_offer_accept")
-        if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
-            raise AssertionError("state hash mismatch after trade_offer_accept")
-        state = ms1.get("state", {})
+        if other_pid in clients:
+            seq[other_pid] += 1
+            await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "trade_offer_accept", "offer_id": offer_id})
+            ms1 = await _recv_type(host, "match_state")
+            ms2 = await _recv_type(conns[1], "match_state")
+            if ms1["tick"] != ms2["tick"]:
+                raise AssertionError("tick mismatch after trade_offer_accept")
+            if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
+                raise AssertionError("state hash mismatch after trade_offer_accept")
+            state = ms1.get("state", {})
 
         seq[current_pid] += 1
         await _send_cmd(ws, match_id, seq[current_pid], {"type": "end_turn"})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
+        ms1 = await _recv_type(host, "match_state")
+        ms2 = await _recv_type(conns[1], "match_state")
         if ms1["tick"] != ms2["tick"]:
             raise AssertionError("tick mismatch after end_turn")
         if _state_hash(ms1["state"]) != _state_hash(ms2["state"]):
             raise AssertionError("state hash mismatch after end_turn")
+    finally:
+        for ws in conns:
+            await ws.close()
 
 
 async def _run(port: int):
-    await _run_clients(port)
+    await _run_clients(port, max_players=2)
+    await _run_clients(port, max_players=5)
 
 
 def main() -> int:
