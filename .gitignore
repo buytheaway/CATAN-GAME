@@ -18,6 +18,8 @@ tools/reports/*.png
 tools/reports/*.log
 /web/node_modules/
 /web/dist/
+/web/.env.local
+/tools/reports/
 
 # PyInstaller output
 /dist/

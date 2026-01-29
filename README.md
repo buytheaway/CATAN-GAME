@@ -35,12 +35,19 @@ Windows build (PyInstaller):
 - 
 LAN Web (browser client):
 - Start server on LAN: `python -m app.server_mp` (host 0.0.0.0 by default)
+- Optional env override: `CATAN_HOST=0.0.0.0 CATAN_PORT=8000 python -m app.server_mp`
 - Web client dev server:
   - `cd web`
   - `npm install`
   - `npm run dev -- --host 0.0.0.0 --port 5173`
+- One-command helper:
+  - `powershell -ExecutionPolicy Bypass -File tools/run_lan.ps1`
+  - Check ports: `powershell -ExecutionPolicy Bypass -File tools/check_lan.ps1`
 - Open from another PC: `http://<your-ip>:5173`
-- WS URL default in `web/.env` (`VITE_WS_URL=ws://<server-ip>:8000/ws`)
+- Create `web/.env.local` for LAN (see `web/.env.example`):
+  - `VITE_WS_URL=ws://192.168.0.24:8000/ws`
+  - Replace with your Wi-Fi IPv4 (from `ipconfig`)
+- Local dev default remains `web/.env` (127.0.0.1)
 
 NO HACKS policy:
 - No `QTimer.singleShot` for "wait until UI ready"

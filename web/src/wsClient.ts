@@ -42,6 +42,8 @@ export type CmdAck = {
 
 export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck;
 
+const DEFAULT_WS_URL = import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+
 function genId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -75,7 +77,7 @@ export class WSClient {
   onLog?: (msg: string) => void;
 
   connect(url: string, name: string) {
-    this.url = url;
+    this.url = url || DEFAULT_WS_URL;
     this.name = name;
     this.openSocket();
   }
