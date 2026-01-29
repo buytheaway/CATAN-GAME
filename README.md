@@ -31,7 +31,16 @@ Windows build (PyInstaller):
   - `dist/CatanClient/CatanClient.exe`
 - Run:
   - Start `CatanServer.exe` (default port 8000)
-  - Start `CatanClient.exe` and connect via Multiplayer -> Host/Join
+- Start `CatanClient.exe` and connect via Multiplayer -> Host/Join
+- 
+LAN Web (browser client):
+- Start server on LAN: `python -m app.server_mp` (host 0.0.0.0 by default)
+- Web client dev server:
+  - `cd web`
+  - `npm install`
+  - `npm run dev -- --host 0.0.0.0 --port 5173`
+- Open from another PC: `http://<your-ip>:5173`
+- WS URL default in `web/.env` (`VITE_WS_URL=ws://<server-ip>:8000/ws`)
 
 NO HACKS policy:
 - No `QTimer.singleShot` for "wait until UI ready"
