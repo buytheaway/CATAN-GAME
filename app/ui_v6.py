@@ -826,8 +826,9 @@ class VictoryOverlay(QtWidgets.QWidget):
         la = "none"
         if g.largest_army_owner is not None:
             la = f"P{g.largest_army_owner + 1} (size {g.largest_army_size})"
+        vp_line = " / ".join([f"P{i + 1} {p.vp}" for i, p in enumerate(g.players)])
         self.overview_label.setText(
-            f"Final VP: P1 {g.players[0].vp} / P2 {g.players[1].vp}\n"
+            f"Final VP: {vp_line}\n"
             f"Longest Road: {lr}\n"
             f"Largest Army: {la}\n"
             f"Total rolls: {len(g.roll_history)}"
@@ -863,15 +864,9 @@ class StatusPanel(QtWidgets.QFrame):
         root.setContentsMargins(12, 10, 12, 10)
         root.setSpacing(8)
 
-        top = QtWidgets.QHBoxLayout()
-        self.badge_p1 = QtWidgets.QLabel("You 0 VP")
-        self.badge_p2 = QtWidgets.QLabel("Bot 0 VP")
-        for b in (self.badge_p1, self.badge_p2):
-            b.setAlignment(QtCore.Qt.AlignCenter)
-            b.setStyleSheet(f"font-size:12px; padding:5px 12px; border-radius:10px; background:{PALETTE['ui_panel_outline']};")
-        top.addWidget(self.badge_p1)
-        top.addWidget(self.badge_p2)
-        root.addLayout(top)
+        self.badge_row = QtWidgets.QHBoxLayout()
+        self.badges: List[QtWidgets.QLabel] = []
+        root.addLayout(self.badge_row)
 
         pills = QtWidgets.QHBoxLayout()
         self.badge_turn = QtWidgets.QLabel("Turn: -")
@@ -902,17 +897,30 @@ class StatusPanel(QtWidgets.QFrame):
         row.addWidget(self.lbl_army, 1, 1)
         root.addLayout(row)
 
+    def _ensure_badges(self, count: int):
+        while len(self.badges) < count:
+            lbl = QtWidgets.QLabel("")
+            lbl.setAlignment(QtCore.Qt.AlignCenter)
+            lbl.setStyleSheet(f"font-size:12px; padding:5px 12px; border-radius:10px; background:{PALETTE['ui_panel_outline']};")
+            self.badges.append(lbl)
+            self.badge_row.addWidget(lbl)
+        while len(self.badges) > count:
+            lbl = self.badges.pop()
+            self.badge_row.removeWidget(lbl)
+            lbl.deleteLater()
+
     def update_from_game(self, g):
-        self.badge_p1.setText(f"You {g.players[0].vp} VP")
-        self.badge_p2.setText(f"Bot {g.players[1].vp} VP")
+        self._ensure_badges(len(g.players))
+        for idx, p in enumerate(g.players):
+            self.badges[idx].setText(f"P{idx + 1} {p.name} {p.vp} VP")
         active_style = f"font-size:12px; padding:4px 10px; border-radius:10px; background:{PALETTE['ui_accent']}; color:{PALETTE['ui_text_dark']}; font-weight:800;"
         idle_style = f"font-size:12px; padding:4px 10px; border-radius:10px; background:{PALETTE['ui_panel_outline']}; color:{PALETTE['ui_text_bright']};"
         if g.game_over and g.winner_pid is not None:
-            self.badge_p1.setStyleSheet(active_style if g.winner_pid == 0 else idle_style)
-            self.badge_p2.setStyleSheet(active_style if g.winner_pid == 1 else idle_style)
+            for idx, lbl in enumerate(self.badges):
+                lbl.setStyleSheet(active_style if g.winner_pid == idx else idle_style)
         else:
-            self.badge_p1.setStyleSheet(active_style if g.turn == 0 else idle_style)
-            self.badge_p2.setStyleSheet(active_style if g.turn == 1 else idle_style)
+            for idx, lbl in enumerate(self.badges):
+                lbl.setStyleSheet(active_style if g.turn == idx else idle_style)
         if g.game_over:
             self.badge_phase.setText("Phase: game over")
             self.badge_turn.setText(f"Winner: P{g.winner_pid + 1}")
@@ -1000,9 +1008,12 @@ class ResourcesPanel(QtWidgets.QFrame):
             bank_row.addWidget(chip)
         root.addLayout(bank_row)
 
-    def update_from_game(self, g):
+    def update_from_game(self, g, pid: int = 0):
+        if not g.players:
+            return
+        pid = max(0, min(int(pid), len(g.players) - 1))
         for r in RESOURCES:
-            self.hand_chips[r].set_count(g.players[0].res[r])
+            self.hand_chips[r].set_count(g.players[pid].res[r])
             self.bank_chips[r].set_count(g.bank[r])
 
 class TradeOffersPanel(QtWidgets.QFrame):
@@ -1781,7 +1792,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._shown_game_over = False
 
         self.status_panel.update_from_game(g)
-        self.resources_panel.update_from_game(g)
+        self.resources_panel.update_from_game(g, self.you_pid if self.online_mode else 0)
         self.trade_offers_panel.update_from_game(g, self.you_pid if self.online_mode else 0)
 
         # hint text
