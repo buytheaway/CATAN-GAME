@@ -22,6 +22,7 @@ Controls:
 - Setup phase: click highlighted vertex to place Settlement, then click highlighted edge to place Road
 - Main phase: Roll -> Build (Road/Settlement/City) -> click highlighted place -> End
 - Seafarers maps: Ship/Move Ship/Pirate actions appear when enabled by the map rules; Gold prompts appear when a gold tile triggers
+- UX/Controls quick guide: see `docs/ux_controls.md`
 
 Testing:
 - Install test deps: `pip install -r requirements-dev.txt`
