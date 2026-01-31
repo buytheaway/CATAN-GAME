@@ -16,6 +16,9 @@ export type RoomState = {
     max_cities?: number;
     enable_seafarers?: boolean;
     max_ships?: number;
+    enable_pirate?: boolean;
+    enable_gold?: boolean;
+    enable_move_ship?: boolean;
   };
 };
 
@@ -118,8 +121,11 @@ export class WSClient {
     this.send({ type: "rematch" });
   }
 
-  setMap(mapId: string) {
-    this.send({ type: "set_map", map_id: mapId });
+  setMap(mapId?: string, mapData?: Record<string, any>) {
+    const payload: any = { type: "set_map" };
+    if (mapId) payload.map_id = mapId;
+    if (mapData) payload.map_data = mapData;
+    this.send(payload);
   }
 
 

@@ -2,7 +2,7 @@ import os, sys, math, random
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Tuple, Optional, Set
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets, QtSvg
 from app.dev_hand_overlay import attach_dev_hand_overlay
 from app.dev_ui import DevDialog
 from app.trade_ui import TradeDialog
@@ -72,6 +72,7 @@ def set_ui_palette(theme_name: str) -> None:
         "mountains": PALETTE["terrain_mountains"],
         "desert": PALETTE["terrain_desert"],
         "sea": PALETTE["terrain_sea"],
+        "gold": PALETTE["terrain_gold"],
     }
     RESOURCE_COLORS = {
         "wood": PALETTE["res_wood"],
@@ -157,6 +158,36 @@ def resource_icon_pixmap(name: str, size: int = 28) -> QtGui.QPixmap:
     return pm
 
 
+_SVG_RENDERERS: Dict[str, QtSvg.QSvgRenderer] = {}
+_SVG_PIXMAP_CACHE: Dict[Tuple[str, int, int, int], QtGui.QPixmap] = {}
+
+
+def _svg_tinted_pixmap(rel: str, size: Tuple[int, int], color: QtGui.QColor) -> QtGui.QPixmap:
+    w, h = int(size[0]), int(size[1])
+    key = (rel, w, h, int(color.rgba()))
+    cached = _SVG_PIXMAP_CACHE.get(key)
+    if cached is not None:
+        return cached
+    renderer = _SVG_RENDERERS.get(rel)
+    if renderer is None:
+        renderer = load_svg(rel)
+        _SVG_RENDERERS[rel] = renderer
+    if not renderer.isValid() or w <= 0 or h <= 0:
+        pm = QtGui.QPixmap()
+        _SVG_PIXMAP_CACHE[key] = pm
+        return pm
+    pm = QtGui.QPixmap(w, h)
+    pm.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(pm)
+    p.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    renderer.render(p, QtCore.QRectF(0, 0, w, h))
+    p.setCompositionMode(QtGui.QPainter.CompositionMode_SourceIn)
+    p.fillRect(QtCore.QRectF(0, 0, w, h), color)
+    p.end()
+    _SVG_PIXMAP_CACHE[key] = pm
+    return pm
+
+
 def _rules_value(cfg: Any, key: str, default: Any) -> Any:
     if isinstance(cfg, dict):
         return cfg.get(key, default)
@@ -232,7 +263,7 @@ def make_action_icon(name: str, size: int = 34) -> QtGui.QPixmap:
     elif name == "city":
         p.drawRoundedRect(QtCore.QRectF(size*0.22, size*0.48, size*0.56, size*0.32), 4, 4)
         p.drawRect(QtCore.QRectF(size*0.32, size*0.3, size*0.36, size*0.2))
-    elif name == "ship":
+    elif name in ("ship", "move_ship"):
         hull = QtGui.QPolygonF([
             QtCore.QPointF(size*0.18, size*0.62),
             QtCore.QPointF(size*0.82, size*0.62),
@@ -249,6 +280,24 @@ def make_action_icon(name: str, size: int = 34) -> QtGui.QPixmap:
             QtCore.QPointF(size*0.50, size*0.58),
         ])
         p.drawPolygon(sail)
+        if name == "move_ship":
+            p.setPen(QtGui.QPen(fg, 2))
+            p.setBrush(QtCore.Qt.NoBrush)
+            p.drawLine(int(size*0.25), int(size*0.35), int(size*0.75), int(size*0.35))
+            p.setBrush(fg)
+            p.drawPolygon(QtGui.QPolygonF([
+                QtCore.QPointF(size*0.75, size*0.28),
+                QtCore.QPointF(size*0.88, size*0.35),
+                QtCore.QPointF(size*0.75, size*0.42),
+            ]))
+    elif name == "pirate":
+        p.setPen(QtGui.QPen(fg, 2))
+        p.setBrush(QtCore.Qt.NoBrush)
+        p.drawEllipse(QtCore.QRectF(size*0.22, size*0.22, size*0.56, size*0.56))
+        p.setBrush(fg)
+        p.drawEllipse(QtCore.QRectF(size*0.38, size*0.40, size*0.08, size*0.08))
+        p.drawEllipse(QtCore.QRectF(size*0.54, size*0.40, size*0.08, size*0.08))
+        p.drawRect(QtCore.QRectF(size*0.42, size*0.58, size*0.16, size*0.08))
     elif name == "dev":
         p.drawRoundedRect(QtCore.QRectF(size*0.28, size*0.2, size*0.42, size*0.6), 6, 6)
         p.drawRoundedRect(QtCore.QRectF(size*0.18, size*0.3, size*0.42, size*0.6), 6, 6)
@@ -324,11 +373,14 @@ class Game:
     ports: List[Tuple[Tuple[int,int], str]] = field(default_factory=list)      # (edge, "3:1"/"2:1:wood"...)
     robber_tile: int = 0
     robbers: List[int] = field(default_factory=list)
+    pirate_tile: Optional[int] = None
     pending_action: Optional[str] = None   # "discard" | "robber_move" | "robber_steal" | None
     pending_pid: Optional[int] = None
     pending_victims: List[int] = field(default_factory=list)
     discard_required: Dict[int, int] = field(default_factory=dict)
     discard_submitted: Set[int] = field(default_factory=set)
+    pending_gold: Dict[int, int] = field(default_factory=dict)
+    pending_gold_queue: List[int] = field(default_factory=list)
     longest_road_owner: Optional[int] = None
     longest_road_len: int = 0
     game_over: bool = False
@@ -383,10 +435,28 @@ class Game:
         except engine_rules.RuleError as exc:
             raise ValueError(exc.message) from None
 
-def build_board(seed: int, size: float, map_id: Optional[str] = None, player_names: Optional[List[str]] = None, max_players: int = 2) -> Game:
+def build_board(
+    seed: int,
+    size: float,
+    map_id: Optional[str] = None,
+    player_names: Optional[List[str]] = None,
+    max_players: int = 2,
+    map_path: Optional[str] = None,
+    map_data: Optional[Dict[str, Any]] = None,
+) -> Game:
     if player_names is None:
         player_names = ["You", "Bot"]
-    base = engine_rules.build_game(seed=seed, max_players=max_players, size=size, player_names=player_names, map_id=map_id)
+    if map_path or map_data:
+        map_id = None
+    base = engine_rules.build_game(
+        seed=seed,
+        max_players=max_players,
+        size=size,
+        player_names=player_names,
+        map_id=map_id,
+        map_path=map_path,
+        map_data=map_data,
+    )
 
     def _pt(p):
         return QtCore.QPointF(float(p[0]), float(p[1]))
@@ -428,11 +498,14 @@ def build_board(seed: int, size: float, map_id: Optional[str] = None, player_nam
     g.last_roll = base.last_roll
     g.robber_tile = int(base.robber_tile)
     g.robbers = list(getattr(base, "robbers", [g.robber_tile]))
+    g.pirate_tile = getattr(base, "pirate_tile", None)
     g.pending_action = base.pending_action
     g.pending_pid = base.pending_pid
     g.pending_victims = list(base.pending_victims)
     g.discard_required = dict(base.discard_required)
     g.discard_submitted = set(base.discard_submitted)
+    g.pending_gold = dict(getattr(base, "pending_gold", {}))
+    g.pending_gold_queue = list(getattr(base, "pending_gold_queue", []))
     g.longest_road_owner = base.longest_road_owner
     g.longest_road_len = int(base.longest_road_len)
     g.largest_army_owner = base.largest_army_owner
@@ -690,6 +763,47 @@ class DiscardDialog(QtWidgets.QDialog):
 
     def selected(self) -> Dict[str,int]:
         return dict(self._result)
+
+
+class GoldChoiceDialog(QtWidgets.QDialog):
+    def __init__(self, parent, need: int):
+        super().__init__(parent)
+        self.setWindowTitle("Gold Choice")
+        self.setModal(True)
+        self._need = int(need)
+        self._res = "wood"
+        self._qty = 1
+
+        root = QtWidgets.QVBoxLayout(self)
+        lbl = QtWidgets.QLabel(f"Choose {self._need} resource(s) from Gold.")
+        root.addWidget(lbl)
+
+        form = QtWidgets.QFormLayout()
+        self._combo = QtWidgets.QComboBox()
+        self._combo.addItems(list(RESOURCES))
+        self._combo.currentTextChanged.connect(self._on_res)
+        form.addRow("Resource", self._combo)
+
+        self._spin = QtWidgets.QSpinBox()
+        self._spin.setRange(1, max(1, self._need))
+        self._spin.setValue(min(1, self._need))
+        self._spin.valueChanged.connect(self._on_qty)
+        form.addRow("Quantity", self._spin)
+        root.addLayout(form)
+
+        self._btns = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        self._btns.accepted.connect(self.accept)
+        self._btns.rejected.connect(self.reject)
+        root.addWidget(self._btns)
+
+    def _on_res(self, val: str):
+        self._res = str(val)
+
+    def _on_qty(self, val: int):
+        self._qty = int(val)
+
+    def selected(self) -> Tuple[str, int]:
+        return (self._res, int(self._qty))
 
 # -------------------- Main UI --------------------
 
@@ -1004,10 +1118,10 @@ class ResourceChip(QtWidgets.QFrame):
         self.setObjectName("resChip")
         self.name = name
         self.setStyleSheet(f"""
-#resChip {{
-  background: {PALETTE['ui_panel_deep']};
-  border: 1px solid {PALETTE['res_chip_border_rgba']};
-  border-radius: 12px;
+  #resChip {{
+    background: {PALETTE['ui_panel_deep']};
+    border: 1px solid {PALETTE['res_chip_border_rgba']};
+    border-radius: 12px;
 }}
 """)
         lay = QtWidgets.QHBoxLayout(self)
@@ -1026,6 +1140,7 @@ class ResourceChip(QtWidgets.QFrame):
 
     def set_count(self, value: int):
         self.count.setText(str(value))
+        self.setToolTip(f"{self.name}: {int(value)}")
 
 class ResourcesPanel(QtWidgets.QFrame):
     def __init__(self):
@@ -1295,7 +1410,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dev_dialog_factory = dev_dialog_factory or DevDialog
         self._trade_dialog_factory = trade_dialog_factory or TradeDialog
 
-        self.game = build_board(seed=random.randint(1, 999999), size=62.0, map_id=self._last_config.map_preset)
+        self.game = build_board(
+            seed=random.randint(1, 999999),
+            size=62.0,
+            map_id=self._last_config.map_preset,
+            map_path=self._last_config.map_path,
+        )
 
         self.selected_action = None  # "settlement"/"road"/"city"/"dev"
         self.overlay_nodes: Dict[int, QtWidgets.QGraphicsItem] = {}
@@ -1304,7 +1424,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.piece_items: List[QtWidgets.QGraphicsItem] = []
         self._shown_game_over = False
         self._discard_modal_open = False
+        self._gold_modal_open = False
         self._bot_seen_offers: Set[int] = set()
+        self._move_ship_from: Optional[Tuple[int, int]] = None
 
         root = QtWidgets.QWidget()
         root.setStyleSheet(f"background:{BG}; color:{TEXT};")
@@ -1442,7 +1564,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_sett = action_btn("settlement", "Settlement (wood+brick+sheep+wheat)")
         self.btn_road = action_btn("road", "Road (wood+brick)")
         self.btn_ship = action_btn("ship", "Ship (wood+sheep)")
+        self.btn_move_ship = action_btn("move_ship", "Move Ship (endpoint)")
         self.btn_city = action_btn("city", "City (2 wheat + 3 ore)")
+        self.btn_pirate = action_btn("pirate", "Move Pirate")
         self.btn_dev  = action_btn("dev", "Dev card (sheep+wheat+ore)", checkable=False)
         self.btn_trade = action_btn("trade", "Trade with bank", checkable=False)
         self.btn_dev.setObjectName("btn_dev_action")
@@ -1453,7 +1577,9 @@ class MainWindow(QtWidgets.QMainWindow):
         bottom_l.addWidget(self.btn_sett)
         bottom_l.addWidget(self.btn_road)
         bottom_l.addWidget(self.btn_ship)
+        bottom_l.addWidget(self.btn_move_ship)
         bottom_l.addWidget(self.btn_city)
+        bottom_l.addWidget(self.btn_pirate)
         bottom_l.addWidget(self.btn_dev)
         bottom_l.addWidget(self.btn_trade)
         bottom_l.addStretch(1)
@@ -1606,24 +1732,56 @@ class MainWindow(QtWidgets.QMainWindow):
             cand2 = QtCore.QPointF(mid.x()-nx*30, mid.y()-ny*30)
             out = cand1 if (cand1-center).manhattanLength() > (cand2-center).manhattanLength() else cand2
 
-            # rounded rect via path (PySide6 has no QGraphicsRoundedRectItem)
-            rect = QtCore.QRectF(out.x()-22, out.y()-12, 44, 24)
-            path = QtGui.QPainterPath()
-            path.addRoundedRect(rect, 10, 10)
-            box = QtWidgets.QGraphicsPathItem(path)
-            box.setBrush(QtGui.QColor(PALETTE["ui_panel_input"]))
-            box.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_panel_soft"]), 2))
-            box.setZValue(6)
-            self.scene.addItem(box)
+            # port visuals: ship + ratio badge + resource icon (no text label)
+            def _normalize_port(p):
+                s = str(p).strip().lower()
+                if "3:1" in s or s in ("3", "3:1", "generic", "any"):
+                    return "3:1", None
+                for r in RESOURCES:
+                    if r in s:
+                        return "2:1", r
+                return "3:1", None
 
-            label = ptype.replace("2:1:", "2:1 ")
-            txt = QtWidgets.QGraphicsTextItem(label)
-            txt.setDefaultTextColor(QtGui.QColor(PALETTE["text"]))
-            txt.setFont(QtGui.QFont("Segoe UI", 9, QtGui.QFont.Bold))
+            ratio, res = _normalize_port(ptype)
+
+            ship_pm = _svg_tinted_pixmap("pieces/ship.svg", (34, 18), QtGui.QColor(PALETTE["ui_action_icon"]))
+            if ship_pm.isNull():
+                ship_pm = make_action_icon("ship", 30)
+            ship = QtWidgets.QGraphicsPixmapItem(ship_pm)
+            ship.setOffset(-ship_pm.width() / 2, -ship_pm.height() / 2)
+            ship.setPos(out)
+            ship.setZValue(6)
+            ship.setToolTip(f"Port {ratio}" + (f" {res}" if res else ""))
+            self.scene.addItem(ship)
+
+            badge_r = 10
+            badge_center = QtCore.QPointF(out.x() + 14, out.y() - 14)
+            badge = QtWidgets.QGraphicsEllipseItem(
+                badge_center.x() - badge_r,
+                badge_center.y() - badge_r,
+                badge_r * 2,
+                badge_r * 2,
+            )
+            badge.setBrush(QtGui.QColor(PALETTE["ui_panel_tab_active"]))
+            badge.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_light"]), 1.5))
+            badge.setZValue(7)
+            self.scene.addItem(badge)
+
+            txt = QtWidgets.QGraphicsTextItem(ratio)
+            txt.setDefaultTextColor(QtGui.QColor(PALETTE["ui_text_bright"]))
+            txt.setFont(QtGui.QFont("Segoe UI", 8, QtGui.QFont.Bold))
             br = txt.boundingRect()
-            txt.setPos(rect.center().x()-br.width()/2, rect.center().y()-br.height()/2-1)
-            txt.setZValue(7)
+            txt.setPos(badge_center.x() - br.width()/2, badge_center.y() - br.height()/2 - 1)
+            txt.setZValue(8)
             self.scene.addItem(txt)
+
+            if res:
+                icon_pm = resource_icon_pixmap(res, 20)
+                icon = QtWidgets.QGraphicsPixmapItem(icon_pm)
+                icon.setOffset(-icon_pm.width()/2, -icon_pm.height()/2)
+                icon.setPos(QtCore.QPointF(out.x() - 16, out.y() - 14))
+                icon.setZValue(7)
+                self.scene.addItem(icon)
 
     def _refresh_all_dynamic(self):
         # clear overlays and pieces
@@ -1642,7 +1800,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # draw roads + settlements/cities
         # roads
-        for (a,b), pid in self.game.occupied_e.items():
+        for (a, b), pid in self.game.occupied_e.items():
+            if self._draw_edge_svg("pieces/road.svg", a, b, self.game.players[pid].color, z=11.0, height=12):
+                continue
             pa = self.game.vertices[a]
             pb = self.game.vertices[b]
             path = QtGui.QPainterPath(pa)
@@ -1666,6 +1826,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ships (seafarers)
         for (a, b), pid in getattr(self.game, "occupied_ships", {}).items():
+            if self._draw_edge_svg("pieces/ship.svg", a, b, self.game.players[pid].color, z=11.2, height=10):
+                continue
             pa = self.game.vertices[a]
             pb = self.game.vertices[b]
             path = QtGui.QPainterPath(pa)
@@ -1698,6 +1860,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._draw_city(p, self.game.players[pid].color, z=12)
 
         self._draw_robber()
+        self._draw_pirate()
 
         if self.game.pending_action == "robber_move" and self.game.pending_pid == (self.you_pid if self.online_mode else 0):
             for ti, t in enumerate(self.game.tiles):
@@ -1706,6 +1869,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 poly = QtGui.QPolygonF(hex_corners(t.center, self.game.size))
                 def on_click(_ti=ti):
                     self._on_hex_clicked(_ti)
+                it = ClickableHex(poly, on_click)
+                it.setBrush(QtGui.QColor(PALETTE["overlay_hex_rgba"]))
+                it.setZValue(9)
+                self.scene.addItem(it)
+                self.overlay_hex[ti] = it
+
+        if self.selected_action == "pirate" and self._can_control_local_turn():
+            for ti, t in enumerate(self.game.tiles):
+                if t.terrain != "sea":
+                    continue
+                if self.game.pirate_tile is not None and ti == int(self.game.pirate_tile):
+                    continue
+                poly = QtGui.QPolygonF(hex_corners(t.center, self.game.size))
+                def on_click(_ti=ti):
+                    self._on_pirate_hex_clicked(_ti)
                 it = ClickableHex(poly, on_click)
                 it.setBrush(QtGui.QColor(PALETTE["overlay_hex_rgba"]))
                 it.setZValue(9)
@@ -1736,7 +1914,93 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scene.addItem(txt)
         self.piece_items.append(txt)
 
+    def _draw_pirate(self):
+        if self.game.pirate_tile is None:
+            return
+        ti = int(self.game.pirate_tile)
+        if ti < 0 or ti >= len(self.game.tiles):
+            return
+        t = self.game.tiles[ti]
+        c = t.center
+        r = self.game.size * 0.14
+        pir = QtWidgets.QGraphicsEllipseItem(c.x()-r, c.y()-r, r*2, r*2)
+        pir.setBrush(QtGui.QColor(PALETTE["ui_panel_outline"]))
+        pir.setPen(QtGui.QPen(QtGui.QColor(PALETTE["ui_outline_light"]), 2))
+        pir.setZValue(8)
+        self.scene.addItem(pir)
+        self.piece_items.append(pir)
+
+        txt = QtWidgets.QGraphicsTextItem("P")
+        txt.setDefaultTextColor(QtGui.QColor(PALETTE["ui_text_bright"]))
+        txt.setFont(QtGui.QFont("Segoe UI", 9, QtGui.QFont.Bold))
+        b = txt.boundingRect()
+        txt.setPos(c.x()-b.width()/2, c.y()-b.height()/2-1)
+        txt.setZValue(9)
+        self.scene.addItem(txt)
+        self.piece_items.append(txt)
+
+    def _draw_svg_piece(
+        self,
+        rel: str,
+        pos: QtCore.QPointF,
+        col: QtGui.QColor,
+        size: Tuple[int, int],
+        z: float,
+        angle: Optional[float] = None,
+        shadow: bool = True,
+    ) -> bool:
+        pm = _svg_tinted_pixmap(rel, size, col)
+        if pm.isNull():
+            return False
+        w, h = pm.width(), pm.height()
+        if shadow:
+            sh_col = QtGui.QColor(col.darker(180))
+            sh_col.setAlpha(160)
+            sh_pm = _svg_tinted_pixmap(rel, (w, h), sh_col)
+            if not sh_pm.isNull():
+                sh = QtWidgets.QGraphicsPixmapItem(sh_pm)
+                sh.setOffset(-w / 2, -h / 2)
+                sh.setPos(pos + QtCore.QPointF(2, 2))
+                if angle is not None:
+                    sh.setTransformOriginPoint(w / 2, h / 2)
+                    sh.setRotation(angle)
+                sh.setZValue(z - 0.2)
+                self.scene.addItem(sh)
+                self.piece_items.append(sh)
+
+        it = QtWidgets.QGraphicsPixmapItem(pm)
+        it.setOffset(-w / 2, -h / 2)
+        it.setPos(pos)
+        if angle is not None:
+            it.setTransformOriginPoint(w / 2, h / 2)
+            it.setRotation(angle)
+        it.setZValue(z)
+        self.scene.addItem(it)
+        self.piece_items.append(it)
+        return True
+
+    def _draw_edge_svg(
+        self,
+        rel: str,
+        a: int,
+        b: int,
+        col: QtGui.QColor,
+        z: float,
+        height: int,
+    ) -> bool:
+        pa = self.game.vertices[a]
+        pb = self.game.vertices[b]
+        dx = pb.x() - pa.x()
+        dy = pb.y() - pa.y()
+        dist = math.hypot(dx, dy)
+        length = max(8.0, dist - 8.0)
+        angle = math.degrees(math.atan2(dy, dx))
+        mid = QtCore.QPointF((pa.x() + pb.x()) / 2.0, (pa.y() + pb.y()) / 2.0)
+        return self._draw_svg_piece(rel, mid, col, (int(length), int(height)), z, angle=angle, shadow=True)
+
     def _draw_house(self, p: QtCore.QPointF, col: QtGui.QColor, z: float):
+        if self._draw_svg_piece("pieces/settlement.svg", p, col, (28, 28), z=z, shadow=True):
+            return
         # simple "3D-ish" house (original vector)
         w, h = 18, 14
         base = QtGui.QPolygonF([
@@ -1789,6 +2053,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.piece_items.append(r_hi)
 
     def _draw_city(self, p: QtCore.QPointF, col: QtGui.QColor, z: float):
+        if self._draw_svg_piece("pieces/city.svg", p, col, (32, 32), z=z, shadow=True):
+            return
         # bigger block
         w, h = 22, 18
         poly = QtGui.QPolygonF([
@@ -1893,6 +2159,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.lbl_hint.setText(f"Discard {need} cards.")
             else:
                 self.lbl_hint.setText("Waiting for other players to discard.")
+        elif g.pending_action == "choose_gold":
+            pid = self.you_pid if self.online_mode else 0
+            need = int(g.pending_gold.get(pid, 0))
+            if need > 0:
+                self.lbl_hint.setText(f"Choose {need} gold resource(s).")
+            else:
+                self.lbl_hint.setText("Waiting for other players to choose gold.")
         elif g.pending_action == "robber_move":
             self.lbl_hint.setText("Robber: click a hex to move it.")
         elif g.phase == "setup":
@@ -1900,11 +2173,15 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.lbl_hint.setText("Main: click dice to roll. Build by selecting card then clicking highlighted spots.")
 
-        for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_city, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
+        for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_move_ship, self.btn_city, self.btn_pirate, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
             b.setEnabled(not g.game_over)
         enable_sea = bool(_rules_value(g.rules_config, "enable_seafarers", False))
+        enable_move = bool(_rules_value(g.rules_config, "enable_move_ship", False))
+        enable_pirate = bool(_rules_value(g.rules_config, "enable_pirate", False))
         self.btn_ship.setVisible(enable_sea)
-        if not enable_sea and self.selected_action == "ship":
+        self.btn_move_ship.setVisible(enable_sea and enable_move)
+        self.btn_pirate.setVisible(enable_pirate)
+        if (not enable_sea and self.selected_action in ("ship", "move_ship")) or (not enable_pirate and self.selected_action == "pirate"):
             self.selected_action = "road"
             self.btn_road.setChecked(True)
         if self.online_mode:
@@ -1922,11 +2199,26 @@ class MainWindow(QtWidgets.QMainWindow):
             pid = self.you_pid if self.online_mode else 0
             if self._needs_discard(pid):
                 self._prompt_discard(pid)
+        if g.pending_action == "choose_gold":
+            pid = self.you_pid if self.online_mode else 0
+            if self._needs_gold(pid):
+                self._prompt_gold_choice(pid)
+            if not self.online_mode and self._needs_gold(1):
+                choice = self._bot_choose_gold(1)
+                if choice:
+                    res, qty = choice
+                    if self._submit_gold_choice(1, res, qty):
+                        self._log(f"[GOLD] Bot chose {qty} {res}.")
         if not self.online_mode and self.bot_enabled:
             self._handle_trade_offers_bot()
 
     def _restart_game(self):
-        self.game = build_board(seed=random.randint(1, 999999), size=62.0, map_id=self._last_config.map_preset)
+        self.game = build_board(
+            seed=random.randint(1, 999999),
+            size=62.0,
+            map_id=self._last_config.map_preset,
+            map_path=self._last_config.map_path,
+        )
         self._shown_game_over = False
         self._bot_seen_offers.clear()
         if hasattr(self, "victory_overlay"):
@@ -2089,6 +2381,16 @@ class MainWindow(QtWidgets.QMainWindow):
         g = self.game
         return g.pending_action == "discard" and pid in g.discard_required and pid not in g.discard_submitted
 
+    def _needs_gold(self, pid: int) -> bool:
+        g = self.game
+        return g.pending_action == "choose_gold" and int(g.pending_gold.get(pid, 0)) > 0 and (g.pending_pid is None or g.pending_pid == pid)
+
+    def _submit_gold_choice(self, pid: int, res: str, qty: int) -> bool:
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_choose_gold(res, qty)
+            return True
+        return self._apply_cmd({"type": "choose_gold", "res": res, "qty": int(qty)}, pid=pid) is not None
+
     def _submit_discard(self, pid: int, discards: Dict[str, int]) -> bool:
         if self.online_mode and self.online_controller:
             self.online_controller.cmd_discard(discards)
@@ -2112,6 +2414,36 @@ class MainWindow(QtWidgets.QMainWindow):
         discards = dlg.selected()
         if self._submit_discard(pid, discards):
             self._log(f"[7] P{pid + 1} discarded {need}.")
+
+    def _prompt_gold_choice(self, pid: int) -> None:
+        g = self.game
+        if self._gold_modal_open:
+            return
+        need = int(g.pending_gold.get(pid, 0))
+        if need <= 0:
+            return
+        self._gold_modal_open = True
+        dlg = GoldChoiceDialog(self, need)
+        ok = dlg.exec() == QtWidgets.QDialog.Accepted
+        self._gold_modal_open = False
+        if not ok:
+            self._log("[GOLD] Choice canceled.")
+            return
+        res, qty = dlg.selected()
+        if self._submit_gold_choice(pid, res, qty):
+            self._log(f"[GOLD] P{pid + 1} chose {qty} {res}.")
+
+    def _bot_choose_gold(self, pid: int) -> Optional[Tuple[str, int]]:
+        g = self.game
+        need = int(g.pending_gold.get(pid, 0))
+        if need <= 0:
+            return None
+        # pick resource with largest bank to reduce failure
+        res = max(RESOURCES, key=lambda r: int(g.bank.get(r, 0)))
+        qty = min(need, int(g.bank.get(res, 0)))
+        if qty <= 0:
+            return None
+        return res, qty
 
     def _handle_discard_flow(self) -> None:
         g = self.game
@@ -2177,6 +2509,27 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._log(f"[ROB] Stole 1 {ev.get('stolen')} from P{target_pid + 1}.")
         if not victims:
             self._log("[ROB] Robber moved. No victims.")
+        self._refresh_all_dynamic()
+        self._sync_ui()
+
+    def _on_pirate_hex_clicked(self, ti: int):
+        g = self.game
+        if g.game_over:
+            self._log(f"Game over. Winner: P{g.winner_pid}")
+            return
+        if not self._can_control_local_turn():
+            return
+        if g.tiles[ti].terrain != "sea":
+            return
+        if g.pirate_tile is not None and ti == int(g.pirate_tile):
+            self._log("[PIRATE] Pick a different sea tile.")
+            return
+        if self.online_mode and self.online_controller:
+            self.online_controller.cmd_move_pirate(ti)
+            return
+        if self._apply_cmd({"type": "move_pirate", "tile": ti}, pid=g.turn) is None:
+            return
+        self._log("[PIRATE] Pirate moved.")
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -2478,13 +2831,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.game.game_over:
             self._log(f"Game over. Winner: P{self.game.winner_pid}")
             return
-        if key == "ship" and not bool(_rules_value(self.game.rules_config, "enable_seafarers", False)):
+        if key in ("ship", "move_ship") and not bool(_rules_value(self.game.rules_config, "enable_seafarers", False)):
+            return
+        if key == "move_ship" and not bool(_rules_value(self.game.rules_config, "enable_move_ship", False)):
+            return
+        if key == "pirate" and not bool(_rules_value(self.game.rules_config, "enable_pirate", False)):
             return
         self.selected_action = key
+        if key != "move_ship":
+            self._move_ship_from = None
         # make checkable group
-        for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_city):
+        for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_move_ship, self.btn_city, self.btn_pirate):
             b.setChecked(False)
-        {"settlement":self.btn_sett,"road":self.btn_road,"ship":self.btn_ship,"city":self.btn_city}[key].setChecked(True)
+        {"settlement":self.btn_sett,"road":self.btn_road,"ship":self.btn_ship,"move_ship":self.btn_move_ship,"city":self.btn_city,"pirate":self.btn_pirate}[key].setChecked(True)
         self._refresh_all_dynamic()
         self._sync_ui()
 
@@ -2675,6 +3034,25 @@ class MainWindow(QtWidgets.QMainWindow):
             for e in g.edges:
                 if can_place_ship(g, 0, e):
                     self._add_edge_spot(e, forced_pid=0)
+        elif self.selected_action == "move_ship":
+            if self._move_ship_from is None:
+                for e, owner in g.occupied_ships.items():
+                    if owner != 0:
+                        continue
+                    if self._is_endpoint_ship_ui(0, e):
+                        self._add_edge_spot(e, forced_pid=0)
+            else:
+                fa, fb = self._move_ship_from
+                for e in g.edges:
+                    if e in g.occupied_ships or e in g.occupied_e:
+                        continue
+                    if not self._edge_has_sea_ui(e):
+                        continue
+                    if self._edge_blocked_by_pirate_ui(e):
+                        continue
+                    if not (fa in e or fb in e):
+                        continue
+                    self._add_edge_spot(e, forced_pid=0)
         elif self.selected_action == "city":
             for vid in g.vertices.keys():
                 if can_upgrade_city(g, 0, vid):
@@ -2682,6 +3060,56 @@ class MainWindow(QtWidgets.QMainWindow):
         elif self.selected_action == "dev":
             # dev is click in UI later; keep no board overlays now
             pass
+
+    def _can_control_local_turn(self) -> bool:
+        g = self.game
+        if g.game_over:
+            return False
+        if g.pending_action is not None:
+            return False
+        if self.online_mode:
+            return g.phase == "main" and g.turn == self.you_pid
+        return g.phase == "main" and g.turn == 0
+
+    def _edge_has_sea_ui(self, e: Tuple[int, int]) -> bool:
+        ek = (e[0], e[1]) if e[0] < e[1] else (e[1], e[0])
+        for ti in self.game.edge_adj_hexes.get(ek, []):
+            if self.game.tiles[ti].terrain == "sea":
+                return True
+        return False
+
+    def _edge_is_sea_only_ui(self, e: Tuple[int, int]) -> bool:
+        ek = (e[0], e[1]) if e[0] < e[1] else (e[1], e[0])
+        adj = self.game.edge_adj_hexes.get(ek, [])
+        if not adj:
+            return False
+        return all(self.game.tiles[ti].terrain == "sea" for ti in adj)
+
+    def _edge_blocked_by_pirate_ui(self, e: Tuple[int, int]) -> bool:
+        if self.game.pirate_tile is None:
+            return False
+        ek = (e[0], e[1]) if e[0] < e[1] else (e[1], e[0])
+        return int(self.game.pirate_tile) in self.game.edge_adj_hexes.get(ek, [])
+
+    def _route_degree_ui(self, pid: int, vid: int) -> int:
+        deg = 0
+        for e, owner in self.game.occupied_e.items():
+            if owner == pid and vid in e:
+                deg += 1
+        for e, owner in self.game.occupied_ships.items():
+            if owner == pid and vid in e:
+                deg += 1
+        return deg
+
+    def _is_endpoint_ship_ui(self, pid: int, e: Tuple[int, int]) -> bool:
+        a, b = e
+        for v in (a, b):
+            occ = self.game.occupied_v.get(v)
+            if occ and occ[0] == pid:
+                continue
+            if self._route_degree_ui(pid, v) <= 1:
+                return True
+        return False
 
     def _add_node_spot(self, vid: int, forced_pid: int):
         if vid in self.overlay_nodes:
@@ -2771,6 +3199,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.online_controller.cmd_place_road(e, setup=False)
             elif self.selected_action == "ship":
                 self.online_controller.cmd_build_ship(e)
+            elif self.selected_action == "move_ship":
+                if self._move_ship_from is None:
+                    self._move_ship_from = e
+                    self._refresh_all_dynamic()
+                    return
+                self.online_controller.cmd_move_ship(self._move_ship_from, e)
+                self._move_ship_from = None
             return
         if g.phase == "setup":
             if g.setup_need != "road":
@@ -2786,6 +3221,19 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # main phase
         if pid != 0:
+            return
+        if self.selected_action == "move_ship":
+            if self._move_ship_from is None:
+                self._move_ship_from = e
+                self._refresh_all_dynamic()
+                return
+            cmd = {"type": "move_ship", "from_eid": self._move_ship_from, "to_eid": e}
+            self._move_ship_from = None
+            if self._apply_cmd(cmd, pid=0) is None:
+                return
+            self._log("You moved a ship.")
+            self._refresh_all_dynamic()
+            self._sync_ui()
             return
         if self.selected_action != "road":
             if self.selected_action != "ship":

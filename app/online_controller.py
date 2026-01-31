@@ -101,6 +101,20 @@ class OnlineGameController(QtCore.QObject):
     def cmd_trade_offer_cancel(self, offer_id: int):
         self._send_cmd({"type": "trade_offer_cancel", "offer_id": int(offer_id)})
 
+    def cmd_move_pirate(self, tile: int, victim: Optional[int] = None):
+        payload = {"type": "move_pirate", "tile": int(tile)}
+        if victim is not None:
+            payload["victim"] = int(victim)
+        self._send_cmd(payload)
+
+    def cmd_choose_gold(self, res: str, qty: int = 1):
+        self._send_cmd({"type": "choose_gold", "res": str(res), "qty": int(qty)})
+
+    def cmd_move_ship(self, from_eid, to_eid):
+        fa, fb = from_eid
+        ta, tb = to_eid
+        self._send_cmd({"type": "move_ship", "from_eid": [int(fa), int(fb)], "to_eid": [int(ta), int(tb)]})
+
     def cmd_end_turn(self):
         if not self.current_state:
             return
@@ -157,11 +171,14 @@ class OnlineGameController(QtCore.QObject):
 
         g.robber_tile = int(state.get("robber_tile", 0))
         g.robbers = [int(x) for x in state.get("robbers", [])] if state.get("robbers") is not None else [g.robber_tile]
+        g.pirate_tile = state.get("pirate_tile", None)
         g.pending_action = state.get("pending_action", None)
         g.pending_pid = state.get("pending_pid", None)
         g.pending_victims = list(state.get("pending_victims", []))
         g.discard_required = {int(k): int(v) for k, v in state.get("discard_required", {}).items()}
         g.discard_submitted = set(int(x) for x in state.get("discard_submitted", []))
+        g.pending_gold = {int(k): int(v) for k, v in state.get("pending_gold", {}).items()}
+        g.pending_gold_queue = [int(x) for x in state.get("pending_gold_queue", [])]
 
         g.longest_road_owner = state.get("longest_road_owner", None)
         g.longest_road_len = int(state.get("longest_road_len", 0))

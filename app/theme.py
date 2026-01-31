@@ -95,13 +95,14 @@ UI_COLORS: Dict[str, str] = {
     "robber_fill_rgba": "rgba(10, 10, 10, 220)",
     "token_shadow_rgba": "rgba(0, 0, 0, 80)",
 
-    "terrain_forest": "#22c55e",
+    "terrain_forest": "#15803d",
     "terrain_hills": "#f97316",
-    "terrain_pasture": "#4ade80",
+    "terrain_pasture": "#86efac",
     "terrain_fields": "#facc15",
     "terrain_mountains": "#94a3b8",
     "terrain_desert": "#d6c8a0",
     "terrain_sea": "#0b4a6f",
+    "terrain_gold": "#eab308",
 
     "res_wood": "#16a34a",
     "res_brick": "#f97316",

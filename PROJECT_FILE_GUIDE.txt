@@ -1,0 +1,394 @@
+﻿# CATAN-GAME — полный разбор файлов (5 частей)
+# Формат: путь -> назначение -> ключевые обязанности/связи
+# Дата: 2026-01-31
+
+==============================
+ЧАСТЬ 1/5 — CORE (engine + server + desktop UI)
+==============================
+
+app/engine/state.py
+- Назначение: каноническое состояние игры (source of truth).
+- Содержит все dataclass-структуры: GameState, BoardState, PlayerState, RulesConfig, AchievementState, TradeOffer.
+- Хранит всю «правду»: ресурсы, карты, занятые вершины/рёбра/корабли, pending actions, dev deck, победу.
+- Используется в engine.rules, engine.serialize, server_mp, tests.
+
+app/engine/rules.py
+- Назначение: все правила игры + единственный dispatcher команд (apply_cmd).
+- Валидирует и применяет: setup, roll, discard, robber, trade, dev cards, longest/army, win.
+- Это единственное место, где меняется GameState по правилам.
+- Вызывается оффлайн UI и мультиплеер сервером.
+
+app/engine/serialize.py
+- Назначение: сериализация GameState ↔ dict (snapshot для сети/диска).
+- to_dict(): готовый JSON-friendly state для server_mp / web / ui online.
+- from_dict(): восстановление состояния (тесты/серилизация).
+
+app/engine/maps.py
+- Назначение: data-driven карты и пресеты.
+- Валидация схемы карты, загрузка JSON, пресеты (base + seafarers).
+- build_board_from_map(): строит BoardState + robber_tile + rules из карты.
+
+app/engine/board_geom.py
+- Назначение: геометрия гексов + построение графа (vertices/edges/adjacency).
+- build_graph_from_tiles(): создаёт вершины, рёбра, прилегающие тайлы.
+
+app/engine/__init__.py
+- Назначение: публичный фасад engine (re-export state/rules/maps/serialize).
+- Упрощает импорты в UI/сервере/тестах.
+
+app/rules_engine.py
+- Назначение: совместимость со старым именем модуля (alias на engine).
+- Используется как безопасный мост для старых импортов.
+
+app/server_mp.py
+- Назначение: авторитетный мультиплеер сервер (FastAPI + WebSocket).
+- Управляет Room/PlayerSlot, reconnect_token, seq/idempotency, рассылка snapshots.
+- Любая команда идёт в engine.apply_cmd(), сервер только валидирует протокол и раздаёт state.
+
+app/net_protocol.py
+- Назначение: формат протокола + валидация входящих сообщений.
+- validate_client_message(): базовые проверки типов.
+- room_state_message/match_state_message/error_message: единые структуры ответов.
+
+app/net_client.py
+- Назначение: PySide6 WebSocket клиент для desktop.
+- Реализует reconnect, очереди команд, seq/cmd_id, ACK обработку.
+- Сигналы: room_state_received/match_state_received и пр.
+
+app/online_controller.py
+- Назначение: связка «сеть → UI» для online режима.
+- Принимает match_state, конвертирует его в ui_v6.Game (render state).
+- Отправляет UI-экшены как cmd через NetClient.
+
+app/ui_v6.py
+- Назначение: основной desktop UI + offline режим.
+- Рендер карты, ресурсы, действия, overlay (Victory, Dev hand), боты.
+- Оффлайн: команды в engine.apply_cmd(); онлайн: команды через OnlineGameController.
+- Содержит «UI-обёртку» Game, но правила берутся из engine.
+
+app/trade_ui.py
+- Назначение: модалка «Trade with Bank».
+- Рассчитывает rate через game.best_trade_rate и применяет trade_with_bank.
+
+app/dev_ui.py
+- Назначение: модалка Dev cards (buy/play).
+- Делегирует правила в game.buy_dev / game.play_dev.
+
+app/dev_hand_overlay.py
+- Назначение: overlay панель dev-карт на карте (иконки + счётчик).
+- Периодически обновляет UI (QTimer для refresh, не для «ожиданий»).
+
+app/ui_tweaks.py
+- Назначение: визуальные твики (fitInView, размеры вкладок, сплиттеры).
+
+app/theme.py
+- Назначение: цветовые темы + UI-палитра, player colors, QSS.
+- apply_theme/apply_ui_scale — применяются в main_menu и game launcher.
+
+app/styles.qss
+- Назначение: базовый QSS-стиль (подставляются цвета из theme.py).
+
+app/assets_loader.py
+- Назначение: загрузка SVG/PNG через asset_path(), совместимо с PyInstaller.
+
+app/resource_path.py
+- Назначение: путь к ресурсам с учётом sys._MEIPASS (PyInstaller).
+
+app/config.py
+- Назначение: GameConfig (режим, карта, бот, тема, масштаб, fullscreen).
+
+app/game_launcher.py
+- Назначение: единый запуск UI из main_menu, применяет тему/scale.
+- Создаёт ui_v6.MainWindow и показывает окно.
+
+app/main_menu.py
+- Назначение: главное меню (single/multi/settings/exit).
+- ModeSelectDialog: выбор карты + бот (offline).
+- SettingsDialog: тема/scale/fullscreen.
+
+app/lobby_ui.py
+- Назначение: desktop lobby для мультиплеера.
+- Host/Join, список игроков, выбор карты, start/rematch.
+- При старте создаёт ui_v6.MainWindow + OnlineGameController.
+
+app/expansions/__init__.py
+- Назначение: заглушка под будущие расширения.
+
+app/__init__.py
+- Назначение: пустой пакетный файл (инициализация пакета).
+
+==============================
+ЧАСТЬ 2/5 — WEB-клиент (Vite + React)
+==============================
+
+web/index.html
+- HTML-оболочка для Vite/React, корневой div#root.
+
+web/package.json
+- Скрипты dev/build/preview, зависимости React/Vite.
+
+web/package-lock.json
+- lockfile npm (детерминированные зависимости).
+
+web/vite.config.ts
+- Конфиг Vite (React plugin, host/port для dev).
+
+web/postcss.config.cjs
+- Явный PostCSS config (устраняет краш Vite на парсинге).
+
+web/tsconfig.json
+- Основной TypeScript конфиг (strict, react-jsx).
+
+web/tsconfig.node.json
+- TS конфиг для vite.config.ts.
+
+web/.env.example
+- Пример для LAN WS URL (VITE_WS_URL).
+
+web/src/main.tsx
+- Входная точка React, монтирует <App />.
+
+web/src/App.tsx
+- Root UI: переключает LobbyPage → GamePage, хранит лог/статус.
+
+web/src/wsClient.ts
+- WebSocket клиент для LAN web.
+- Реализует reconnect_token, seq/cmd_id, очередь и replay.
+
+web/src/components/LobbyPage.tsx
+- Lobby UI (host/join, выбор карты, список игроков, start).
+- Команды отправляются через wsClient.
+
+web/src/components/GamePage.tsx
+- Текстовый MVP UI матча.
+- Показывает state/phase/turn/ресурсы и отправляет базовые команды.
+- Поддерживает seafarers (build ship, move ship, pirate, gold choose) в текстовом виде.
+
+web/src/vite-env.d.ts
+- Типы окружения Vite.
+
+==============================
+ЧАСТЬ 3/5 — TESTS
+==============================
+
+pytest.ini
+- Конфигурация pytest (дефолтный discovery).
+
+tests/__init__.py
+- Пустой пакет.
+
+tests/harness/engine.py
+- GameDriver: создает GameState через engine, применяет действия и логирует шаги.
+- Используется сценариями tests/scenarios/*.
+
+tests/harness/invariants.py
+- Инварианты: ресурсы не отрицательные, консервация, longest/army一致, pending_action корректна.
+
+tests/run_all.py
+- Запускает все scenario_*.py с seeds, пишет report_*.json и BUG_REPORT.md.
+
+Тесты (юнит/смоки):
+
+tests/test_ui_smoke.py
+- Быстрый smoke: запускает MainMenu, стартует игру, закрывает.
+
+tests/test_ui_interactions.py
+- Проверка dev/trade/robber без UI-кликов (прямые вызовы диалогов).
+
+tests/test_no_hacks.py
+- Гейт: запрещает QTimer.singleShot, runtime_patch, ports_bridge, monkeypatch, findChild в app/.
+
+tests/test_multiplayer_basic.py
+- Интеграционные MP тесты: setup, roll, discard, trade offers, duplicate/out-of-order, reconnect, map selection.
+
+tests/test_map_loader.py
+- Валидность пресета карты и отклонение плохих карт.
+
+Сценарии (tests/scenarios/*.py):
+
+- tests/scenarios/scenario_setup_snake.py
+  Базовый setup snake (2 игрока), проверка перехода в main.
+- tests/scenarios/scenario_setup_snake_n2.py / _n5.py / _n6.py
+  Setup для 2/5/6 игроков + стартовые ресурсы со 2-го поселения.
+- tests/scenarios/scenario_roll_distribution_basic.py
+  Бросок и корректная раздача ресурсов (с учётом robber).
+- tests/scenarios/scenario_robber_7_flow.py
+  Полный flow 7: discard → move robber → steal → блок раздачи.
+- tests/scenarios/scenario_robber_discard_flow.py
+  Проверка pending discard (точное количество, порядок, отказ при ошибках).
+- tests/scenarios/scenario_ports_trade_rates.py
+  Проверка ставок 4:1/3:1/2:1 по портам.
+- tests/scenarios/scenario_dev_cards_restrictions.py
+  Ограничения dev cards (new/1 per turn) + эффекты.
+- tests/scenarios/scenario_longest_road_award.py
+  Longest Road +2 VP и переход владельца.
+- tests/scenarios/scenario_largest_army_award.py
+  Largest Army +2 VP и переход владельца.
+- tests/scenarios/scenario_initial_resources_second_settlement.py
+  Стартовые ресурсы со 2-го поселения.
+- tests/scenarios/scenario_trade_offer_accept.py
+  Оффер → accept → корректный перенос ресурсов.
+- tests/scenarios/scenario_trade_offer_cancel.py
+  Оффер → cancel → статус/отсутствие применения.
+- tests/scenarios/scenario_trade_offer_auto_cancel.py
+  Auto-cancel офферов при end_turn.
+- tests/scenarios/scenario_trade_offer_insufficient.py
+  Проверка отказа, если ресурсов не хватает.
+- tests/scenarios/scenario_rules_target_vp.py
+  Победа при target_vp из rules.
+- tests/scenarios/scenario_rules_limits.py
+  Проверка лимитов (roads/settlements/cities/ships).
+- tests/scenarios/scenario_rules_multi_robber.py
+  Несколько robber → блок раздачи.
+- tests/scenarios/scenario_seafarers_ship_build.py
+  Build ship на sea edges.
+- tests/scenarios/scenario_seafarers_move_ship.py
+  Move ship (endpoint → соседний sea edge).
+- tests/scenarios/scenario_seafarers_pirate_move.py
+  Move pirate и steal по ship-соседям.
+- tests/scenarios/scenario_seafarers_gold_choose.py
+  Gold tile → pending gold choice → выдача ресурса.
+- tests/scenarios/scenario_win_condition_end_game.py
+  Game over при достижении VP.
+- tests/scenarios/scenario_bot_stability.py
+  50 ходов бота без нарушения инвариантов.
+
+Тестовые утилиты:
+
+tests/scenarios/utils.py
+- Помощники setup snake + выбор порта.
+
+tests/scenarios/__init__.py
+- Пакет сценариев (пустой).
+
+tests/reports/BUG_REPORT.md
+- Автогенерируемый отчёт после tests.run_all.
+
+==============================
+ЧАСТЬ 4/5 — Tools, scripts, docs, config
+==============================
+
+README.md
+- Основные команды запуска, тестов, сборки, LAN web, NO HACKS policy.
+
+docs/maps_schema.md
+- Описание формата карты (tiles/ports/rules/pirate/gold).
+
+requirements.txt / requirements-dev.txt
+- Зависимости проекта (PySide6/fastapi/uvicorn/websockets/pytest).
+
+pytest.ini
+- Настройки pytest.
+
+.gitignore
+- Игнор билдов, отчетов, node_modules, .env.local и т.п.
+
+install.ps1
+- PowerShell установка venv + deps.
+
+RUN_UI_V6.bat
+- Быстрый запуск main_menu (desktop).
+
+RUN_SERVER.bat
+- Запуск FastAPI WS сервера.
+
+RUN_CLIENT.bat
+- Запуск desktop-клиента (main_menu → Multiplayer).
+
+reachable_files.txt / unreachable_files.txt / ambiguous_imports.txt
+- Результаты статического usage audit (tools/usage_audit.py).
+
+tools/usage_audit.py
+- AST-скан импортов + reachable/unreachable + hacks report.
+
+tools/runtime_import_trace.py
+- Трассировка runtime импортов + сравнение со статикой.
+
+tools/usage_audit_report.md
+- Отчёт по usage audit (генерируется).
+
+tools/hacks_report.md
+- Список потенциальных «костылей» в reachable code (генерируется).
+
+tools/safe_move_plan.md
+- План безопасного перемещения неиспользуемых файлов (генерируется).
+
+tools/runtime_imports_*.txt / tools/runtime_imports_union.txt / tools/runtime_imports_diff.md
+- Логи runtime импортов (генерируется).
+
+tools/engine_source_audit.py
+- Проверка, что правила не дублируются вне engine.
+
+tools/feature_audit.py
+- Генератор матрицы фич + evidence (pytest/smokes/grep).
+
+tools/offline_ui_smoke.py
+- Headless smoke: старт UI, dialogs, roll=7, победа/overlay.
+
+tools/multiplayer_smoke.py
+- MP smoke: 2..5 игроков, setup, roll, trade offers, seafarers ship.
+
+tools/run_lan.ps1
+- Одной командой стартует server + Vite web (LAN).
+
+tools/check_lan.ps1
+- Проверка, что порты 8000/5173 слушают.
+
+tools/build/CatanClient.spec / CatanServer.spec
+- PyInstaller спеки для сборки exe (клиент/сервер).
+
+tools/build/entry_client.py / entry_server.py
+- Wrapper-энтрипоинты для PyInstaller.
+
+tools/build/build_client.ps1 / build_server.ps1
+- Скрипты сборки PyInstaller.
+
+legacy_scripts/*
+- Старые скрипты запуска (архив/legacy, не использовать).
+
+report_20251229_213504.json
+- Старый тестовый отчёт (не используется в runtime, только artifact).
+
+==============================
+ЧАСТЬ 5/5 — Assets + Legacy
+==============================
+
+app/assets/icons/*.svg
+- Ресурсные иконки (wood/brick/sheep/wheat/ore) для UI chips.
+
+app/assets/maps/base_standard.json
+- Стандартная base карта (19 гексов).
+
+app/assets/maps/base_rich_ore.json
+- Вариация base: больше mountains, меньше fields.
+
+app/assets/maps/base_high_prob.json
+- Вариация base: больше 6/8 (ускоренная экономика).
+
+app/assets/maps/base_12vp.json
+- Base + target_vp = 12.
+
+app/assets/maps/base_20vp_multi_robbers.json
+- Base + 20 VP + multiple robbers.
+
+app/assets/maps/seafarers_simple_1.json
+- Seafarers MVP карта (coastal lanes).
+
+app/assets/maps/seafarers_simple_2.json
+- Seafarers MVP карта (sea ring).
+
+app/_legacy/* (архив, не используется в UI v6)
+- bot.py, catan_core.py, game.py и старые UI (v4/v5/desktop_v2/v3/tk) — старый движок.
+- server.py, main.py — старые entrypoints.
+- economy_runtime.py — legacy экономические эксперименты.
+
+app/_legacy_next/* (перемещённые неиспользуемые модули)
+- runtime_patch.py, ports_bridge.py, client_cli.py, board.py, base.py, seafarers_stub.py.
+- Хранятся для истории/референса, но не участвуют в запуске.
+
+app/expansions/
+- Заглушка под будущие расширения (пока не используется).
+
+==============================
+КОНЕЦ
+==============================

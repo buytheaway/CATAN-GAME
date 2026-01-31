@@ -9,6 +9,7 @@ import uvicorn
 import websockets
 
 from app import net_protocol
+from app.engine import maps as map_loader
 from app.engine import build_game, can_place_road, can_place_settlement
 
 
@@ -412,8 +413,22 @@ async def _run_map_selection(port: int):
         assert rs1.get("map_id") == pick_id
         assert rs2.get("map_id") == pick_id
 
+        # invalid map data rejected
+        await _send(ws1, {"type": "set_map", "map_data": {"version": 1, "tiles": []}})
+        await _recv_error(ws1, "invalid")
+
+        # valid custom map data applied
+        custom = map_loader.get_preset_map("base_standard")
+        custom = dict(custom)
+        custom["name"] = "Custom Test Map"
+        custom["description"] = "custom map for MP test"
+        await _send(ws1, {"type": "set_map", "map_data": custom})
+        rs_custom = await _recv_type(ws1, "room_state")
+        assert rs_custom.get("map_meta", {}).get("name") == "Custom Test Map"
+        custom_id = rs_custom.get("map_id") or "Custom Test Map"
+
         await _send(ws1, {"type": "start_match"})
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
-        assert ms1.get("state", {}).get("map_id") == pick_id
-        assert ms2.get("state", {}).get("map_id") == pick_id
+        assert ms1.get("state", {}).get("map_id") == custom_id
+        assert ms2.get("state", {}).get("map_id") == custom_id

@@ -20,12 +20,14 @@ export default function LobbyPage({
   const [maxPlayers, setMaxPlayers] = useState(4);
   const mapPresets = room?.map_presets ?? [];
   const [mapId, setMapId] = useState("");
+  const [customMap, setCustomMap] = useState<Record<string, any> | null>(null);
+  const [customLabel, setCustomLabel] = useState("Custom map: none");
   const isHost = room ? client.youPid === room.host_pid : false;
   const mapRules = room?.map_rules;
   const ruleBits: string[] = [];
   if (mapRules?.target_vp !== undefined) ruleBits.push(`Target VP ${mapRules.target_vp}`);
   if (mapRules?.robber_count !== undefined) ruleBits.push(`Robbers ${mapRules.robber_count}`);
-  const ruleText = ruleBits.length ? ` | ${ruleBits.join(" · ")}` : "";
+  const ruleText = ruleBits.length ? ` | ${ruleBits.join(" Â· ")}` : "";
 
   useEffect(() => {
     const next = room?.map_id || (mapPresets.length ? mapPresets[0].id : "base_standard");
@@ -87,10 +89,38 @@ export default function LobbyPage({
             ))}
           </select>
         </label>
+        <label>
+          Custom map (JSON)
+          <input
+            type="file"
+            accept=".json"
+            disabled={!isHost || room?.status !== "lobby"}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => {
+                try {
+                  const data = JSON.parse(String(reader.result || ""));
+                  const name = data?.name || "Custom Map";
+                  const desc = data?.description || "";
+                  setCustomMap(data);
+                  setCustomLabel(`Custom map: ${name}${desc ? " â€” " + desc : ""}`);
+                } catch (err) {
+                  setCustomMap(null);
+                  setCustomLabel("Custom map: invalid JSON");
+                }
+              };
+              reader.readAsText(file);
+            }}
+          />
+        </label>
+        <div style={{ fontSize: 12, opacity: 0.7 }}>{customLabel}</div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onHost}>Host</button>
           <button onClick={onJoin}>Join</button>
           <button onClick={() => client.setMap(mapId)} disabled={!isHost || !mapId || room?.status !== "lobby"}>Set Map</button>
+          <button onClick={() => customMap && client.setMap(undefined, customMap)} disabled={!isHost || !customMap || room?.status !== "lobby"}>Set Custom</button>
         </div>
         <div>Status: {status}</div>
         {error ? <div style={{ color: "crimson" }}>Error: {error.message}</div> : null}
@@ -103,7 +133,7 @@ export default function LobbyPage({
             <div>Room: {room.room_code}</div>
             <div>Players: {room.players.length} / {room.max_players}</div>
             {room.map_meta ? (
-              <div>Map: {room.map_meta.name} {room.map_meta.description ? `— ${room.map_meta.description}` : ""}{ruleText}</div>
+              <div>Map: {room.map_meta.name} {room.map_meta.description ? `â€” ${room.map_meta.description}` : ""}{ruleText}</div>
             ) : room.map_id ? (
               <div>Map: {room.map_id}{ruleText}</div>
             ) : null}
@@ -124,4 +154,4 @@ export default function LobbyPage({
       </div>
     </div>
   );
-}
+}

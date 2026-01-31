@@ -141,5 +141,8 @@ def check_invariants(game, expected_totals: Optional[Dict[str, int]] = None) -> 
             fails.append({"code": "pending_action", "message": "Discard pending without discard_required", "details": {}})
         elif any(pid not in game.discard_required for pid in game.discard_submitted):
             fails.append({"code": "pending_action", "message": "Discard submitted for non-required pid", "details": {}})
+    if game.pending_action == "choose_gold":
+        if not getattr(game, "pending_gold", {}):
+            fails.append({"code": "pending_action", "message": "Gold pending without pending_gold", "details": {}})
 
     return fails

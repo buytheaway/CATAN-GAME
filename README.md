@@ -11,9 +11,17 @@ Note:
 Core rules:
 - Shared engine lives in `app/engine/` (pure Python). Offline UI and server use the same rules.
 
+Maps / presets / custom:
+- Preset maps live in `app/assets/maps/` (base_* and seafarers_*).
+- Offline: Singleplayer dialog has a preset dropdown + "Load map file..." for custom JSON.
+- Multiplayer (desktop): host can pick preset or load a custom map file in the lobby before start.
+- Multiplayer (web): host can pick preset or upload a custom JSON (Set Custom).
+- Map schema: see `docs/maps_schema.md`.
+
 Controls:
 - Setup phase: click highlighted vertex to place Settlement, then click highlighted edge to place Road
 - Main phase: Roll -> Build (Road/Settlement/City) -> click highlighted place -> End
+- Seafarers maps: Ship/Move Ship/Pirate actions appear when enabled by the map rules; Gold prompts appear when a gold tile triggers
 
 Testing:
 - Install test deps: `pip install -r requirements-dev.txt`
@@ -48,6 +56,10 @@ LAN Web (browser client):
   - `VITE_WS_URL=ws://192.168.0.24:8000/ws`
   - Replace with your Wi-Fi IPv4 (from `ipconfig`)
 - Local dev default remains `web/.env` (127.0.0.1)
+
+Seafarers (MVP + extended):
+- Enabled via maps whose rules contain `enable_seafarers: true`.
+- Ships, move_ship, pirate, gold are driven by map rules (see `docs/maps_schema.md`).
 
 NO HACKS policy:
 - No `QTimer.singleShot` for "wait until UI ready"

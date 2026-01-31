@@ -37,6 +37,9 @@ def to_dict(g: GameState) -> Dict:
             "robber_count": int(getattr(cfg, "robber_count", 1)),
             "enable_seafarers": bool(getattr(cfg, "enable_seafarers", False)),
             "max_ships": int(getattr(cfg, "max_ships", 15)),
+            "enable_pirate": bool(getattr(cfg, "enable_pirate", False)),
+            "enable_gold": bool(getattr(cfg, "enable_gold", False)),
+            "enable_move_ship": bool(getattr(cfg, "enable_move_ship", False)),
         },
         "phase": g.phase,
         "turn": g.turn,
@@ -48,11 +51,14 @@ def to_dict(g: GameState) -> Dict:
         "last_roll": g.last_roll,
         "robber_tile": g.robber_tile,
         "robbers": list(getattr(g, "robbers", []) or [g.robber_tile]),
+        "pirate_tile": g.pirate_tile,
         "pending_action": g.pending_action,
         "pending_pid": g.pending_pid,
         "pending_victims": list(g.pending_victims),
         "discard_required": {str(k): int(v) for k, v in g.discard_required.items()},
         "discard_submitted": [int(x) for x in g.discard_submitted],
+        "pending_gold": {str(k): int(v) for k, v in getattr(g, "pending_gold", {}).items()},
+        "pending_gold_queue": [int(x) for x in getattr(g, "pending_gold_queue", [])],
         "trade_offers": [
             {
                 "offer_id": o.offer_id,
@@ -173,6 +179,9 @@ def from_dict(data: Dict) -> GameState:
         robber_count=int(rc.get("robber_count", g.rules.get("robber_count", 1))),
         enable_seafarers=bool(rc.get("enable_seafarers", g.rules.get("enable_seafarers", False))),
         max_ships=int(rc.get("max_ships", g.rules.get("max_ships", 15))),
+        enable_pirate=bool(rc.get("enable_pirate", g.rules.get("enable_pirate", False))),
+        enable_gold=bool(rc.get("enable_gold", g.rules.get("enable_gold", False))),
+        enable_move_ship=bool(rc.get("enable_move_ship", g.rules.get("enable_move_ship", False))),
     )
     g.phase = data.get("phase", "setup")
     g.turn = int(data.get("turn", 0))
@@ -184,6 +193,7 @@ def from_dict(data: Dict) -> GameState:
     g.last_roll = data.get("last_roll", None)
     g.robber_tile = int(data.get("robber_tile", 0))
     g.robbers = [int(x) for x in data.get("robbers", [])] if data.get("robbers") is not None else [g.robber_tile]
+    g.pirate_tile = data.get("pirate_tile", None)
     while len(g.robbers) < int(getattr(g.rules_config, "robber_count", 1)):
         g.robbers.append(g.robber_tile)
     g.pending_action = data.get("pending_action", None)
@@ -191,6 +201,8 @@ def from_dict(data: Dict) -> GameState:
     g.pending_victims = list(data.get("pending_victims", []))
     g.discard_required = {int(k): int(v) for k, v in data.get("discard_required", {}).items()}
     g.discard_submitted = set(int(x) for x in data.get("discard_submitted", []))
+    g.pending_gold = {int(k): int(v) for k, v in data.get("pending_gold", {}).items()}
+    g.pending_gold_queue = [int(x) for x in data.get("pending_gold_queue", [])]
     g.trade_offers = []
     for o in data.get("trade_offers", []):
         g.trade_offers.append(TradeOffer(

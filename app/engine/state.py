@@ -13,6 +13,7 @@ TERRAIN_TO_RES = {
     "fields": "wheat",
     "mountains": "ore",
     "desert": None,
+    "gold": None,
     "sea": None,
 }
 
@@ -75,6 +76,9 @@ class RulesConfig:
     robber_count: int = 1
     enable_seafarers: bool = False
     max_ships: int = 15
+    enable_pirate: bool = False
+    enable_gold: bool = False
+    enable_move_ship: bool = False
 
 
 @dataclass
@@ -115,11 +119,14 @@ class GameState:
 
     robber_tile: int = 0
     robbers: List[int] = field(default_factory=list)
+    pirate_tile: Optional[int] = None
     pending_action: Optional[str] = None
     pending_pid: Optional[int] = None
     pending_victims: List[int] = field(default_factory=list)
     discard_required: Dict[int, int] = field(default_factory=dict)
     discard_submitted: Set[int] = field(default_factory=set)
+    pending_gold: Dict[int, int] = field(default_factory=dict)
+    pending_gold_queue: List[int] = field(default_factory=list)
 
     achievements: AchievementState = field(default_factory=AchievementState)
     game_over: bool = False

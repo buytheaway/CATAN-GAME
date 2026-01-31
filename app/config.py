@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 GameMode = Literal["singleplayer", "multiplayer"]
 Expansion = Literal["base", "seafarers"]
@@ -14,6 +14,7 @@ class GameConfig:
     mode: GameMode = "singleplayer"
     expansion: Expansion = "base"
     map_preset: MapPreset = "base_standard"
+    map_path: Optional[str] = None
     bot_enabled: bool = True
     bot_difficulty: int = 1
     theme: ThemeName = "midnight"

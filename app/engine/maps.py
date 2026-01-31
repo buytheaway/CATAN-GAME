@@ -204,6 +204,12 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
             raise MapValidationError("rules.enable_seafarers must be bool")
         if "max_ships" in rules and not isinstance(rules.get("max_ships"), int):
             raise MapValidationError("rules.max_ships must be int")
+        if "enable_pirate" in rules and not isinstance(rules.get("enable_pirate"), bool):
+            raise MapValidationError("rules.enable_pirate must be bool")
+        if "enable_gold" in rules and not isinstance(rules.get("enable_gold"), bool):
+            raise MapValidationError("rules.enable_gold must be bool")
+        if "enable_move_ship" in rules and not isinstance(rules.get("enable_move_ship"), bool):
+            raise MapValidationError("rules.enable_move_ship must be bool")
         limits = rules.get("limits")
         if limits is not None:
             if not isinstance(limits, dict):
@@ -215,6 +221,13 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     robber_tile = data.get("robber_tile")
     if robber_tile is not None and not isinstance(robber_tile, int):
         raise MapValidationError("robber_tile must be int")
+    pirate_tile = data.get("pirate_tile")
+    if pirate_tile is not None and not isinstance(pirate_tile, int):
+        raise MapValidationError("pirate_tile must be int")
+    if robber_tile is not None and (robber_tile < 0 or robber_tile >= len(tiles)):
+        raise MapValidationError("robber_tile out of range", {"robber_tile": robber_tile})
+    if pirate_tile is not None and (pirate_tile < 0 or pirate_tile >= len(tiles)):
+        raise MapValidationError("pirate_tile out of range", {"pirate_tile": pirate_tile})
 
     return data
 

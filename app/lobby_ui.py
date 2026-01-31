@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from typing import Optional
+from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from app.config import GameConfig
+from app.engine import maps as map_loader
 from app.engine.maps import list_presets
 from app.net_client import NetClient
 from app.online_controller import OnlineGameController
@@ -24,6 +26,8 @@ class LobbyWindow(QtWidgets.QDialog):
         self._game_window = None
         self._controller = None
         self._pending_action = None
+        self._custom_map_data = None
+        self._custom_map_id = None
 
         root = QtWidgets.QVBoxLayout(self)
 
@@ -41,11 +45,21 @@ class LobbyWindow(QtWidgets.QDialog):
                 self.cb_map.addItem(preset["name"], preset["id"])
         else:
             self.cb_map.addItem("Base Standard", "base_standard")
+        self.btn_load_map = QtWidgets.QPushButton("Load map file...")
+        self.btn_clear_map = QtWidgets.QPushButton("Clear custom")
+        self.btn_clear_map.setEnabled(False)
+        self.lbl_custom_map = QtWidgets.QLabel("Custom map: none")
+        self.lbl_custom_map.setStyleSheet("font-size:11px; color:#93a4b6;")
         form.addRow("Server URL:", self.ed_url)
         form.addRow("Name:", self.ed_name)
         form.addRow("Room code:", self.ed_room)
         form.addRow("Max players:", self.sp_players)
         form.addRow("Map preset:", self.cb_map)
+        row_map = QtWidgets.QHBoxLayout()
+        row_map.addWidget(self.btn_load_map)
+        row_map.addWidget(self.btn_clear_map)
+        form.addRow("", row_map)
+        form.addRow("", self.lbl_custom_map)
         root.addLayout(form)
 
         row = QtWidgets.QHBoxLayout()
@@ -84,6 +98,8 @@ class LobbyWindow(QtWidgets.QDialog):
         self.btn_start.clicked.connect(self._on_start)
         self.btn_rematch.clicked.connect(self._on_rematch)
         self.btn_set_map.clicked.connect(self._on_set_map)
+        self.btn_load_map.clicked.connect(self._on_load_map)
+        self.btn_clear_map.clicked.connect(self._on_clear_map)
 
         self.net.connected.connect(self._on_connected)
         self.net.disconnected.connect(self._on_disconnected)
@@ -132,8 +148,41 @@ class LobbyWindow(QtWidgets.QDialog):
         self.net.rematch()
 
     def _on_set_map(self):
+        if self._custom_map_data is not None:
+            self.net.set_map(map_id=self._custom_map_id or "custom", map_data=self._custom_map_data)
+            return
         map_id = self.cb_map.currentData() or "base_standard"
-        self.net.set_map(str(map_id))
+        self.net.set_map(map_id=str(map_id))
+
+    def _on_load_map(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select map file",
+            "",
+            "Map JSON (*.json);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            data = map_loader.load_map_file(Path(path))
+            map_loader.validate_map_data(data)
+        except Exception as exc:
+            self.lbl_status.setText(f"Map error: {exc}")
+            return
+        self._custom_map_data = data
+        self._custom_map_id = str(data.get("name", "custom"))
+        desc = str(data.get("description", "")).strip()
+        label = f"Custom map: {self._custom_map_id}"
+        if desc:
+            label += f" — {desc}"
+        self.lbl_custom_map.setText(label)
+        self.btn_clear_map.setEnabled(True)
+
+    def _on_clear_map(self):
+        self._custom_map_data = None
+        self._custom_map_id = None
+        self.lbl_custom_map.setText("Custom map: none")
+        self.btn_clear_map.setEnabled(False)
 
     def _on_room_state(self, data: dict):
         self.room_state = data

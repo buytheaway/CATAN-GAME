@@ -13,7 +13,8 @@ This document describes the data-driven map format used by the engine.
 - `ports` (list, optional): explicit ports list (edge + type).
 - `ports_auto` (object, optional): auto-port settings.
 - `robber_tile` (int, optional): fixed robber tile index. If omitted, desert tile is used.
-- `rules` (object, optional): scenario parameters (e.g., `target_vp`, `limits`, `robber_count`, `enable_seafarers`, `max_ships`).
+- `pirate_tile` (int, optional): fixed pirate tile index (sea tile). If omitted and pirate enabled, first sea tile is used.
+- `rules` (object, optional): scenario parameters (e.g., `target_vp`, `limits`, `robber_count`, `enable_seafarers`, `max_ships`, `enable_pirate`, `enable_gold`, `enable_move_ship`).
 
 ## Tile Entry
 
@@ -24,7 +25,7 @@ Each tile entry uses axial coordinates:
 ```
 
 Allowed values:
-- `terrain`: `"forest" | "hills" | "pasture" | "fields" | "mountains" | "desert" | "sea" | "random"`
+- `terrain`: `"forest" | "hills" | "pasture" | "fields" | "mountains" | "desert" | "sea" | "gold" | "random"`
 - `number`: `2..12 (not 7) | null | "random"`
 
 If `terrain` is `"random"`, the engine draws from `terrain_deck`.
@@ -62,4 +63,7 @@ If neither is provided, a default 9-port deck is used.
   - `robber_count` (int, default 1)
   - `enable_seafarers` (bool, default false)
   - `max_ships` (int, default 15)
+  - `enable_pirate` (bool, default false)
+  - `enable_gold` (bool, default false)
+  - `enable_move_ship` (bool, default false)
 - Base map preset is located at `app/assets/maps/base_standard.json`.

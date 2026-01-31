@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from dataclasses import replace
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -9,6 +10,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from app.config import GameConfig
 from app.game_launcher import start_game
 from app.lobby_ui import LobbyWindow
+from app.engine import maps as map_loader
 from app.engine.maps import list_presets
 from app.theme import apply_theme, apply_ui_scale
 
@@ -41,6 +43,13 @@ class ModeSelectDialog(QtWidgets.QDialog):
         else:
             for preset in self._map_presets:
                 self.cb_map.addItem(preset["name"], preset["id"])
+        self._custom_map_path: Optional[str] = None
+        self._custom_map_meta: Optional[dict] = None
+        self.lbl_custom_map = QtWidgets.QLabel("Custom map: none")
+        self.lbl_custom_map.setStyleSheet("font-size:11px; color: #93a4b6;")
+        self.btn_load_map = QtWidgets.QPushButton("Load map file...")
+        self.btn_clear_map = QtWidgets.QPushButton("Clear custom")
+        self.btn_clear_map.setEnabled(False)
 
         self.chk_bot = QtWidgets.QCheckBox("Enable Bot")
         self.chk_bot.setChecked(config.bot_enabled)
@@ -55,6 +64,11 @@ class ModeSelectDialog(QtWidgets.QDialog):
 
         form.addRow("Expansion:", self.cb_expansion)
         form.addRow("Map:", self.cb_map)
+        map_row = QtWidgets.QHBoxLayout()
+        map_row.addWidget(self.btn_load_map)
+        map_row.addWidget(self.btn_clear_map)
+        form.addRow("", map_row)
+        form.addRow("", self.lbl_custom_map)
         form.addRow("", self.chk_bot)
         form.addRow("Bot difficulty:", self.sp_difficulty)
 
@@ -70,6 +84,9 @@ class ModeSelectDialog(QtWidgets.QDialog):
 
         self.btn_start.clicked.connect(self.accept)
         self.btn_cancel.clicked.connect(self.reject)
+        self.btn_load_map.clicked.connect(self._on_load_map)
+        self.btn_clear_map.clicked.connect(self._on_clear_map)
+        self.cb_map.currentIndexChanged.connect(self._on_map_changed)
 
     def config(self) -> GameConfig:
         expansion = "base"
@@ -80,9 +97,49 @@ class ModeSelectDialog(QtWidgets.QDialog):
             mode=self._mode,
             expansion=expansion,
             map_preset=str(self.cb_map.currentData() or "base_standard"),
+            map_path=self._custom_map_path,
             bot_enabled=self.chk_bot.isChecked(),
             bot_difficulty=int(self.sp_difficulty.value()),
         )
+
+    def _on_map_changed(self):
+        if self._custom_map_path:
+            # switching presets clears custom selection
+            self._clear_custom_map()
+
+    def _on_clear_map(self):
+        self._clear_custom_map()
+
+    def _clear_custom_map(self):
+        self._custom_map_path = None
+        self._custom_map_meta = None
+        self.lbl_custom_map.setText("Custom map: none")
+        self.btn_clear_map.setEnabled(False)
+
+    def _on_load_map(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select map file",
+            "",
+            "Map JSON (*.json);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            data = map_loader.load_map_file(Path(path))
+            map_loader.validate_map_data(data)
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Invalid map", str(exc))
+            return
+        self._custom_map_path = path
+        meta_name = str(data.get("name", "Custom Map"))
+        meta_desc = str(data.get("description", "")).strip()
+        self._custom_map_meta = {"name": meta_name, "description": meta_desc}
+        label = f"Custom map: {meta_name}"
+        if meta_desc:
+            label += f" — {meta_desc}"
+        self.lbl_custom_map.setText(label)
+        self.btn_clear_map.setEnabled(True)
 
 
 class SettingsDialog(QtWidgets.QDialog):

@@ -55,8 +55,12 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
         return {"ok": True}
 
     if mtype == "set_map":
-        if not isinstance(msg.get("map_id"), str):
-            return _err("invalid", "map_id required")
+        map_id = msg.get("map_id")
+        map_data = msg.get("map_data")
+        if map_data is None and not isinstance(map_id, str):
+            return _err("invalid", "map_id or map_data required")
+        if map_data is not None and not isinstance(map_data, dict):
+            return _err("invalid", "map_data must be object")
         return {"ok": True}
 
     if mtype == "cmd":
