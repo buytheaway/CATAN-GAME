@@ -65,6 +65,12 @@ export default function BoardView({ state, youPid, selectedAction, onSendCmd, on
   const enableSea = !!state.rules_config?.enable_seafarers;
   const enableMoveShip = !!state.rules_config?.enable_move_ship;
   const enablePirate = !!state.rules_config?.enable_pirate;
+  const legal = state.legal || {};
+  const hasLegal = legal && legal.pid === youPid;
+  const legalSett = new Set<number>((hasLegal ? legal.settlements : []) || []);
+  const legalRoad = new Set<string>(((hasLegal ? legal.roads : []) || []).map((e: number[]) => edgeKey(e[0], e[1])));
+  const legalCity = new Set<number>((hasLegal ? legal.cities : []) || []);
+  const legalShip = new Set<string>(((hasLegal ? legal.ships : []) || []).map((e: number[]) => edgeKey(e[0], e[1])));
 
   const [moveFrom, setMoveFrom] = useState<Edge | null>(null);
 
@@ -89,24 +95,28 @@ export default function BoardView({ state, youPid, selectedAction, onSendCmd, on
   const canPlaceSettlement = (vid: number) => {
     if (!isYourTurn) return false;
     if (setup && setupNeed !== "settlement") return false;
+    if (hasLegal) return legalSett.has(vid);
     return occupiedV[String(vid)] === undefined;
   };
 
   const canUpgradeCity = (vid: number) => {
     if (!isYourTurn || state.phase !== "main") return false;
     const occ = occupiedV[String(vid)];
+    if (hasLegal) return legalCity.has(vid);
     return Array.isArray(occ) && occ[0] === youPid && occ[1] === 1;
   };
 
   const canPlaceRoad = (a: number, b: number) => {
     if (!isYourTurn) return false;
     if (setup && setupNeed !== "road") return false;
+    if (hasLegal) return legalRoad.has(edgeKey(a, b));
     return occupiedE[edgeKey(a, b)] === undefined;
   };
 
   const canPlaceShip = (a: number, b: number) => {
     if (!isYourTurn || !state.rules_config?.enable_seafarers) return false;
     const key = edgeKey(a, b);
+    if (hasLegal) return legalShip.has(key);
     if (occupiedE[key] !== undefined || occupiedShips[key] !== undefined) return false;
     const adj = edgeAdj[key] || [];
     return adj.some((ti: number) => tiles[ti]?.terrain === "sea");

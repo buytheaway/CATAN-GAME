@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { WSClient, MatchState, RoomState, ServerError } from "./wsClient";
 import LobbyPage from "./components/LobbyPage";
 import GamePage from "./components/GamePage";
@@ -17,9 +17,11 @@ export default function App() {
     client.onStatus = setStatus;
     client.onRoomState = (rs) => {
       setRoom(rs);
+      setError(null);
     };
     client.onMatchState = (ms) => {
       setMatch(ms);
+      setError(null);
     };
     client.onError = (err) => {
       setError(err);
@@ -29,7 +31,7 @@ export default function App() {
   }, [client]);
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", padding: 24, maxWidth: 980, margin: "0 auto" }}>
+    <div className="app">
       <h2>CATAN LAN Web</h2>
       {match ? (
         <GamePage

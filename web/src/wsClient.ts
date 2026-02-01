@@ -91,6 +91,14 @@ export class WSClient {
   onError?: (e: ServerError) => void;
   onLog?: (msg: string) => void;
 
+  isOpen(): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  setName(name: string) {
+    this.name = name;
+  }
+
   connect(url: string, name: string) {
     this.url = url || DEFAULT_WS_URL;
     this.name = name;

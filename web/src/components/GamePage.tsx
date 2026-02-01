@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { MatchState, RoomState, ServerError, WSClient } from "../wsClient";
 import BoardView from "./BoardView";
 
@@ -49,7 +49,7 @@ export default function GamePage({
   const resKeys = useMemo(() => Object.keys(res), [res]);
 
   const canRoll = state.turn === youPid && state.phase === "main" && !state.rolled && pending === "none";
-  const canEnd = state.turn === youPid && pending === "none";
+  const canEnd = state.turn === youPid && pending === "none" && !!state.rolled;
 
   const handleDiscard = () => {
     client.sendCmd({ type: "discard", discards: discard });
@@ -60,85 +60,93 @@ export default function GamePage({
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(260px, 1fr)", gap: 12 }}>
-      <BoardView
-        state={state}
-        youPid={youPid}
-        selectedAction={selectedAction}
-        onSendCmd={(cmd) => client.sendCmd(cmd)}
-        onSelectAction={(a) => setSelectedAction(a)}
-      />
+    <div className="game-grid">
+      <div className="board-wrap card">
+        <BoardView
+          state={state}
+          youPid={youPid}
+          selectedAction={selectedAction}
+          onSendCmd={(cmd) => client.sendCmd(cmd)}
+          onSelectAction={(a) => setSelectedAction(a)}
+        />
+      </div>
 
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ background: "#0b2230", border: "1px solid #173245", borderRadius: 12, padding: 12, color: "#d7eefc" }}>
-          <div>Status: {status}</div>
-          <div>Room: {match.room_code}</div>
-          <div>Tick: {match.tick}</div>
-          <div>Turn: P{state.turn + 1}</div>
-          <div>Phase: {state.phase}</div>
-          <div>Pending: {pending}{pending === "robber_move" && pendingPid === youPid ? " (click map)" : ""}</div>
-          <div>Target VP: {targetVp}</div>
-          <div>Robbers: {robberCount}</div>
-          <div>Seafarers: {seafarersEnabled ? "on" : "off"}</div>
-          <div>Pirate: {pirateEnabled ? "on" : "off"}</div>
-          <div>Gold: {goldEnabled ? "on" : "off"}</div>
-          <div>Move Ship: {moveShipEnabled ? "on" : "off"}</div>
+      <div className="game-sidebar">
+        <div className="card panel">
+          <div className="status-row">
+            <div className="badge">Room: {match.room_code}</div>
+            <div className="muted">Tick {match.tick}</div>
+          </div>
+          <div className="status-grid">
+            <div>Turn: <strong>P{state.turn + 1}</strong></div>
+            <div>Phase: <strong>{state.phase}</strong></div>
+            <div>Pending: <strong>{pending}</strong>{pending === "robber_move" && pendingPid === youPid ? " (click map)" : ""}</div>
+            <div>Status: <strong>{status}</strong></div>
+            <div>Target VP: <strong>{targetVp}</strong></div>
+            <div>Robbers: <strong>{robberCount}</strong></div>
+          </div>
+          <div className="muted">Seafarers: {seafarersEnabled ? "on" : "off"} | Pirate: {pirateEnabled ? "on" : "off"} | Gold: {goldEnabled ? "on" : "off"} | Move Ship: {moveShipEnabled ? "on" : "off"}</div>
           {mapId ? (
-            <div>Map: {mapMeta.name || mapId} {mapMeta.description ? `— ${mapMeta.description}` : ""}</div>
+            <div className="muted">Map: {mapMeta.name || mapId} {mapMeta.description ? "- " + mapMeta.description : ""}</div>
           ) : null}
-          {error ? <div style={{ color: "#f87171" }}>Error: {error.message}</div> : null}
+          {error ? <div className="error">Error: {error.message}</div> : null}
         </div>
 
-        <div style={{ background: "#0b2230", border: "1px solid #173245", borderRadius: 12, padding: 12, color: "#d7eefc" }}>
-          <h4 style={{ margin: "0 0 8px 0" }}>My Resources (P{youPid + 1})</h4>
-          <ul style={{ margin: 0, paddingLeft: 16 }}>
+        <div className="card panel">
+          <h4>My Resources (P{youPid + 1})</h4>
+          <div className="resource-grid">
             {resKeys.map((k) => (
-              <li key={k}>
-                {k}: {res[k]}
-              </li>
+              <div key={k} className={`res-chip res-${k}`}>
+                <span>{k}</span>
+                <strong>{res[k]}</strong>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => client.sendCmd({ type: "roll" })} disabled={!canRoll}>Roll</button>
-          <button onClick={() => client.sendCmd({ type: "end_turn" })} disabled={!canEnd}>End Turn</button>
+        <div className="card panel">
+          <h4>Actions</h4>
+          <div className="row">
+            <button onClick={() => client.sendCmd({ type: "roll" })} className="btn primary" disabled={!canRoll}>Roll</button>
+            <button onClick={() => client.sendCmd({ type: "end_turn" })} className="btn" disabled={!canEnd}>End Turn</button>
+          </div>
         </div>
 
         {needGold ? (
-          <div style={{ border: "1px solid #173245", background: "#0b2230", padding: 12, borderRadius: 12, color: "#d7eefc" }}>
+          <div className="card panel">
             <h4>Gold Choice: {goldNeed}</h4>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div className="row">
               <select value={goldRes} onChange={(e) => setGoldRes(e.target.value)}>
                 {RESOURCES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
               <input type="number" min={1} max={goldNeed} value={goldQty} onChange={(e) => setGoldQty(Number(e.target.value))} />
-              <button onClick={handleGold}>Choose</button>
+              <button onClick={handleGold} className="btn primary">Choose</button>
             </div>
           </div>
         ) : null}
 
         {needDiscard ? (
-          <div style={{ border: "1px solid #173245", background: "#0b2230", padding: 12, borderRadius: 12, color: "#d7eefc" }}>
+          <div className="card panel">
             <h4>Discard Required: {required[String(youPid)]}</h4>
             {resKeys.map((k) => (
-              <div key={k}>
-                {k}: <input
+              <label key={k} className="field">
+                <span>{k}</span>
+                <input
                   type="number"
                   min={0}
                   max={res[k]}
                   value={discard[k] ?? 0}
                   onChange={(e) => setDiscard({ ...discard, [k]: Number(e.target.value) })}
                 />
-              </div>
+              </label>
             ))}
-            <button onClick={handleDiscard}>Submit Discard</button>
+            <button onClick={handleDiscard} className="btn primary">Submit Discard</button>
           </div>
         ) : null}
 
-        <div style={{ background: "#0b2230", border: "1px solid #173245", borderRadius: 12, padding: 12, color: "#d7eefc" }}>
-          <h4 style={{ margin: "0 0 8px 0" }}>Players</h4>
-          <ul style={{ margin: 0, paddingLeft: 16 }}>
+        <div className="card panel">
+          <h4>Players</h4>
+          <ul>
             {players.map((p: any) => (
               <li key={p.pid}>
                 P{p.pid + 1}: {p.name} (VP {p.vp})
@@ -147,11 +155,9 @@ export default function GamePage({
           </ul>
         </div>
 
-        <div style={{ background: "#0b2230", border: "1px solid #173245", borderRadius: 12, padding: 12, color: "#d7eefc" }}>
-          <h4 style={{ margin: "0 0 8px 0" }}>Log</h4>
-          <pre style={{ maxHeight: 240, overflow: "auto", background: "#061a25", padding: 8, borderRadius: 8 }}>
-            {log.join("\n")}
-          </pre>
+        <div className="card panel">
+          <h4>Log</h4>
+          <pre className="log-box">{log.join("\n")}</pre>
         </div>
       </div>
     </div>

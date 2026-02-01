@@ -18,6 +18,10 @@ from app.engine import (
     DEFAULT_PRESET_ID,
     GameState,
     RuleError,
+    can_place_road,
+    can_place_settlement,
+    can_place_ship,
+    can_upgrade_city,
     apply_cmd,
     build_game,
     get_preset_meta,
@@ -100,7 +104,10 @@ class RoomManager:
             slot.reconnect_token = uuid.uuid4().hex
 
     def join_room(self, room_code: str, name: str) -> Optional[Room]:
-        room = self.rooms.get(room_code)
+        if not isinstance(room_code, str):
+            return None
+        code = room_code.strip().upper()
+        room = self.rooms.get(code)
         if not room:
             return None
         # reconnect by name
@@ -137,7 +144,48 @@ CMD_ID_LRU = 256
 def _snapshot_state(game: GameState, room: Room) -> Dict:
     state = to_dict(game)
     state["max_players"] = room.max_players
+    state["legal"] = _legal_moves(game)
     return state
+
+
+def _legal_moves(g: GameState) -> Dict[str, Any]:
+    if g.game_over:
+        return {}
+    if g.pending_action is not None:
+        return {"pid": g.turn, "settlements": [], "roads": [], "cities": [], "ships": []}
+    pid = g.turn
+    settlements: List[int] = []
+    roads: List[List[int]] = []
+    cities: List[int] = []
+    ships: List[List[int]] = []
+    if g.phase == "setup":
+        if g.setup_order and pid != g.setup_order[g.setup_idx]:
+            return {"pid": pid, "settlements": [], "roads": [], "cities": [], "ships": []}
+        if g.setup_need == "settlement":
+            for vid in g.vertices.keys():
+                if can_place_settlement(g, pid, int(vid), require_road=False):
+                    settlements.append(int(vid))
+        else:
+            anchor = g.setup_anchor_vid
+            if anchor is not None:
+                for a, b in g.edges:
+                    if anchor in (a, b) and can_place_road(g, pid, (a, b), must_touch_vid=anchor):
+                        roads.append([a, b])
+        return {"pid": pid, "settlements": settlements, "roads": roads, "cities": [], "ships": []}
+    if g.phase == "main":
+        if not g.rolled:
+            return {"pid": pid, "settlements": [], "roads": [], "cities": [], "ships": []}
+        for vid in g.vertices.keys():
+            if can_place_settlement(g, pid, int(vid), require_road=True):
+                settlements.append(int(vid))
+            if can_upgrade_city(g, pid, int(vid)):
+                cities.append(int(vid))
+        for a, b in g.edges:
+            if can_place_road(g, pid, (a, b)):
+                roads.append([a, b])
+            if can_place_ship(g, pid, (a, b)):
+                ships.append([a, b])
+    return {"pid": pid, "settlements": settlements, "roads": roads, "cities": cities, "ships": ships}
 
 
 async def _send(ws: WebSocket, obj: Dict) -> None:
@@ -295,6 +343,8 @@ async def websocket_endpoint(ws: WebSocket):
 
             if mtype == "join_room":
                 room_code = data.get("room_code")
+                if isinstance(room_code, str):
+                    room_code = room_code.strip().upper()
                 room = manager.join_room(room_code, data.get("name"))
                 if not room:
                     await _send(ws, net_protocol.error_message("not_found", "Room not found or full"))
@@ -315,6 +365,8 @@ async def websocket_endpoint(ws: WebSocket):
 
             if mtype == "reconnect":
                 room_code = data.get("room_code")
+                if isinstance(room_code, str):
+                    room_code = room_code.strip().upper()
                 token = data.get("reconnect_token")
                 room = manager.rooms.get(room_code)
                 if not room:

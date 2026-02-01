@@ -17,6 +17,6 @@ class GameConfig:
     map_path: Optional[str] = None
     bot_enabled: bool = True
     bot_difficulty: int = 1
-    theme: ThemeName = "midnight"
+    theme: ThemeName = "light"
     ui_scale: float = 1.0
     fullscreen: bool = False

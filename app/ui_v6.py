@@ -2020,6 +2020,17 @@ class MainWindow(QtWidgets.QMainWindow):
     def _draw_robber(self):
         t = self.game.tiles[self.game.robber_tile]
         c = t.center
+        size = int(self.game.size * 0.5)
+        col = QtGui.QColor(PALETTE["robber_fill_rgba"])
+        pm = _svg_tinted_pixmap("pieces/robber.svg", (size, size), col)
+        if not pm.isNull():
+            it = QtWidgets.QGraphicsPixmapItem(pm)
+            it.setOffset(-pm.width() / 2, -pm.height() / 2)
+            it.setPos(c)
+            it.setZValue(8)
+            self.scene.addItem(it)
+            self.piece_items.append(it)
+            return
         r = self.game.size * 0.16
         rob = QtWidgets.QGraphicsEllipseItem(c.x()-r, c.y()-r, r*2, r*2)
         rob.setBrush(QtGui.QColor(PALETTE["robber_fill_rgba"]))
@@ -2298,6 +2309,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_move_ship, self.btn_city, self.btn_pirate, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
             b.setEnabled(not g.game_over)
+        if g.phase == "main" and not g.rolled and not g.game_over:
+            for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_move_ship, self.btn_city, self.btn_pirate, self.btn_trade, self.btn_end):
+                b.setEnabled(False)
+        can_roll = (
+            not g.game_over
+            and g.phase == "main"
+            and not g.rolled
+            and g.pending_action is None
+            and ((self.online_mode and g.turn == self.you_pid) or (not self.online_mode and g.turn == 0))
+        )
+        self.d1.setEnabled(bool(can_roll))
+        self.d2.setEnabled(bool(can_roll))
         if hasattr(self, "btn_save"):
             self.btn_save.setEnabled(not self.online_mode and not g.game_over)
         if hasattr(self, "btn_load"):

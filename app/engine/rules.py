@@ -124,6 +124,7 @@ def build_game(
     g.setup_idx = 0
     g.setup_need = "settlement"
     g.setup_anchor_vid = None
+    g.turn = g.setup_order[0] if g.setup_order else 0
 
     dev_deck = (
         ["knight"] * 14
@@ -219,6 +220,11 @@ def can_upgrade_city(g: GameState, pid: int, vid: int) -> bool:
 
 def can_pay(p: PlayerState, cost: Dict[str, int]) -> bool:
     return all(p.res.get(r, 0) >= q for r, q in cost.items())
+
+
+def _require_rolled(g: GameState) -> None:
+    if g.phase == "main" and not g.rolled:
+        raise RuleError("illegal", "Must roll before actions")
 
 
 def _target_vp(g: GameState) -> int:
@@ -460,6 +466,9 @@ def trade_with_bank(g: GameState, pid: int, give_res: str, get_res: str, get_qty
         raise RuleError("game_over", "Game over")
     if g.phase != "main" or pid != g.turn:
         raise RuleError("illegal", "Not your turn")
+    _require_rolled(g)
+    if g.pending_action is not None:
+        raise RuleError("pending_action", "Resolve pending action first")
     give_res = str(give_res).strip().lower()
     get_res = str(get_res).strip().lower()
     if give_res == get_res:
@@ -514,6 +523,7 @@ def buy_dev(g: GameState, pid: int) -> str:
         raise RuleError("game_over", "Game over")
     if g.phase != "main" or pid != g.turn:
         raise RuleError("illegal", "Not your turn")
+    _require_rolled(g)
     if not g.dev_deck:
         raise RuleError("illegal", "Dev deck is empty")
     if not can_pay(g.players[pid], COST["dev"]):
@@ -751,6 +761,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         vid = int(cmd.get("vid"))
         setup = bool(cmd.get("setup", False)) or g.phase == "setup"
         if setup:
+            if g.setup_order and pid != g.setup_order[g.setup_idx]:
+                raise RuleError("illegal", "Not your setup turn")
             if g.setup_need != "settlement":
                 raise RuleError("illegal", "Not settlement step")
             if not can_place_settlement(g, pid, vid, require_road=False):
@@ -792,6 +804,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
 
         if g.turn != pid or g.phase != "main":
             raise RuleError("illegal", "Not your turn")
+        _require_rolled(g)
         if not can_place_settlement(g, pid, vid, require_road=True):
             raise RuleError("illegal", "Settlement not allowed")
         if _count_settlements(g, pid) >= int(getattr(g.rules_config, "max_settlements", 5)):
@@ -814,6 +827,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         e = (a, b) if a < b else (b, a)
         setup = bool(cmd.get("setup", False)) or g.phase == "setup"
         if setup:
+            if g.setup_order and pid != g.setup_order[g.setup_idx]:
+                raise RuleError("illegal", "Not your setup turn")
             if g.setup_need != "road":
                 raise RuleError("illegal", "Not road step")
             if not can_place_road(g, pid, e, must_touch_vid=g.setup_anchor_vid):
@@ -828,6 +843,9 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             g.setup_idx += 1
             if g.setup_idx >= len(g.setup_order):
                 g.phase = "main"
+                g.turn = 0
+            else:
+                g.turn = g.setup_order[g.setup_idx]
             events.append({"type": "place_road", "pid": pid, "eid": [a, b]})
             return g, events
 
@@ -838,6 +856,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         if _count_roads(g, pid) >= int(getattr(g.rules_config, "max_roads", 15)):
             raise RuleError("illegal", "Road limit reached")
         use_free = bool(cmd.get("free", False))
+        if not use_free:
+            _require_rolled(g)
         if use_free:
             if int(g.free_roads.get(pid, 0)) <= 0:
                 raise RuleError("illegal", "No free roads available")
@@ -860,6 +880,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         e = (a, b) if a < b else (b, a)
         if g.turn != pid or g.phase != "main":
             raise RuleError("illegal", "Not your turn")
+        _require_rolled(g)
         if not getattr(g.rules_config, "enable_seafarers", False):
             raise RuleError("illegal", "Seafarers not enabled")
         if not can_place_ship(g, pid, e):
@@ -877,6 +898,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         vid = int(cmd.get("vid"))
         if g.turn != pid or g.phase != "main":
             raise RuleError("illegal", "Not your turn")
+        _require_rolled(g)
         if not can_upgrade_city(g, pid, vid):
             raise RuleError("illegal", "City upgrade not allowed")
         if _count_cities(g, pid) >= int(getattr(g.rules_config, "max_cities", 4)):
@@ -1001,6 +1023,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
     if ctype == "trade_offer_create":
         if g.phase != "main" or g.turn != pid:
             raise RuleError("illegal", "Not your turn")
+        _require_rolled(g)
         give = _ensure_trade_payload(cmd.get("give", {}), "give")
         get = _ensure_trade_payload(cmd.get("get", {}), "get")
         if not _has_resources(g.players[pid].res, give):
@@ -1049,6 +1072,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
 
         if g.phase != "main" or g.turn != offer.from_pid:
             raise RuleError("illegal", "Offer expired")
+        _require_rolled(g)
 
         if ctype == "trade_offer_decline":
             offer.status = "declined"
@@ -1135,6 +1159,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Move ship not enabled")
         if g.phase != "main" or g.turn != pid:
             raise RuleError("illegal", "Not your turn")
+        _require_rolled(g)
         if g.pending_action is not None:
             raise RuleError("pending_action", "Resolve pending action first")
         fe = cmd.get("from_eid")
@@ -1184,6 +1209,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
     if ctype == "end_turn":
         if g.turn != pid:
             raise RuleError("illegal", "Not your turn")
+        _require_rolled(g)
         if g.pending_action is not None:
             raise RuleError("pending_action", "Resolve pending action first")
         canceled = []
