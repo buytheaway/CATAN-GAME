@@ -45,6 +45,24 @@ PRESET_REGISTRY = [
         "file": "base_20vp_multi_robbers.json",
     },
     {
+        "id": "community_balanced_a",
+        "name": "Community Balanced A",
+        "description": "Community-style layout (no adjacent 6/8).",
+        "file": "community_balanced_a.json",
+    },
+    {
+        "id": "community_balanced_b",
+        "name": "Community Balanced B",
+        "description": "Community-style layout (no adjacent 6/8).",
+        "file": "community_balanced_b.json",
+    },
+    {
+        "id": "community_balanced_c",
+        "name": "Community Balanced C",
+        "description": "Community-style layout (no adjacent 6/8).",
+        "file": "community_balanced_c.json",
+    },
+    {
         "id": "seafarers_simple_1",
         "name": "Seafarers: Coastal Lanes",
         "description": "Sea lanes on the sides with larger land core.",
@@ -55,6 +73,18 @@ PRESET_REGISTRY = [
         "name": "Seafarers: Simple Sea Ring",
         "description": "Coastal ring of sea tiles for ships (MVP).",
         "file": "seafarers_simple_2.json",
+    },
+    {
+        "id": "seafarers_gold_haven",
+        "name": "Seafarers: Gold Haven",
+        "description": "Gold tiles + pirate with ship movement enabled.",
+        "file": "seafarers_gold_haven.json",
+    },
+    {
+        "id": "seafarers_pirate_lanes",
+        "name": "Seafarers: Pirate Lanes",
+        "description": "Extra sea lanes with gold + pirate enabled.",
+        "file": "seafarers_pirate_lanes.json",
     },
 ]
 

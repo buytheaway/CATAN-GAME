@@ -1,4 +1,5 @@
-import os, sys, math, random
+import os, sys, math, random, json
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Tuple, Optional, Set
 
@@ -8,6 +9,7 @@ from app.dev_ui import DevDialog
 from app.trade_ui import TradeDialog
 from app.config import GameConfig
 from app.engine import rules as engine_rules
+from app.engine import serialize as engine_serialize
 from app.engine.state import COST, RESOURCES, TERRAIN_TO_RES, TradeOffer
 from app.assets_loader import load_svg
 from app.theme import get_ui_palette, get_player_colors
@@ -435,35 +437,14 @@ class Game:
         except engine_rules.RuleError as exc:
             raise ValueError(exc.message) from None
 
-def build_board(
-    seed: int,
-    size: float,
-    map_id: Optional[str] = None,
-    player_names: Optional[List[str]] = None,
-    max_players: int = 2,
-    map_path: Optional[str] = None,
-    map_data: Optional[Dict[str, Any]] = None,
-) -> Game:
-    if player_names is None:
-        player_names = ["You", "Bot"]
-    if map_path or map_data:
-        map_id = None
-    base = engine_rules.build_game(
-        seed=seed,
-        max_players=max_players,
-        size=size,
-        player_names=player_names,
-        map_id=map_id,
-        map_path=map_path,
-        map_data=map_data,
-    )
 
+def _convert_base_state(base) -> Game:
     def _pt(p):
         return QtCore.QPointF(float(p[0]), float(p[1]))
 
     g = Game(seed=base.seed, size=base.size)
     g.map_id = str(base.map_id)
-    g.map_meta = dict(base.map_meta)
+    g.map_meta = dict(getattr(base, "map_meta", {}) or {})
     g.rules_config = getattr(base, "rules_config", None)
     g.tiles = [
         HexTile(q=t.q, r=t.r, terrain=t.terrain, number=t.number, center=_pt(t.center))
@@ -480,8 +461,8 @@ def build_board(
         pl = Player(p.name, QtGui.QColor(PLAYER_COLORS[p.pid]))
         pl.res = dict(p.res)
         pl.vp = int(p.vp)
-        pl.dev_cards = list(p.dev_cards)
-        pl.knights_played = int(p.knights_played)
+        pl.dev_cards = list(getattr(p, "dev_cards", []))
+        pl.knights_played = int(getattr(p, "knights_played", 0))
         g.players.append(pl)
 
     g.bank = dict(base.bank)
@@ -512,13 +493,144 @@ def build_board(
     g.largest_army_size = int(base.largest_army_size)
     g.game_over = bool(base.game_over)
     g.winner_pid = base.winner_pid
-    g.roll_history = list(base.roll_history)
-    g.dev_deck = list(base.dev_deck)
-    g.dev_played_turn = dict(base.dev_played_turn)
-    g.free_roads = dict(base.free_roads)
-    g.trade_offers = list(base.trade_offers)
-    g.trade_offer_next_id = int(base.trade_offer_next_id)
+    g.roll_history = list(getattr(base, "roll_history", []))
+    g.dev_deck = list(getattr(base, "dev_deck", []))
+    g.dev_played_turn = dict(getattr(base, "dev_played_turn", {}))
+    g.free_roads = dict(getattr(base, "free_roads", {}))
+    g.trade_offers = list(getattr(base, "trade_offers", []))
+    g.trade_offer_next_id = int(getattr(base, "trade_offer_next_id", 1))
     return g
+
+
+def _rules_cfg_to_dict(cfg: Any) -> Dict[str, Any]:
+    if cfg is None:
+        return {}
+    if isinstance(cfg, dict):
+        return dict(cfg)
+    out = {}
+    for key in ("target_vp", "max_roads", "max_settlements", "max_cities", "robber_count", "enable_seafarers", "max_ships", "enable_pirate", "enable_gold", "enable_move_ship"):
+        if hasattr(cfg, key):
+            out[key] = getattr(cfg, key)
+    return out
+
+
+def _ui_game_to_engine_dict(g: Game) -> Dict[str, Any]:
+    def _edge_key(e: Tuple[int, int]) -> str:
+        a, b = e
+        return f"{a},{b}"
+
+    data = {
+        "state_version": 0,
+        "seed": int(g.seed),
+        "max_players": len(g.players),
+        "size": float(g.size),
+        "map_name": g.map_id,
+        "map_id": g.map_id,
+        "map_meta": dict(g.map_meta or {}),
+        "rules": {},
+        "rules_config": _rules_cfg_to_dict(g.rules_config),
+        "phase": g.phase,
+        "turn": g.turn,
+        "rolled": bool(g.rolled),
+        "setup_order": list(g.setup_order),
+        "setup_idx": int(g.setup_idx),
+        "setup_need": g.setup_need,
+        "setup_anchor_vid": g.setup_anchor_vid,
+        "last_roll": g.last_roll,
+        "robber_tile": int(g.robber_tile),
+        "robbers": list(g.robbers or [g.robber_tile]),
+        "pirate_tile": g.pirate_tile,
+        "pending_action": g.pending_action,
+        "pending_pid": g.pending_pid,
+        "pending_victims": list(g.pending_victims),
+        "discard_required": {str(k): int(v) for k, v in g.discard_required.items()},
+        "discard_submitted": [int(x) for x in g.discard_submitted],
+        "pending_gold": {str(k): int(v) for k, v in g.pending_gold.items()},
+        "pending_gold_queue": [int(x) for x in g.pending_gold_queue],
+        "trade_offers": [
+            {
+                "offer_id": o.offer_id,
+                "from_pid": o.from_pid,
+                "to_pid": o.to_pid,
+                "give": dict(o.give),
+                "get": dict(o.get),
+                "status": o.status,
+                "created_turn": o.created_turn,
+                "created_tick": o.created_tick,
+            }
+            for o in g.trade_offers
+        ],
+        "trade_offer_next_id": g.trade_offer_next_id,
+        "longest_road_owner": g.longest_road_owner,
+        "longest_road_len": g.longest_road_len,
+        "largest_army_owner": g.largest_army_owner,
+        "largest_army_size": g.largest_army_size,
+        "game_over": g.game_over,
+        "winner_pid": g.winner_pid,
+        "players": [
+            {
+                "pid": idx,
+                "name": p.name,
+                "vp": p.vp,
+                "res": dict(p.res),
+                "knights_played": getattr(p, "knights_played", 0),
+            }
+            for idx, p in enumerate(g.players)
+        ],
+        "bank": dict(g.bank),
+        "occupied_v": {str(k): [v[0], v[1]] for k, v in g.occupied_v.items()},
+        "occupied_e": {_edge_key(e): owner for e, owner in g.occupied_e.items()},
+        "occupied_ships": {_edge_key(e): owner for e, owner in g.occupied_ships.items()},
+        "tiles": [
+            {
+                "q": t.q,
+                "r": t.r,
+                "terrain": t.terrain,
+                "number": t.number,
+                "center": [float(t.center.x()), float(t.center.y())],
+            }
+            for t in g.tiles
+        ],
+        "vertices": {str(k): [float(v.x()), float(v.y())] for k, v in g.vertices.items()},
+        "edges": [[a, b] for a, b in sorted(g.edges)],
+        "vertex_adj_hexes": {str(k): list(v) for k, v in g.vertex_adj_hexes.items()},
+        "edge_adj_hexes": {_edge_key(e): v for e, v in g.edge_adj_hexes.items()},
+        "ports": [[[a, b], kind] for (a, b), kind in g.ports],
+    }
+    hidden = {
+        "dev_deck": list(g.dev_deck),
+        "dev_played_turn": dict(g.dev_played_turn),
+        "free_roads": dict(g.free_roads),
+        "roll_history": list(g.roll_history),
+        "player_dev_cards": [list(p.dev_cards) for p in g.players],
+    }
+    data["_offline_hidden"] = hidden
+    return data
+
+
+def build_board(
+    seed: int,
+    size: float,
+    map_id: Optional[str] = None,
+    player_names: Optional[List[str]] = None,
+    max_players: int = 2,
+    map_path: Optional[str] = None,
+    map_data: Optional[Dict[str, Any]] = None,
+) -> Game:
+    if player_names is None:
+        player_names = ["You", "Bot"]
+    if map_path or map_data:
+        map_id = None
+    base = engine_rules.build_game(
+        seed=seed,
+        max_players=max_players,
+        size=size,
+        player_names=player_names,
+        map_id=map_id,
+        map_path=map_path,
+        map_data=map_data,
+    )
+    return _convert_base_state(base)
 
 def edge_neighbors_of_vertex(edges: Set[Tuple[int,int]], vid: int) -> Set[int]:
     return engine_rules.edge_neighbors_of_vertex(edges, vid)
@@ -576,6 +688,8 @@ def expected_vertex_yield(g: Game, vid: int, pid: int) -> int:
         if not res:
             continue
         score += PIPS.get(t.number, 0)
+        if res in ("ore", "wheat"):
+            score += 0.2
     return score
 
 def choose_best_city(g: Game, pid: int) -> Optional[int]:
@@ -1526,6 +1640,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_end.setStyleSheet(f"background:{PALETTE['ui_panel_end']}; padding:10px 14px; border-radius:12px; font-weight:800;")
         self.btn_end.clicked.connect(self.on_end_turn)
 
+        self.btn_save = QtWidgets.QPushButton("Save")
+        self.btn_save.setStyleSheet(f"background:{PALETTE['ui_panel_outline']}; padding:10px 14px; border-radius:12px; font-weight:700;")
+        self.btn_save.clicked.connect(self._save_game)
+        self.btn_load = QtWidgets.QPushButton("Load")
+        self.btn_load.setStyleSheet(f"background:{PALETTE['ui_panel_outline']}; padding:10px 14px; border-radius:12px; font-weight:700;")
+        self.btn_load.clicked.connect(self._load_game)
+
         self.btn_menu = QtWidgets.QPushButton("Menu")
         self.btn_menu.setStyleSheet(f"background:{PALETTE['ui_panel_outline']}; padding:10px 14px; border-radius:12px; font-weight:700;")
         self.btn_menu.clicked.connect(self._open_game_menu)
@@ -1536,6 +1657,8 @@ class MainWindow(QtWidgets.QMainWindow):
         top_l.addWidget(self.d2)
         top_l.addSpacing(8)
         top_l.addWidget(self.btn_end)
+        top_l.addWidget(self.btn_save)
+        top_l.addWidget(self.btn_load)
         top_l.addWidget(self.btn_menu)
 
         # bottom action bar (Colonist-like cards)
@@ -2175,6 +2298,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         for b in (self.btn_sett, self.btn_road, self.btn_ship, self.btn_move_ship, self.btn_city, self.btn_pirate, self.btn_dev, self.btn_trade, self.btn_end, self.d1, self.d2):
             b.setEnabled(not g.game_over)
+        if hasattr(self, "btn_save"):
+            self.btn_save.setEnabled(not self.online_mode and not g.game_over)
+        if hasattr(self, "btn_load"):
+            self.btn_load.setEnabled(not self.online_mode)
         enable_sea = bool(_rules_value(g.rules_config, "enable_seafarers", False))
         enable_move = bool(_rules_value(g.rules_config, "enable_move_ship", False))
         enable_pirate = bool(_rules_value(g.rules_config, "enable_pirate", False))
@@ -2281,6 +2408,73 @@ class MainWindow(QtWidgets.QMainWindow):
         btn_back.clicked.connect(_back_menu)
         btn_quit.clicked.connect(_quit)
         dlg.exec()
+
+    def _save_game(self):
+        if self.online_mode:
+            self._log("[!] Save disabled in online mode.")
+            return
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Save Game",
+            "catan_save.json",
+            "Catan Save (*.json);;All Files (*)",
+        )
+        if not path:
+            return
+        data = _ui_game_to_engine_dict(self.game)
+        try:
+            Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except Exception as exc:
+            self._log(f"[!] Save failed: {exc}")
+            return
+        self._log(f"[SYS] Game saved: {path}")
+
+    def _load_game(self):
+        if self.online_mode:
+            self._log("[!] Load disabled in online mode.")
+            return
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Load Game",
+            "",
+            "Catan Save (*.json);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            raw = Path(path).read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except Exception as exc:
+            self._log(f"[!] Load failed: {exc}")
+            return
+        hidden = data.get("_offline_hidden", {}) if isinstance(data, dict) else {}
+        try:
+            base = engine_serialize.from_dict(data)
+            g = _convert_base_state(base)
+        except Exception as exc:
+            self._log(f"[!] Load failed: {exc}")
+            return
+        # restore hidden offline-only state
+        if isinstance(hidden, dict):
+            g.dev_deck = list(hidden.get("dev_deck", g.dev_deck))
+            g.dev_played_turn = dict(hidden.get("dev_played_turn", g.dev_played_turn))
+            g.free_roads = dict(hidden.get("free_roads", g.free_roads))
+            g.roll_history = list(hidden.get("roll_history", g.roll_history))
+            p_cards = hidden.get("player_dev_cards", [])
+            if isinstance(p_cards, list):
+                for idx, cards in enumerate(p_cards):
+                    if idx < len(g.players) and isinstance(cards, list):
+                        g.players[idx].dev_cards = list(cards)
+        self.game = g
+        self._shown_game_over = False
+        self.selected_action = None
+        self._move_ship_from = None
+        self._gold_modal_open = False
+        self._draw_static_board()
+        self._refresh_all_dynamic()
+        self._fit_map()
+        self._sync_ui()
+        self._log(f"[SYS] Game loaded: {path}")
 
     def _open_dev_dialog(self):
         g = self.game
@@ -2705,6 +2899,42 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log(f"Bot bought dev: {card}.")
         return True
 
+    def _bot_plan_trade(self, pid: int) -> Optional[Tuple[str, str]]:
+        g = self.game
+        pres = g.players[pid].res
+        target_costs = [COST["city"], COST["settlement"], COST["road"], COST["dev"]]
+        best_cost = None
+        best_need = None
+        best_total = 999
+        for cost in target_costs:
+            need = {r: max(0, cost[r] - pres.get(r, 0)) for r in cost}
+            total = sum(need.values())
+            if total < best_total:
+                best_total = total
+                best_need = need
+                best_cost = cost
+        if not best_need or best_total <= 0 or not best_cost:
+            return None
+        need_res = sorted(best_need.keys(), key=lambda r: best_need[r], reverse=True)
+        give_order = sorted(RESOURCES, key=lambda r: pres.get(r, 0) - best_cost.get(r, 0), reverse=True)
+        for get_res in need_res:
+            if best_need.get(get_res, 0) <= 0:
+                continue
+            for give in give_order:
+                if give == get_res:
+                    continue
+                rate = g.best_trade_rate(pid, give)
+                if pres.get(give, 0) >= rate and g.bank.get(get_res, 0) > 0:
+                    return give, get_res
+        return None
+
+    def _bot_trade_bank(self, give: str, get: str) -> bool:
+        events = self._apply_cmd({"type": "trade_bank", "give": give, "get": get, "get_qty": 1}, pid=1)
+        if events is None:
+            return False
+        self._log(f"Bot traded {give} for {get}.")
+        return True
+
     def _bot_choose_actions(self, pid: int) -> List[Tuple[str, object]]:
         g = self.game
         actions: List[Tuple[str, object]] = []
@@ -2725,6 +2955,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 return actions
         if can_pay(g.players[pid], COST["dev"]):
             actions.append(("dev", None))
+            return actions
+        trade = self._bot_plan_trade(pid)
+        if trade:
+            actions.append(("trade", trade))
         return actions
 
     def _bot_find_dev_index(self, pid: int, card_type: str) -> Optional[int]:
@@ -2966,6 +3200,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 ok = self._bot_place_road(arg, use_free=False)
             elif name == "dev":
                 ok = self._bot_buy_dev()
+            elif name == "trade":
+                give, get = arg
+                ok = self._bot_trade_bank(give, get)
             if not ok:
                 break
             actions_done += 1

@@ -13,6 +13,8 @@ Core rules:
 
 Maps / presets / custom:
 - Preset maps live in `app/assets/maps/` (base_* and seafarers_*).
+- Community presets: `community_balanced_a/b/c` (balanced layouts with no adjacent 6/8).
+- Seafarers presets: `seafarers_simple_*`, `seafarers_gold_haven`, `seafarers_pirate_lanes`.
 - Offline: Singleplayer dialog has a preset dropdown + "Load map file..." for custom JSON.
 - Multiplayer (desktop): host can pick preset or load a custom map file in the lobby before start.
 - Multiplayer (web): host can pick preset or upload a custom JSON (Set Custom).
@@ -23,6 +25,7 @@ Controls:
 - Main phase: Roll -> Build (Road/Settlement/City) -> click highlighted place -> End
 - Seafarers maps: Ship/Move Ship/Pirate actions appear when enabled by the map rules; Gold prompts appear when a gold tile triggers
 - UX/Controls quick guide: see `docs/ux_controls.md`
+- Save/Load (offline): use the Save/Load buttons in the top bar (JSON files)
 
 Testing:
 - Install test deps: `pip install -r requirements-dev.txt`
@@ -41,7 +44,19 @@ Windows build (PyInstaller):
 - Run:
   - Start `CatanServer.exe` (default port 8000)
 - Start `CatanClient.exe` and connect via Multiplayer -> Host/Join
-- 
+
+Linux/macOS build (PyInstaller):
+- Build must be run on the target OS (no cross-build).
+- Install builder: `pip install pyinstaller`
+- Linux:
+  - `bash tools/build/build_server_linux.sh`
+  - `bash tools/build/build_client_linux.sh`
+- macOS:
+  - `bash tools/build/build_server_mac.sh`
+  - `bash tools/build/build_client_mac.sh`
+- Output:
+  - `dist/CatanServer/` and `dist/CatanClient/`
+
 LAN Web (browser client):
 - Start server on LAN: `python -m app.server_mp` (host 0.0.0.0 by default)
 - Optional env override: `CATAN_HOST=0.0.0.0 CATAN_PORT=8000 python -m app.server_mp`
@@ -57,6 +72,7 @@ LAN Web (browser client):
   - `VITE_WS_URL=ws://192.168.0.24:8000/ws`
   - Replace with your Wi-Fi IPv4 (from `ipconfig`)
 - Local dev default remains `web/.env` (127.0.0.1)
+- Web UI now includes an interactive board (click-to-place) for core actions.
 
 Seafarers (MVP + extended):
 - Enabled via maps whose rules contain `enable_seafarers: true`.
