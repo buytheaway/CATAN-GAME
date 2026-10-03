@@ -27,10 +27,10 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
         return {"ok": True}
 
     if mtype == "create_room":
-        if not isinstance(msg.get("name"), str):
+        if not isinstance(msg.get("name"), str) or not msg["name"].strip():
             return _err("invalid", "name required")
         max_players = msg.get("max_players", 4)
-        if not isinstance(max_players, int) or not (2 <= max_players <= 6):
+        if type(max_players) is not int or not (2 <= max_players <= 6):
             return _err("invalid", "max_players must be 2..6")
         ruleset = msg.get("ruleset", {})
         if not isinstance(ruleset, dict):
@@ -40,14 +40,14 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
     if mtype == "join_room":
         if not isinstance(msg.get("room_code"), str):
             return _err("invalid", "room_code required")
-        if not isinstance(msg.get("name"), str):
+        if not isinstance(msg.get("name"), str) or not msg["name"].strip():
             return _err("invalid", "name required")
         return {"ok": True}
 
     if mtype == "reconnect":
         if not isinstance(msg.get("room_code"), str):
             return _err("invalid", "room_code required")
-        if not isinstance(msg.get("reconnect_token"), str):
+        if not isinstance(msg.get("reconnect_token"), str) or not msg["reconnect_token"]:
             return _err("invalid", "reconnect_token required")
         return {"ok": True}
 
@@ -64,11 +64,11 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
         return {"ok": True}
 
     if mtype == "cmd":
-        if not isinstance(msg.get("match_id"), int):
+        if type(msg.get("match_id")) is not int or msg["match_id"] <= 0:
             return _err("invalid", "match_id required")
-        if not isinstance(msg.get("seq"), int):
+        if type(msg.get("seq")) is not int or msg["seq"] <= 0:
             return _err("invalid", "seq required")
-        if not isinstance(msg.get("cmd_id"), str):
+        if not isinstance(msg.get("cmd_id"), str) or not msg["cmd_id"]:
             return _err("invalid", "cmd_id required")
         if "room_code" in msg and not isinstance(msg.get("room_code"), str):
             return _err("invalid", "room_code must be string")
@@ -115,6 +115,5 @@ def match_state_message(room, state: Dict[str, Any]) -> Dict[str, Any]:
         "room_code": room.room_code,
         "match_id": room.match_id,
         "tick": room.tick,
-        "seed": room.seed,
         "state": state,
     }

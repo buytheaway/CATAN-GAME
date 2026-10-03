@@ -20,6 +20,7 @@ class OnlineGameController(QtCore.QObject):
         self.you_pid = int(you_pid)
         self.seq = 0
         self.match_id = 0
+        self._match_key = None
         self.room_code = None
         self.current_state: Optional[Dict[str, Any]] = None
 
@@ -35,10 +36,14 @@ class OnlineGameController(QtCore.QObject):
 
     def _on_match_state(self, data: Dict[str, Any]):
         new_match_id = int(data.get("match_id", 0))
-        if new_match_id != self.match_id:
-            self.seq = 0
+        match_key = (data.get("room_code"), new_match_id)
+        if match_key != self._match_key:
+            self.seq = self.net._last_seq_applied
+            self._match_key = match_key
         self.match_id = new_match_id
         self.current_state = data.get("state") or {}
+        self.you_pid = int(self.current_state.get("you_pid", self.you_pid))
+        self.window.you_pid = self.you_pid
         seed = int(data.get("seed", 0))
         self.apply_snapshot(self.current_state, seed=seed)
 
@@ -152,10 +157,13 @@ class OnlineGameController(QtCore.QObject):
             pl = ui_v6.Player(p.get("name", f"P{pid+1}"), color)
             pl.vp = int(p.get("vp", 0))
             pl.res = {r: int(p.get("res", {}).get(r, 0)) for r in ui_v6.RESOURCES}
+            pl.resource_count = int(p.get("resource_count", sum(pl.res.values())))
+            pl.dev_cards = list(p.get("dev_cards", []))
             pl.knights_played = int(p.get("knights_played", 0))
             g.players.append(pl)
 
         g.bank = {r: int(state.get("bank", {}).get(r, 0)) for r in ui_v6.RESOURCES}
+        g.bank_available = dict(state.get("bank_available", {}))
         g.occupied_v = {int(k): (int(v[0]), int(v[1])) for k, v in state.get("occupied_v", {}).items()}
         g.occupied_e = {self._edge_key(k): int(v) for k, v in state.get("occupied_e", {}).items()}
         g.occupied_ships = {self._edge_key(k): int(v) for k, v in state.get("occupied_ships", {}).items()}

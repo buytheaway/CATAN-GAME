@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import random
+import secrets
 import string
 import time
 import uuid
@@ -28,9 +29,9 @@ from app.engine import (
     get_preset_map,
     list_presets,
     parse_rules_config,
-    to_dict,
 )
 from app.engine import maps as map_loader
+from app.engine.serialize import to_player_dict
 
 
 @dataclass
@@ -42,6 +43,7 @@ class PlayerSlot:
     last_seq_applied: int = 0
     seen_cmd_ids: Deque[str] = field(default_factory=deque)
     seen_cmd_set: Set[str] = field(default_factory=set)
+    active_ws: Optional[WebSocket] = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -108,15 +110,11 @@ class RoomManager:
             return None
         code = room_code.strip().upper()
         room = self.rooms.get(code)
-        if not room:
+        if not room or room.status != "lobby":
             return None
-        # reconnect by name
-        for slot in room.players:
-            if slot.name == name:
-                slot.connected = True
-                if not slot.reconnect_token:
-                    slot.reconnect_token = uuid.uuid4().hex
-                return room
+        name = name.strip()
+        if not name or any(slot.name == name for slot in room.players):
+            return None
         for slot in room.players:
             if not slot.name:
                 slot.name = name
@@ -126,24 +124,47 @@ class RoomManager:
                 return room
         return None
 
+    def bind_player(self, conn: ClientConn, room: Room, pid: int) -> None:
+        """The reconnect token may transfer ownership, a display name may not."""
+        self.leave_room(conn)
+        slot = room.players[pid]
+        previous = self.connections.get(slot.active_ws)
+        if previous is not None and previous is not conn:
+            previous.room_code = None
+            previous.pid = None
+        conn.room_code = room.room_code
+        conn.pid = pid
+        slot.active_ws = conn.ws
+        slot.connected = True
+
     def leave_room(self, conn: ClientConn) -> None:
         if not conn.room_code:
             return
         room = self.rooms.get(conn.room_code)
         if not room or conn.pid is None:
             return
-        room.players[conn.pid].connected = False
+        slot = room.players[conn.pid]
+        if slot.active_ws is not conn.ws:
+            return
+        slot.active_ws = None
+        slot.connected = False
         room.last_activity_ts = time.time()
 
 
 app = FastAPI()
 manager = RoomManager()
 CMD_ID_LRU = 256
+MULTIPLAYER_COMMANDS = frozenset({
+    "place_settlement", "place_road", "upgrade_city", "build_ship", "move_ship",
+    "roll", "discard", "choose_gold", "move_robber", "move_pirate",
+    "trade_bank", "trade_offer_create", "trade_offer_accept", "trade_offer_decline",
+    "trade_offer_cancel", "buy_dev", "play_dev", "end_turn", "noop",
+})
 
 
-def _snapshot_state(game: GameState, room: Room) -> Dict:
-    state = to_dict(game)
-    state["max_players"] = room.max_players
+def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
+    state = to_player_dict(game, pid)
+    state["you_pid"] = pid
     state["legal"] = _legal_moves(game)
     return state
 
@@ -208,14 +229,31 @@ async def _send_room_state(room: Room) -> None:
 async def _send_match_state(room: Room) -> None:
     if not room.game:
         return
-    state = _snapshot_state(room.game, room)
-    await _broadcast(room, net_protocol.match_state_message(room, state))
+    # Freeze all views before the first await so another command cannot make
+    # recipients observe different ticks/states from this one update.
+    messages = [
+        (ws, conn.pid, net_protocol.match_state_message(room, _snapshot_state(room.game, room, conn.pid)))
+        for ws, conn in list(manager.connections.items())
+        if conn.room_code == room.room_code and conn.pid is not None
+    ]
+    for ws, pid, message in messages:
+        conn = manager.connections.get(ws)
+        if (not conn or conn.room_code != room.room_code or conn.pid != pid
+                or room.match_id != message["match_id"] or room.players[pid].active_ws is not ws):
+            continue
+        try:
+            await _send(ws, message)
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            pass
 
 
 async def _send_match_state_to(ws: WebSocket, room: Room) -> None:
     if not room.game:
         return
-    state = _snapshot_state(room.game, room)
+    conn = manager.connections.get(ws)
+    if not conn or conn.room_code != room.room_code or conn.pid is None:
+        return
+    state = _snapshot_state(room.game, room, conn.pid)
     await _send(ws, net_protocol.match_state_message(room, state))
 
 
@@ -227,6 +265,7 @@ async def _send_reconnect_token(ws: WebSocket, room: Room, pid: int) -> None:
         "pid": pid,
         "reconnect_token": slot.reconnect_token,
         "last_seq_applied": slot.last_seq_applied,
+        "match_id": room.match_id,
     })
 
 
@@ -245,23 +284,46 @@ def _get_conn(ws: WebSocket) -> ClientConn:
     return manager.connections[ws]
 
 
+def _rematch_host_pid(room: Room) -> Optional[int]:
+    if room.status != "in_match" or room.players[room.host_pid].connected:
+        return room.host_pid
+    return next((p.pid for p in room.players if p.name and p.connected), None)
+
+
 def _start_match(room: Room) -> None:
-    room.match_id += 1
-    room.tick = 0
-    room.seed = random.randint(1, 999999)
+    participants = [p for p in room.players if p.name and p.connected]
+    host_pid = _rematch_host_pid(room)
+    if len(participants) < 2 or host_pid not in [p.pid for p in participants]:
+        raise RuleError("invalid", "Need the host and at least 2 connected players")
+    seed = secrets.randbits(64)
     if room.selected_map_data is not None:
-        room.game = build_game(
-            seed=room.seed,
-            max_players=room.max_players,
+        game = build_game(
+            seed=seed,
+            max_players=len(participants),
+            player_names=[p.name for p in participants],
             size=58.0,
             map_id=room.selected_map_id,
             map_data=room.selected_map_data,
         )
     else:
-        room.game = build_game(seed=room.seed, max_players=room.max_players, size=58.0, map_id=room.selected_map_id)
-    for slot in room.players:
-        if slot.name:
-            room.game.players[slot.pid].name = slot.name
+        game = build_game(seed=seed, max_players=len(participants), size=58.0,
+                          player_names=[p.name for p in participants], map_id=room.selected_map_id)
+    # Do not tie the secret development deck to the map's reproducible seed.
+    random.SystemRandom().shuffle(game.dev_deck)
+    mapping = {slot.pid: pid for pid, slot in enumerate(participants)}
+    room.host_pid = mapping[host_pid]
+    for conn in manager.connections.values():
+        if conn.room_code == room.room_code:
+            conn.pid = mapping.get(conn.pid)
+            if conn.pid is None:
+                conn.room_code = None
+    room.players = participants
+    room.game = game
+    room.seed = seed
+    room.match_id += 1
+    room.tick = 0
+    for pid, slot in enumerate(room.players):
+        slot.pid = pid
         slot.last_seq_applied = 0
         slot.seen_cmd_ids.clear()
         slot.seen_cmd_set.clear()
@@ -276,25 +338,35 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     ctype = cmd.get("type")
     if not isinstance(ctype, str):
         return net_protocol.error_message("invalid", "cmd.type required")
+    if ctype not in MULTIPLAYER_COMMANDS:
+        return net_protocol.error_message("forbidden", "Command is not available in multiplayer")
     if ctype == "discard" and not isinstance(cmd.get("discards"), dict):
         return net_protocol.error_message("invalid", "discards must be object")
 
     if ctype == "roll":
-        forced = cmd.get("forced")
-        if forced is not None and os.getenv("CATAN_DEBUG_ROLLS") != "1":
-            return net_protocol.error_message("illegal", "Forced roll disabled")
-        if forced is not None:
-            cmd = dict(cmd)
-            cmd["roll"] = int(forced)
-        elif cmd.get("roll") is None:
-            cmd = dict(cmd)
-            cmd["roll"] = random.randint(1, 6) + random.randint(1, 6)
+        if set(cmd) != {"type"}:
+            return net_protocol.error_message("invalid", "Send only the roll intention")
+        cmd = {"type": "roll", "roll": _roll_dice()}
 
     try:
         apply_cmd(g, pid, cmd)
     except RuleError as exc:
         return net_protocol.error_message(exc.code, exc.message, exc.details)
     return None
+
+
+def _roll_dice() -> int:
+    """Tests may inject this function; no WebSocket debug fields enable it."""
+    return secrets.randbelow(6) + secrets.randbelow(6) + 2
+
+
+async def _start_and_notify(room: Room) -> None:
+    _start_match(room)
+    await _send_room_state(room)
+    for ws, conn in list(manager.connections.items()):
+        if conn.room_code == room.room_code and conn.pid is not None:
+            await _send_reconnect_token(ws, room, conn.pid)
+    await _send_match_state(room)
 
 
 def _remember_cmd_id(slot: PlayerSlot, cmd_id: str) -> None:
@@ -334,9 +406,8 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
 
             if mtype == "create_room":
-                room = manager.create_room(data.get("name"), data.get("max_players", 4))
-                conn.room_code = room.room_code
-                conn.pid = 0
+                room = manager.create_room(data.get("name").strip(), data.get("max_players", 4))
+                manager.bind_player(conn, room, 0)
                 await _send(ws, net_protocol.room_state_message(room))
                 await _send_reconnect_token(ws, room, 0)
                 continue
@@ -345,18 +416,18 @@ async def websocket_endpoint(ws: WebSocket):
                 room_code = data.get("room_code")
                 if isinstance(room_code, str):
                     room_code = room_code.strip().upper()
-                room = manager.join_room(room_code, data.get("name"))
+                name = data.get("name").strip()
+                room = manager.join_room(room_code, name)
                 if not room:
                     await _send(ws, net_protocol.error_message("not_found", "Room not found or full"))
                     continue
                 # bind pid
                 pid = None
                 for slot in room.players:
-                    if slot.name == data.get("name"):
+                    if slot.name == name:
                         pid = slot.pid
                         break
-                conn.room_code = room.room_code
-                conn.pid = pid
+                manager.bind_player(conn, room, pid)
                 await _send(ws, net_protocol.room_state_message(room))
                 if pid is not None:
                     await _send_reconnect_token(ws, room, pid)
@@ -374,15 +445,13 @@ async def websocket_endpoint(ws: WebSocket):
                     continue
                 pid = None
                 for slot in room.players:
-                    if slot.reconnect_token == token:
+                    if slot.reconnect_token and secrets.compare_digest(slot.reconnect_token.encode(), token.encode()):
                         pid = slot.pid
-                        slot.connected = True
                         break
                 if pid is None:
                     await _send(ws, net_protocol.error_message("forbidden", "Invalid reconnect token"))
                     continue
-                conn.room_code = room.room_code
-                conn.pid = pid
+                manager.bind_player(conn, room, pid)
                 await _send(ws, net_protocol.room_state_message(room))
                 await _send_reconnect_token(ws, room, pid)
                 if room.status == "in_match":
@@ -407,12 +476,13 @@ async def websocket_endpoint(ws: WebSocket):
                 if conn.pid != room.host_pid:
                     await _send(ws, net_protocol.error_message("forbidden", "Only host can start"))
                     continue
-                if sum(1 for p in room.players if p.name) < 2:
-                    await _send(ws, net_protocol.error_message("invalid", "Need at least 2 players"))
+                if room.status != "lobby":
+                    await _send(ws, net_protocol.error_message("invalid", "Match already started; use rematch"))
                     continue
-                _start_match(room)
-                await _send_room_state(room)
-                await _send_match_state(room)
+                try:
+                    await _start_and_notify(room)
+                except RuleError as exc:
+                    await _send(ws, net_protocol.error_message(exc.code, exc.message))
                 continue
 
             if mtype == "set_map":
@@ -467,11 +537,13 @@ async def websocket_endpoint(ws: WebSocket):
                 if not room:
                     await _send(ws, net_protocol.error_message("not_found", "Room not found"))
                     continue
-                if conn.pid != room.host_pid:
+                if conn.pid != _rematch_host_pid(room):
                     await _send(ws, net_protocol.error_message("forbidden", "Only host can rematch"))
                     continue
-                _start_match(room)
-                await _send_match_state(room)
+                try:
+                    await _start_and_notify(room)
+                except RuleError as exc:
+                    await _send(ws, net_protocol.error_message(exc.code, exc.message))
                 continue
 
             if mtype == "cmd":
@@ -500,10 +572,11 @@ async def websocket_endpoint(ws: WebSocket):
                     await _send(ws, net_protocol.error_message("out_of_order", "Out of order seq", {"expected_seq": expected_seq}))
                     continue
 
+                err = _apply_cmd(room, conn.pid, data.get("cmd", {}))
+                # This is the last CONSUMED sequence, including rejected game commands.
+                # Both outcomes are final; replay must not retry an old rejected intent.
                 slot.last_seq_applied = seq
                 _remember_cmd_id(slot, cmd_id)
-
-                err = _apply_cmd(room, conn.pid, data.get("cmd", {}))
                 if err:
                     await _send(ws, err)
                     await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=False)
@@ -522,6 +595,7 @@ async def websocket_endpoint(ws: WebSocket):
                 await _send_room_state(room)
         manager.connections.pop(ws, None)
     except Exception:
+        manager.leave_room(conn)
         manager.connections.pop(ws, None)
 
 

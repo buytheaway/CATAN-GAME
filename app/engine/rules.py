@@ -26,6 +26,52 @@ class RuleError(Exception):
         self.details = details or {}
 
 
+def _integer(value: Any, label: str) -> int:
+    if type(value) is not int:
+        raise RuleError("invalid", f"{label} must be an integer")
+    return value
+
+
+def _vertex(g: GameState, value: Any) -> int:
+    vid = _integer(value, "vid")
+    if vid not in g.vertices:
+        raise RuleError("invalid", "Vertex does not exist on this map")
+    return vid
+
+
+def _edge(g: GameState, value: Any, label: str = "eid") -> Tuple[int, int]:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise RuleError("invalid", f"{label} required")
+    a, b = _integer(value[0], label), _integer(value[1], label)
+    e = (a, b) if a < b else (b, a)
+    if e not in g.edges:
+        raise RuleError("invalid", "Edge does not exist on this map")
+    return e
+
+
+def _tile(g: GameState, value: Any, sea: bool) -> int:
+    tile = _integer(value, "tile")
+    if not 0 <= tile < len(g.tiles):
+        raise RuleError("invalid", "Tile does not exist on this map")
+    if (g.tiles[tile].terrain == "sea") != sea:
+        raise RuleError("illegal", "Expected sea hex" if sea else "Expected land hex")
+    return tile
+
+
+def _setup_mode(g: GameState, cmd: Dict) -> bool:
+    setup = cmd.get("setup", False)
+    if type(setup) is not bool:
+        raise RuleError("invalid", "setup must be a boolean")
+    if setup and g.phase != "setup":
+        raise RuleError("illegal", "Setup is already complete")
+    return g.phase == "setup"
+
+
+def _require_no_pending(g: GameState) -> None:
+    if g.pending_action is not None:
+        raise RuleError("pending_action", "Resolve pending action first")
+
+
 def edge_neighbors_of_vertex(edges: set[Tuple[int, int]], vid: int) -> set[int]:
     out = set()
     for a, b in edges:
@@ -139,6 +185,10 @@ def build_game(
 
 
 def can_place_settlement(g: GameState, pid: int, vid: int, require_road: bool) -> bool:
+    if vid not in g.vertices or not any(
+        g.tiles[ti].terrain != "sea" for ti in g.vertex_adj_hexes.get(vid, [])
+    ):
+        return False
     if vid in g.occupied_v:
         return False
     for nb in edge_neighbors_of_vertex(g.edges, vid):
@@ -153,9 +203,9 @@ def can_place_settlement(g: GameState, pid: int, vid: int, require_road: bool) -
 
 
 def can_place_road(g: GameState, pid: int, e: Tuple[int, int], must_touch_vid: Optional[int] = None) -> bool:
-    if e in g.occupied_e:
+    if e not in g.edges or e in g.occupied_e or e in g.occupied_ships:
         return False
-    if getattr(g.rules_config, "enable_seafarers", False) and _edge_is_sea(g, e):
+    if _edge_is_sea(g, e):
         return False
     a, b = e
     if must_touch_vid is not None and (a != must_touch_vid and b != must_touch_vid):
@@ -164,9 +214,11 @@ def can_place_road(g: GameState, pid: int, e: Tuple[int, int], must_touch_vid: O
         occ = g.occupied_v.get(v)
         if occ and occ[0] == pid:
             return True
-    for ee, owner in g.occupied_e.items():
-        if owner == pid and (a in ee or b in ee):
-            return True
+        if occ:
+            continue
+        for ee, owner in g.occupied_e.items():
+            if owner == pid and v in ee:
+                return True
     return False
 
 
@@ -193,7 +245,7 @@ def _edge_blocked_by_pirate(g: GameState, e: Tuple[int, int]) -> bool:
 def can_place_ship(g: GameState, pid: int, e: Tuple[int, int]) -> bool:
     if not getattr(g.rules_config, "enable_seafarers", False):
         return False
-    if e in g.occupied_e or e in g.occupied_ships:
+    if e not in g.edges or e in g.occupied_e or e in g.occupied_ships:
         return False
     if not _edge_has_sea(g, e):
         return False
@@ -214,6 +266,8 @@ def can_place_ship(g: GameState, pid: int, e: Tuple[int, int]) -> bool:
 
 
 def can_upgrade_city(g: GameState, pid: int, vid: int) -> bool:
+    if vid not in g.vertices:
+        return False
     occ = g.occupied_v.get(vid)
     return bool(occ and occ[0] == pid and occ[1] == 1)
 
@@ -475,7 +529,7 @@ def trade_with_bank(g: GameState, pid: int, give_res: str, get_res: str, get_qty
         raise RuleError("invalid", "Give and Get must be different")
     if give_res not in RESOURCES or get_res not in RESOURCES:
         raise RuleError("invalid", "Invalid resource")
-    qty = int(get_qty)
+    qty = _integer(get_qty, "get_qty")
     if qty <= 0:
         raise RuleError("invalid", "Invalid quantity")
     rate = best_trade_rate(g, pid, give_res)
@@ -523,6 +577,7 @@ def buy_dev(g: GameState, pid: int) -> str:
         raise RuleError("game_over", "Game over")
     if g.phase != "main" or pid != g.turn:
         raise RuleError("illegal", "Not your turn")
+    _require_no_pending(g)
     _require_rolled(g)
     if not g.dev_deck:
         raise RuleError("illegal", "Dev deck is empty")
@@ -543,14 +598,40 @@ def play_dev(g: GameState, pid: int, card_type: str, **kwargs) -> Dict:
         raise RuleError("game_over", "Game over")
     if g.phase != "main" or pid != g.turn:
         raise RuleError("illegal", "Not your turn")
+    _require_no_pending(g)
     if g.dev_played_turn.get(pid, False):
         raise RuleError("illegal", "Already played a dev card this turn")
     if card_type == "victory_point":
         raise RuleError("illegal", "Victory Point cards are passive")
+    if card_type not in DEV_TYPES:
+        raise RuleError("invalid", "Unknown dev card")
 
     idx = _find_dev_idx(g, pid, card_type, allow_new=False)
     if idx is None:
         raise RuleError("illegal", "Cannot play this card now (new or missing)")
+
+    # Validate the whole effect before consuming the card or changing any flags.
+    gains: Dict[str, int] = {}
+    if card_type == "year_of_plenty":
+        qa = _integer(kwargs.get("qa", 0), "qa")
+        qb = _integer(kwargs.get("qb", 0), "qb")
+        if qa < 0 or qb < 0 or qa + qb != 2:
+            raise RuleError("invalid", "Year of Plenty requires exactly two resources")
+        for r, q in ((kwargs.get("a", ""), qa), (kwargs.get("b", ""), qb)):
+            r = str(r).strip().lower()
+            if q == 0:
+                continue
+            if r not in RESOURCES:
+                raise RuleError("invalid", "Invalid resource")
+            gains[r] = gains.get(r, 0) + q
+        for r, q in gains.items():
+            if g.bank.get(r, 0) < q:
+                raise RuleError("illegal", f"Bank has not enough {r}")
+    if card_type == "monopoly":
+        monopoly_res = str(kwargs.get("r", "")).strip().lower()
+        if monopoly_res not in RESOURCES:
+            raise RuleError("invalid", "Invalid resource")
+
     g.players[pid].dev_cards.pop(idx)
     g.dev_played_turn[pid] = True
 
@@ -568,32 +649,16 @@ def play_dev(g: GameState, pid: int, card_type: str, **kwargs) -> Dict:
         return {"played": "road_building"}
 
     if card_type == "year_of_plenty":
-        a = str(kwargs.get("a", "")).strip().lower()
-        b = str(kwargs.get("b", "")).strip().lower()
-        qa = int(kwargs.get("qa", 0))
-        qb = int(kwargs.get("qb", 0))
-        for r, q in ((a, qa), (b, qb)):
-            if q <= 0:
-                continue
-            if r not in RESOURCES:
-                raise RuleError("invalid", "Invalid resource")
-            if g.bank.get(r, 0) < q:
-                raise RuleError("illegal", f"Bank has not enough {r}")
-        if qa > 0:
-            g.bank[a] -= qa
-            g.players[pid].res[a] += qa
-        if qb > 0:
-            g.bank[b] -= qb
-            g.players[pid].res[b] += qb
+        for r, q in gains.items():
+            g.bank[r] -= q
+            g.players[pid].res[r] += q
         return {"played": "year_of_plenty"}
 
     if card_type == "monopoly":
-        r = str(kwargs.get("r", "")).strip().lower()
-        if r not in RESOURCES:
-            raise RuleError("invalid", "Invalid resource")
+        r = monopoly_res
         taken = 0
-        for op in g.players:
-            if op.pid == pid:
+        for other_pid, op in enumerate(g.players):
+            if other_pid == pid:
                 continue
             q = int(op.res.get(r, 0))
             if q > 0:
@@ -661,6 +726,15 @@ def _victims_for_pirate_tile(g: GameState, tile: int, thief_pid: int) -> List[in
     return sorted(victims)
 
 
+def _select_victim(victim: Any, victims: List[int]) -> Optional[int]:
+    if victim is None:
+        return victims[0] if victims else None
+    victim = _integer(victim, "victim")
+    if victim not in victims:
+        raise RuleError("illegal", "Victim is not eligible")
+    return victim
+
+
 def _collect_gold_yields(g: GameState, roll: int) -> Dict[int, int]:
     if not getattr(g.rules_config, "enable_gold", False):
         return {}
@@ -692,11 +766,13 @@ def _steal_one(g: GameState, thief_pid: int, victim_pid: int) -> Optional[str]:
 def _clean_trade_payload(payload: Dict) -> Dict[str, int]:
     out: Dict[str, int] = {}
     if not isinstance(payload, dict):
-        return out
+        raise RuleError("invalid", "Resources must be an object")
     for r, n in payload.items():
         if r not in RESOURCES:
-            continue
-        q = int(n)
+            raise RuleError("invalid", "Invalid resource")
+        q = _integer(n, "Resource quantity")
+        if q < 0:
+            raise RuleError("invalid", "Negative resource quantity")
         if q > 0:
             out[r] = q
     return out
@@ -728,6 +804,10 @@ def _find_offer(g: GameState, offer_id: int) -> Optional[TradeOffer]:
 
 
 def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]:
+    if type(pid) is not int or not 0 <= pid < len(g.players):
+        raise RuleError("invalid", "Invalid player")
+    if not isinstance(cmd, dict):
+        raise RuleError("invalid", "Command must be an object")
     events: List[Dict] = []
     ctype = cmd.get("type")
     if not isinstance(ctype, str):
@@ -738,28 +818,25 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
 
     if g.pending_action == "discard" and ctype != "discard":
         raise RuleError("pending_action", "Resolve discard first")
-    if g.pending_action == "robber_move" and ctype != "move_robber":
+    if g.pending_action == "robber_move" and ctype not in ("move_robber", "move_pirate"):
         raise RuleError("pending_action", "Resolve robber move first")
     if g.pending_action == "choose_gold" and ctype != "choose_gold":
         raise RuleError("pending_action", "Resolve gold choice first")
 
     if ctype == "grant_resources":
-        res = cmd.get("res", {})
-        for r, n in res.items():
-            if r not in RESOURCES:
-                continue
-            qty = int(n)
-            if qty <= 0:
-                continue
+        # Trusted engine test fixture helper; excluded from the multiplayer API.
+        res = _clean_trade_payload(cmd.get("res", {}))
+        for r, qty in res.items():
             if g.bank.get(r, 0) < qty:
                 raise RuleError("illegal", f"Bank lacks {r}")
+        for r, qty in res.items():
             g.bank[r] -= qty
             g.players[pid].res[r] += qty
         return g, events
 
     if ctype == "place_settlement":
-        vid = int(cmd.get("vid"))
-        setup = bool(cmd.get("setup", False)) or g.phase == "setup"
+        vid = _vertex(g, cmd.get("vid"))
+        setup = _setup_mode(g, cmd)
         if setup:
             if g.setup_order and pid != g.setup_order[g.setup_idx]:
                 raise RuleError("illegal", "Not your setup turn")
@@ -820,12 +897,9 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         return g, events
 
     if ctype == "place_road":
-        eid = cmd.get("eid")
-        if not isinstance(eid, (list, tuple)) or len(eid) != 2:
-            raise RuleError("invalid", "eid required")
-        a, b = int(eid[0]), int(eid[1])
-        e = (a, b) if a < b else (b, a)
-        setup = bool(cmd.get("setup", False)) or g.phase == "setup"
+        e = _edge(g, cmd.get("eid"))
+        a, b = e
+        setup = _setup_mode(g, cmd)
         if setup:
             if g.setup_order and pid != g.setup_order[g.setup_idx]:
                 raise RuleError("illegal", "Not your setup turn")
@@ -855,7 +929,9 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Road not allowed")
         if _count_roads(g, pid) >= int(getattr(g.rules_config, "max_roads", 15)):
             raise RuleError("illegal", "Road limit reached")
-        use_free = bool(cmd.get("free", False))
+        use_free = cmd.get("free", False)
+        if type(use_free) is not bool:
+            raise RuleError("invalid", "free must be a boolean")
         if not use_free:
             _require_rolled(g)
         if use_free:
@@ -873,11 +949,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         return g, events
 
     if ctype == "build_ship":
-        eid = cmd.get("eid")
-        if not isinstance(eid, (list, tuple)) or len(eid) != 2:
-            raise RuleError("invalid", "eid required")
-        a, b = int(eid[0]), int(eid[1])
-        e = (a, b) if a < b else (b, a)
+        e = _edge(g, cmd.get("eid"))
+        a, b = e
         if g.turn != pid or g.phase != "main":
             raise RuleError("illegal", "Not your turn")
         _require_rolled(g)
@@ -895,7 +968,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         return g, events
 
     if ctype == "upgrade_city":
-        vid = int(cmd.get("vid"))
+        vid = _vertex(g, cmd.get("vid"))
         if g.turn != pid or g.phase != "main":
             raise RuleError("illegal", "Not your turn")
         _require_rolled(g)
@@ -921,7 +994,9 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         roll = cmd.get("roll", cmd.get("forced"))
         if roll is None:
             raise RuleError("invalid", "roll required")
-        roll = int(roll)
+        roll = _integer(roll, "roll")
+        if not 2 <= roll <= 12:
+            raise RuleError("invalid", "roll must be 2..12")
         g.last_roll = roll
         g.rolled = True
         g.roll_history.append(roll)
@@ -962,10 +1037,13 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         required = int(g.discard_required.get(pid, 0))
         if required <= 0:
             raise RuleError("illegal", "No discard required for player")
+        if pid in g.discard_submitted:
+            raise RuleError("illegal", "Discard already submitted")
         discards = cmd.get("discards")
         if not isinstance(discards, dict):
             raise RuleError("invalid", "discards must be a dict")
-        total = sum(int(v) for v in discards.values())
+        discards = _clean_trade_payload(discards)
+        total = sum(discards.values())
         if total != required:
             raise RuleError("invalid", "Discard count mismatch", {"pid": pid, "need": required})
         pres = g.players[pid].res
@@ -997,7 +1075,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         remaining = int(g.pending_gold.get(pid, 0))
         if remaining <= 0:
             raise RuleError("illegal", "No gold pending for player")
-        qty = int(cmd.get("qty", 1))
+        qty = _integer(cmd.get("qty", 1), "qty")
         if qty <= 0:
             raise RuleError("invalid", "Invalid quantity")
         if qty > remaining:
@@ -1030,7 +1108,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Not enough resources for offer")
         to_pid = cmd.get("to_pid", cmd.get("to"))
         if to_pid is not None:
-            to_pid = int(to_pid)
+            to_pid = _integer(to_pid, "to_pid")
             if to_pid < 0 or to_pid >= len(g.players):
                 raise RuleError("invalid", "Invalid to_pid")
             if to_pid == pid:
@@ -1051,7 +1129,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         return g, events
 
     if ctype in ("trade_offer_accept", "trade_offer_decline", "trade_offer_cancel"):
-        offer_id = int(cmd.get("offer_id", cmd.get("id", -1)))
+        offer_id = _integer(cmd.get("offer_id", cmd.get("id", -1)), "offer_id")
         offer = _find_offer(g, offer_id)
         if offer is None:
             raise RuleError("invalid", "Offer not found")
@@ -1101,30 +1179,28 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Pirate not enabled")
         if g.phase != "main" or g.turn != pid:
             raise RuleError("illegal", "Not your turn")
-        if g.pending_action is not None:
-            raise RuleError("pending_action", "Resolve pending action first")
-        tile = int(cmd.get("tile"))
-        if tile < 0 or tile >= len(g.tiles):
-            raise RuleError("invalid", "Invalid tile")
-        if g.tiles[tile].terrain != "sea":
-            raise RuleError("illegal", "Pirate must be on sea tile")
+        if g.pending_action != "robber_move":
+            raise RuleError("illegal", "No robber/pirate move pending")
+        if g.pending_pid != pid:
+            raise RuleError("illegal", "Not your robber/pirate move")
+        tile = _tile(g, cmd.get("tile"), sea=True)
         if g.pirate_tile is not None and tile == int(g.pirate_tile):
             raise RuleError("illegal", "Same pirate tile")
-        g.pirate_tile = tile
         victim = cmd.get("victim", cmd.get("victim_pid"))
         victims = _victims_for_pirate_tile(g, tile, pid)
+        victim_pid = _select_victim(victim, victims)
+        g.pirate_tile = tile
         stolen = None
-        if victims:
-            if isinstance(victim, int) and victim in victims:
-                victim_pid = int(victim)
-            else:
-                victim_pid = victims[0]
+        if victim_pid is not None:
             stolen = _steal_one(g, pid, victim_pid)
+        g.pending_action = None
+        g.pending_pid = None
+        g.pending_victims = []
         events.append({"type": "move_pirate", "tile": tile, "victim": victim, "stolen": stolen})
         return g, events
 
     if ctype == "move_robber":
-        tile = int(cmd.get("tile"))
+        tile = _tile(g, cmd.get("tile"), sea=False)
         victim = cmd.get("victim", cmd.get("victim_pid"))
         if g.pending_action not in ("robber_move",):
             raise RuleError("illegal", "No robber move pending")
@@ -1132,19 +1208,16 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("illegal", "Not your robber move")
         if tile == g.robber_tile:
             raise RuleError("illegal", "Same robber tile")
+        victims = _victims_for_tile(g, tile, pid)
+        victim_pid = _select_victim(victim, victims)
         g.robber_tile = tile
         if getattr(g, "robbers", None) is not None:
             if not g.robbers:
                 g.robbers = [tile]
             else:
                 g.robbers[0] = tile
-        victims = _victims_for_tile(g, tile, pid)
         stolen = None
-        if victims:
-            if isinstance(victim, int) and victim in victims:
-                victim_pid = int(victim)
-            else:
-                victim_pid = victims[0]
+        if victim_pid is not None:
             stolen = _steal_one(g, pid, victim_pid)
         g.pending_action = None
         g.pending_pid = None
@@ -1168,10 +1241,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("invalid", "from_eid required")
         if not isinstance(te, (list, tuple)) or len(te) != 2:
             raise RuleError("invalid", "to_eid required")
-        fa, fb = int(fe[0]), int(fe[1])
-        ta, tb = int(te[0]), int(te[1])
-        from_e = (fa, fb) if fa < fb else (fb, fa)
-        to_e = (ta, tb) if ta < tb else (tb, ta)
+        from_e = _edge(g, fe, "from_eid")
+        to_e = _edge(g, te, "to_eid")
         if g.occupied_ships.get(from_e) != pid:
             raise RuleError("illegal", "Ship not owned by player")
         if to_e in g.occupied_ships or to_e in g.occupied_e:
@@ -1190,7 +1261,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         return g, events
 
     if ctype == "trade_bank":
-        rate = trade_with_bank(g, pid, cmd.get("give"), cmd.get("get"), int(cmd.get("get_qty", 1)))
+        rate = trade_with_bank(g, pid, cmd.get("give"), cmd.get("get"), cmd.get("get_qty", 1))
         events.append({"type": "trade_bank", "rate": rate})
         return g, events
 
@@ -1207,7 +1278,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         return g, events
 
     if ctype == "end_turn":
-        if g.turn != pid:
+        if g.turn != pid or g.phase != "main":
             raise RuleError("illegal", "Not your turn")
         _require_rolled(g)
         if g.pending_action is not None:

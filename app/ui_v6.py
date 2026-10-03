@@ -1256,6 +1256,10 @@ class ResourceChip(QtWidgets.QFrame):
         self.count.setText(str(value))
         self.setToolTip(f"{self.name}: {int(value)}")
 
+    def set_available(self, available: bool):
+        self.count.setText("✓" if available else "0")
+        self.setToolTip(f"{self.name}: available" if available else f"{self.name}: empty")
+
 class ResourcesPanel(QtWidgets.QFrame):
     def __init__(self):
         super().__init__()
@@ -1304,7 +1308,10 @@ class ResourcesPanel(QtWidgets.QFrame):
         pid = max(0, min(int(pid), len(g.players) - 1))
         for r in RESOURCES:
             self.hand_chips[r].set_count(g.players[pid].res[r])
-            self.bank_chips[r].set_count(g.bank[r])
+            if hasattr(g, "bank_available"):
+                self.bank_chips[r].set_available(bool(g.bank_available.get(r, False)))
+            else:
+                self.bank_chips[r].set_count(g.bank[r])
 
 class TradeOffersPanel(QtWidgets.QFrame):
     def __init__(self, on_create, on_accept, on_decline, on_cancel):
@@ -1987,26 +1994,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if self.game.pending_action == "robber_move" and self.game.pending_pid == (self.you_pid if self.online_mode else 0):
             for ti, t in enumerate(self.game.tiles):
-                if ti == self.game.robber_tile:
+                if t.terrain == "sea":
+                    if not bool(_rules_value(self.game.rules_config, "enable_pirate", False)) or ti == self.game.pirate_tile:
+                        continue
+                elif ti == self.game.robber_tile:
                     continue
                 poly = QtGui.QPolygonF(hex_corners(t.center, self.game.size))
                 def on_click(_ti=ti):
                     self._on_hex_clicked(_ti)
-                it = ClickableHex(poly, on_click)
-                it.setBrush(QtGui.QColor(PALETTE["overlay_hex_rgba"]))
-                it.setZValue(9)
-                self.scene.addItem(it)
-                self.overlay_hex[ti] = it
-
-        if self.selected_action == "pirate" and self._can_control_local_turn():
-            for ti, t in enumerate(self.game.tiles):
-                if t.terrain != "sea":
-                    continue
-                if self.game.pirate_tile is not None and ti == int(self.game.pirate_tile):
-                    continue
-                poly = QtGui.QPolygonF(hex_corners(t.center, self.game.size))
-                def on_click(_ti=ti):
-                    self._on_pirate_hex_clicked(_ti)
                 it = ClickableHex(poly, on_click)
                 it.setBrush(QtGui.QColor(PALETTE["overlay_hex_rgba"]))
                 it.setZValue(9)
@@ -2301,7 +2296,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.lbl_hint.setText("Waiting for other players to choose gold.")
         elif g.pending_action == "robber_move":
-            self.lbl_hint.setText("Robber: click a hex to move it.")
+            self.lbl_hint.setText("Click land for robber or sea for pirate." if bool(_rules_value(g.rules_config, "enable_pirate", False)) else "Robber: click a land hex to move it.")
         elif g.phase == "setup":
             self.lbl_hint.setText("Setup: place settlement then road. Spots show only for selected action.")
         else:
@@ -2331,6 +2326,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.btn_ship.setVisible(enable_sea)
         self.btn_move_ship.setVisible(enable_sea and enable_move)
         self.btn_pirate.setVisible(enable_pirate)
+        self.btn_pirate.setEnabled(enable_pirate and not g.game_over and g.pending_action == "robber_move" and g.pending_pid == (self.you_pid if self.online_mode else 0))
         if (not enable_sea and self.selected_action in ("ship", "move_ship")) or (not enable_pirate and self.selected_action == "pirate"):
             self.selected_action = "road"
             self.btn_road.setChecked(True)
@@ -2588,6 +2584,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._sync_ui()
 
     def hand_size(self, pid: int) -> int:
+        if self.online_mode:
+            return int(getattr(self.game.players[pid], "resource_count", 0))
         return sum(self.game.players[pid].res.values())
 
     def discard_needed(self, pid: int) -> int:
@@ -2699,6 +2697,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if g.pending_pid != (self.you_pid if self.online_mode else 0):
             return
+        if g.tiles[ti].terrain == "sea":
+            self._on_pirate_hex_clicked(ti)
+            return
         if self.online_mode and self.online_controller:
             self.online_controller.cmd_move_robber(ti)
             return
@@ -2734,7 +2735,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if g.game_over:
             self._log(f"Game over. Winner: P{g.winner_pid}")
             return
-        if not self._can_control_local_turn():
+        if g.pending_action != "robber_move" or g.pending_pid != (self.you_pid if self.online_mode else 0):
+            return
+        if not bool(_rules_value(g.rules_config, "enable_pirate", False)):
             return
         if g.tiles[ti].terrain != "sea":
             return

@@ -1,3 +1,5 @@
+import type { GameState } from "./components/BoardView.types";
+
 export type RoomState = {
   type: "room_state";
   room_code: string;
@@ -27,8 +29,24 @@ export type MatchState = {
   room_code: string;
   match_id: number;
   tick: number;
-  seed: number;
-  state: Record<string, any>;
+  state: GameState & {
+    you_pid: number;
+    players: {
+      pid: number;
+      name: string;
+      vp: number;
+      resource_count: number;
+      dev_count: number;
+      res?: Record<string, number>;
+      dev_cards?: { type: string; new: boolean }[];
+    }[];
+    rolled: boolean;
+    discard_required: Record<string, number>;
+    pending_gold: Record<string, number>;
+    map_id?: string;
+    map_meta?: { name?: string; description?: string };
+    bank_available: Record<string, boolean>;
+  };
 };
 
 export type ServerError = {
@@ -44,6 +62,7 @@ export type ReconnectTokenMsg = {
   pid: number;
   reconnect_token: string;
   last_seq_applied: number;
+  match_id: number;
 };
 
 export type CmdAck = {
@@ -57,7 +76,7 @@ export type CmdAck = {
 
 export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck;
 
-const DEFAULT_WS_URL = import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+const DEFAULT_WS_URL = import.meta.env?.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
 
 function genId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -72,6 +91,7 @@ export class WSClient {
   private name = "";
   private roomCode: string | null = null;
   private reconnectToken: string | null = null;
+  private pendingReconnectKey: string | null = null;
   private reconnectTimer: number | null = null;
   private reconnectDelay = 1000;
   private pendingAction: { type: "host"; maxPlayers: number } | { type: "join"; roomCode: string } | null = null;
@@ -84,6 +104,7 @@ export class WSClient {
   public matchState: MatchState | null = null;
 
   private pendingCmds = new Map<string, { seq: number; payload: any }>();
+  private matchKey: string | null = null;
 
   onStatus?: (s: string) => void;
   onRoomState?: (s: RoomState) => void;
@@ -106,6 +127,9 @@ export class WSClient {
   }
 
   host(maxPlayers: number) {
+    this.roomCode = null;
+    this.reconnectToken = null;
+    this.pendingReconnectKey = null;
     this.pendingAction = { type: "host", maxPlayers };
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.send({ type: "create_room", name: this.name, max_players: maxPlayers, ruleset: { base: true, max_players: maxPlayers } });
@@ -116,8 +140,20 @@ export class WSClient {
   join(roomCode: string) {
     this.pendingAction = { type: "join", roomCode };
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.send({ type: "join_room", room_code: roomCode, name: this.name });
+      this.sendJoinIntent(roomCode);
       this.pendingAction = null;
+    }
+  }
+
+  private sendJoinIntent(roomCode: string) {
+    if (this.roomCode !== roomCode) this.reconnectToken = null;
+    this.roomCode = roomCode;
+    if (this.reconnectToken) {
+      this.pendingReconnectKey = `catan_reconnect_${roomCode}_${this.name}`;
+      this.send({ type: "reconnect", room_code: roomCode, reconnect_token: this.reconnectToken });
+    } else {
+      this.pendingReconnectKey = null;
+      this.send({ type: "join_room", room_code: roomCode, name: this.name });
     }
   }
 
@@ -167,14 +203,14 @@ export class WSClient {
       this.onStatus?.("connected");
       this.reconnectDelay = 1000;
       this.send({ type: "hello", version: 1, name: this.name });
-      if (this.roomCode && this.reconnectToken) {
-        this.send({ type: "reconnect", room_code: this.roomCode, reconnect_token: this.reconnectToken });
-      } else if (this.pendingAction?.type === "host") {
+      if (this.pendingAction?.type === "host") {
         this.send({ type: "create_room", name: this.name, max_players: this.pendingAction.maxPlayers, ruleset: { base: true, max_players: this.pendingAction.maxPlayers } });
         this.pendingAction = null;
       } else if (this.pendingAction?.type === "join") {
-        this.send({ type: "join_room", room_code: this.pendingAction.roomCode, name: this.name });
+        this.sendJoinIntent(this.pendingAction.roomCode);
         this.pendingAction = null;
+      } else if (this.roomCode && this.reconnectToken) {
+        this.sendJoinIntent(this.roomCode);
       }
     };
     this.ws.onclose = () => {
@@ -213,6 +249,9 @@ export class WSClient {
       return;
     }
     if (data.type === "reconnect_token") {
+      this.pendingReconnectKey = null;
+      this.setMatch(data.room_code, data.match_id);
+      this.roomCode = data.room_code;
       this.reconnectToken = data.reconnect_token;
       this.lastSeqApplied = data.last_seq_applied ?? 0;
       this.seq = Math.max(this.seq, this.lastSeqApplied);
@@ -222,18 +261,34 @@ export class WSClient {
       return;
     }
     if (data.type === "cmd_ack") {
+      if (!this.pendingCmds.has(data.cmd_id)) return;
       this.pendingCmds.delete(data.cmd_id);
       this.lastSeqApplied = data.last_seq_applied ?? this.lastSeqApplied;
       this.seq = Math.max(this.seq, this.lastSeqApplied);
       return;
     }
     if (data.type === "match_state") {
+      if (this.roomCode && data.room_code !== this.roomCode) return;
+      if (data.room_code === this.roomCode && data.match_id < this.matchId) return;
+      if (this.matchState?.match_id === data.match_id && data.room_code === this.matchState.room_code
+          && data.tick < this.matchState.tick) return;
+      this.setMatch(data.room_code, data.match_id);
+      this.youPid = data.state.you_pid;
       this.matchState = data;
       this.matchId = data.match_id;
       this.onMatchState?.(data);
       return;
     }
     if (data.type === "error") {
+      if (this.pendingReconnectKey && (data.code === "forbidden" || data.code === "not_found")) {
+        this.reconnectToken = null;
+        try {
+          localStorage.removeItem(this.pendingReconnectKey);
+        } catch {
+          // Storage may be unavailable; still report the server rejection.
+        }
+        this.pendingReconnectKey = null;
+      }
       if (data.code === "out_of_order") {
         const expected = data.detail?.expected_seq;
         if (typeof expected === "number") {
@@ -247,12 +302,25 @@ export class WSClient {
 
   private replayPending() {
     const items = Array.from(this.pendingCmds.values()).sort((a, b) => a.seq - b.seq);
-    for (const item of items) {
+    for (const [cmdId, item] of Array.from(this.pendingCmds.entries())) {
       if (item.seq <= this.lastSeqApplied) {
-        continue;
+        this.pendingCmds.delete(cmdId);
       }
+    }
+    for (const item of items) {
+      if (item.seq <= this.lastSeqApplied) continue;
       this.send(item.payload);
     }
+  }
+
+  private setMatch(roomCode: string, matchId: number) {
+    const key = `${roomCode}:${matchId}`;
+    if (this.matchKey === key) return;
+    this.matchKey = key;
+    this.matchId = matchId;
+    this.seq = 0;
+    this.lastSeqApplied = 0;
+    this.pendingCmds.clear();
   }
 
   private persistToken() {
@@ -263,12 +331,14 @@ export class WSClient {
 
   loadToken(roomCode: string, name: string) {
     const key = `catan_reconnect_${roomCode}_${name}`;
-    const raw = localStorage.getItem(key);
-    if (!raw) return;
+    this.roomCode = roomCode;
+    this.reconnectToken = null;
+    this.pendingReconnectKey = null;
     try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
       const data = JSON.parse(raw);
-      this.reconnectToken = data.token || null;
-      this.roomCode = roomCode;
+      this.reconnectToken = typeof data.token === "string" && data.token ? data.token : null;
     } catch {
       return;
     }

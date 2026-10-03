@@ -31,6 +31,9 @@ class NetClient(QtCore.QObject):
         self._room_code = None
         self._reconnect_token = None
         self._last_seq_applied = 0
+        self._match_key = None
+        self.match_id = 0
+        self._last_tick = -1
         self._pending_cmds: Dict[str, Dict[str, Any]] = {}
         self._reconnect_ms = 1000
         self._reconnect_timer = QtCore.QTimer(self)
@@ -82,6 +85,7 @@ class NetClient(QtCore.QObject):
             self._room_code = data.get("room_code")
             self.room_state_received.emit(data)
         elif mtype == "reconnect_token":
+            self._set_match(data.get("room_code"), int(data.get("match_id", 0)))
             self._room_code = data.get("room_code")
             self._reconnect_token = data.get("reconnect_token")
             self._last_seq_applied = int(data.get("last_seq_applied", self._last_seq_applied))
@@ -89,12 +93,24 @@ class NetClient(QtCore.QObject):
             self._resend_pending()
         elif mtype == "cmd_ack":
             cmd_id = data.get("cmd_id")
+            if cmd_id not in self._pending_cmds:
+                return
             if isinstance(cmd_id, str):
                 self._pending_cmds.pop(cmd_id, None)
             self._last_seq_applied = int(data.get("last_seq_applied", self._last_seq_applied))
             self.seq_state_received.emit(self._last_seq_applied)
             self.cmd_ack_received.emit(data)
         elif mtype == "match_state":
+            if self._room_code and data.get("room_code") != self._room_code:
+                return
+            if self._match_key and data.get("room_code") == self._match_key[0]:
+                if int(data.get("match_id", 0)) < self.match_id:
+                    return
+            self._set_match(data.get("room_code"), int(data.get("match_id", 0)))
+            tick = int(data.get("tick", 0))
+            if tick < self._last_tick:
+                return
+            self._last_tick = tick
             self.match_state_received.emit(data)
         elif mtype == "error":
             if data.get("code") == "out_of_order":
@@ -120,6 +136,15 @@ class NetClient(QtCore.QObject):
             "max_players": int(max_players),
             "ruleset": {"base": True, "max_players": int(max_players)},
         })
+
+    def _set_match(self, room_code: str, match_id: int):
+        key = (room_code, match_id)
+        if key != self._match_key:
+            self._match_key = key
+            self.match_id = match_id
+            self._last_tick = -1
+            self._last_seq_applied = 0
+            self._pending_cmds.clear()
 
     def join_room(self, room_code: str, name: str):
         self._room_code = room_code

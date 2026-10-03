@@ -24,3 +24,5 @@ tools/reports/*.log
 # PyInstaller output
 /dist/
 /build/
+
+AGENTS.md

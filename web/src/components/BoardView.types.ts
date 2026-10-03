@@ -35,12 +35,12 @@ export interface Tile {
   terrain: string;
 }
 
-export interface Port {
-  edge: EdgeTuple;
-  kind: string;
-}
+export type Port = [EdgeTuple, string];
 
 export interface RulesConfig {
+  target_vp?: number;
+  robber_count?: number;
+  enable_gold?: boolean;
   enable_seafarers?: boolean;
   enable_move_ship?: boolean;
   enable_pirate?: boolean;
@@ -65,8 +65,8 @@ export interface GameState {
   robber_tile: number;
   robbers?: number[];
   pirate_tile?: number | null;
-  pending_action: string;
-  pending_pid: number;
+  pending_action: string | null;
+  pending_pid: number | null;
   phase: string;
   setup_need?: string;
   turn: number;

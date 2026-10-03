@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Dict, List, Tuple
 
 from app.engine.state import (
@@ -109,6 +110,37 @@ def to_dict(g: GameState) -> Dict:
         "edge_adj_hexes": {_edge_key((a, b)): v for (a, b), v in g.edge_adj_hexes.items()},
         "ports": [[[a, b], kind] for (a, b), kind in g.ports],
     }
+
+
+def to_player_dict(g: GameState, pid: int) -> Dict:
+    """Network view, distinct from the trusted/offline serialization format."""
+    if type(pid) is not int or not 0 <= pid < len(g.players):
+        raise ValueError("A valid player is required for a private snapshot")
+    state = to_dict(g)
+    # Exact bank counts + own hand reveal the other hand in a two-player game.
+    state.pop("bank")
+    state["bank_available"] = {r: n > 0 for r, n in g.bank.items()}
+    for view, player in zip(state["players"], g.players):
+        view["resource_count"] = sum(player.res.values())
+        view["dev_count"] = len(player.dev_cards)
+        if player.pid == pid:
+            view["dev_cards"] = deepcopy(player.dev_cards)
+        else:
+            view.pop("res")
+            if not g.game_over:
+                hidden_vp = sum(c.get("type") == "victory_point" for c in player.dev_cards)
+                view["vp"] -= hidden_vp
+    state["pending_gold"] = {
+        str(pid): g.pending_gold[pid]
+    } if pid in g.pending_gold else {}
+    state["discard_required"] = {
+        str(pid): g.discard_required[pid]
+    } if pid in g.discard_required and pid not in g.discard_submitted else {}
+    if g.pending_pid != pid:
+        state["pending_victims"] = []
+    state["free_roads"] = {str(pid): g.free_roads.get(pid, 0)}
+    state["dev_played_turn"] = {str(pid): g.dev_played_turn.get(pid, False)}
+    return state
 
 
 def from_dict(data: Dict) -> GameState:

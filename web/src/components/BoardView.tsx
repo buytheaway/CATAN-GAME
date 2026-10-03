@@ -172,6 +172,7 @@ export default function BoardView({
   const enablePirate = !!rules_config.enable_pirate;
   const isSetupPhase = phase === GamePhase.Setup;
   const isYourTurn = turn === youPid;
+  const canMoveRobberOrPirate = pending_action === "robber_move" && pending_pid === youPid && isYourTurn;
   const robberList = robbers.length > 0 ? robbers : [robber_tile];
 
   // Memoize bounds calculation for performance
@@ -237,21 +238,21 @@ export default function BoardView({
 
   /** Handler for tile (robber/pirate) clicks */
   const handleTileClick = (ti: number) => {
-    if (pending_action === "robber_move" && pending_pid === youPid) {
+    if (!canMoveRobberOrPirate) return;
+    if (tiles[ti]?.terrain === "sea") {
+      if (enablePirate && ti !== pirate_tile) {
+        onSendCmd({
+          type: CommandType.MovePirate,
+          tile: ti,
+        });
+      }
+    } else {
       if (ti !== robber_tile) {
         onSendCmd({
           type: CommandType.MoveRobber,
           tile: ti,
         });
       }
-      return;
-    }
-
-    if (selectedAction === ActionType.Pirate && isYourTurn) {
-      onSendCmd({
-        type: CommandType.MovePirate,
-        tile: ti,
-      });
     }
   };
 
@@ -264,7 +265,7 @@ export default function BoardView({
           <span> (move from {moveFrom[0]}-{moveFrom[1]})</span>
         )}
         {pending_action === "robber_move" && pending_pid === youPid && (
-          <span> | Click a hex to move robber</span>
+          <span> | {enablePirate ? "Click land for robber or sea for pirate" : "Click a land hex to move robber"}</span>
         )}
       </div>
 
@@ -361,7 +362,7 @@ export default function BoardView({
                 onClick={() => handleTileClick(idx)}
                 style={{
                   cursor:
-                    pending_action === "robber_move" || selectedAction === ActionType.Pirate
+                    canMoveRobberOrPirate
                       ? CURSOR_STYLES.pointer
                       : CURSOR_STYLES.default,
                 }}
@@ -654,6 +655,7 @@ export default function BoardView({
             return (
               <button
                 key={key}
+                disabled={key === ActionType.Pirate && !canMoveRobberOrPirate}
                 onClick={() => onSelectAction(isActive ? null : key)}
                 style={{
                   ...UI_STYLES.button,

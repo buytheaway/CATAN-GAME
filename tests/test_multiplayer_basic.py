@@ -9,8 +9,10 @@ import uvicorn
 import websockets
 
 from app import net_protocol
+from app import server_mp
 from app.engine import maps as map_loader
-from app.engine import build_game, can_place_road, can_place_settlement
+from app.engine import apply_cmd, build_game, can_place_road, can_place_settlement
+from app.engine.state import Tile
 
 
 def _find_free_port() -> int:
@@ -93,6 +95,13 @@ async def _send_cmd(ws, match_id: int, seq: int, cmd: dict, cmd_id: str | None =
 
 
 def _apply_snapshot(g, state: dict):
+    g.tiles = [Tile(t["q"], t["r"], t["terrain"], t["number"], tuple(t["center"]))
+               for t in state["tiles"]]
+    g.vertices = {int(k): tuple(v) for k, v in state["vertices"].items()}
+    g.edges = {tuple(e) for e in state["edges"]}
+    g.vertex_adj_hexes = {int(k): list(v) for k, v in state["vertex_adj_hexes"].items()}
+    g.edge_adj_hexes = {tuple(map(int, k.split(","))): list(v)
+                        for k, v in state["edge_adj_hexes"].items()}
     g.occupied_v = {int(k): (int(v[0]), int(v[1])) for k, v in state.get("occupied_v", {}).items()}
     g.occupied_e = {}
     for k, owner in state.get("occupied_e", {}).items():
@@ -207,11 +216,13 @@ async def _run_clients(port: int):
         state = ms1.get("state", {})
 
         if state.get("pending_action") == "discard":
-            required = state.get("discard_required", {})
-            for pid_key, need in required.items():
-                pid = int(pid_key)
+            private_states = {0: ms1["state"], 1: ms2["state"]}
+            for pid, private_state in private_states.items():
+                need = private_state["discard_required"].get(str(pid), 0)
+                if not need:
+                    continue
                 seq[pid] += 1
-                plan = _plan_discard_from_state(state, pid, int(need))
+                plan = _plan_discard_from_state(private_state, pid, int(need))
                 await _send_cmd(clients[pid], match_id, seq[pid], {"type": "discard", "discards": plan})
                 ms1 = await _recv_type(ws1, "match_state")
                 ms2 = await _recv_type(ws2, "match_state")
@@ -228,21 +239,11 @@ async def _run_clients(port: int):
             assert ms1["tick"] == ms2["tick"]
             state = ms1.get("state", {})
 
-        # ensure resources for trade offer
+        # Prepare resources through the trusted engine fixture, never the WS API.
         other_pid = 1 - current_pid
-        seq[current_pid] += 1
-        await _send_cmd(clients[current_pid], match_id, seq[current_pid], {"type": "grant_resources", "res": {"wood": 1}})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
-        assert ms1["tick"] == ms2["tick"]
-        state = ms1.get("state", {})
-
-        seq[other_pid] += 1
-        await _send_cmd(clients[other_pid], match_id, seq[other_pid], {"type": "grant_resources", "res": {"brick": 1}})
-        ms1 = await _recv_type(ws1, "match_state")
-        ms2 = await _recv_type(ws2, "match_state")
-        assert ms1["tick"] == ms2["tick"]
-        state = ms1.get("state", {})
+        game = server_mp.manager.rooms[room_code].game
+        apply_cmd(game, current_pid, {"type": "grant_resources", "res": {"wood": 1}})
+        apply_cmd(game, other_pid, {"type": "grant_resources", "res": {"brick": 1}})
 
         # trade offer flow
         seq[current_pid] += 1
@@ -301,7 +302,7 @@ async def _run_duplicate_and_out_of_order(port: int):
         match_id = int(ms1.get("match_id", 0))
 
         seq = 1
-        cmd = {"type": "grant_resources", "res": {"wood": 1}}
+        cmd = {"type": "place_settlement", "vid": ms1["state"]["legal"]["settlements"][0]}
         cmd_id = uuid.uuid4().hex
         await _send(ws1, {"type": "cmd", "match_id": match_id, "seq": seq, "cmd_id": cmd_id, "cmd": cmd})
         await _recv_type(ws1, "match_state")
@@ -364,7 +365,7 @@ async def _run_reconnect(port: int):
         assert int(ms.get("match_id", 0)) == match_id
 
         seq = int(token2.get("last_seq_applied", 0)) + 1
-        cmd_id = await _send_cmd(ws_re, match_id, seq, {"type": "grant_resources", "res": {"brick": 1}})
+        cmd_id = await _send_cmd(ws_re, match_id, seq, {"type": "noop"})
         await _recv_type(ws_re, "match_state")
         await _recv_cmd_ack(ws_re, cmd_id)
 
