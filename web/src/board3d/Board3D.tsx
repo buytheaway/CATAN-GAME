@@ -9,6 +9,9 @@ import { createRenderModel } from "./model";
 import type { BoardBounds, BoardSnapshot } from "./types";
 import type { BoardInteraction } from "../board/interaction";
 import InteractionOverlay3D from "./InteractionOverlay3D";
+import { VisualResources } from "./VisualResources";
+import { VISUAL } from "./materials";
+import { cameraFootprint } from "./coordinates";
 
 function BoardLight({ bounds }: { bounds: BoardBounds }) {
   const light = useRef<DirectionalLight>(null);
@@ -23,7 +26,7 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
     invalidate();
   }, [x, z, reach, invalidate]);
   return <directionalLight ref={light} position={[x - reach * 0.4, reach, z + reach * 0.5]}
-    intensity={2.4} castShadow shadow-mapSize={[1024, 1024]}
+    intensity={2.1} castShadow shadow-mapSize={[1024, 1024]}
     shadow-camera-left={-reach} shadow-camera-right={reach} shadow-camera-top={reach} shadow-camera-bottom={-reach}
     shadow-camera-far={reach * 4} shadow-bias={-0.0005} shadow-normalBias={0.025} />;
 }
@@ -41,9 +44,11 @@ export default function Board3D({ state, interaction }: { state: BoardSnapshot; 
   const visibleTile = hoveredTile ?? inspectedTile;
   const tile = visibleTile != null ? state.tiles[visibleTile] : null;
   const { bounds } = model;
+  const footprint = JSON.stringify(cameraFootprint(model));
 
   return (
-    <div className="board3d" data-renderer="3d" data-tile-count={model.tiles.length}>
+    <div className="board3d" data-renderer="3d" data-tile-count={model.tiles.length}
+      data-selectable={hoveredTile != null && interaction.targets.tiles.includes(hoveredTile)}>
       <div className="board3d-toolbar">
         <span>Drag to orbit · Scroll to zoom</span>
         <button type="button" className="btn" onClick={() => setResetVersion(v => v + 1)}>Reset Camera</button>
@@ -57,14 +62,16 @@ export default function Board3D({ state, interaction }: { state: BoardSnapshot; 
           gl={{ antialias: true }}
           fallback={<div className="board3d-fallback">WebGL is unavailable. Use the 2D board.</div>}
         >
-          <color attach="background" args={["#dce9ed"]} />
-          <ambientLight intensity={1.3} />
+          <color attach="background" args={[VISUAL.background]} />
+          <ambientLight intensity={0.85} />
+          <hemisphereLight args={["#edf7ff", "#738176", 0.55]} />
           <BoardLight bounds={bounds} />
-          <CameraRig bounds={bounds} resetVersion={resetVersion} />
-          <mesh position={[bounds.center[0], -0.025, bounds.center[2]]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-            <planeGeometry args={[bounds.width + 2, bounds.depth + 2]} />
-            <meshStandardMaterial color="#c6dce1" roughness={1} />
+          <CameraRig bounds={bounds} footprint={footprint} resetVersion={resetVersion} />
+          <mesh position={[bounds.center[0], 0, bounds.center[2]]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+            <planeGeometry args={[bounds.width * 4, bounds.depth * 4]} />
+            <shadowMaterial transparent opacity={0.22} />
           </mesh>
+          <VisualResources>
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
             onHover={hover} onInspect={inspect} />)}
@@ -77,6 +84,7 @@ export default function Board3D({ state, interaction }: { state: BoardSnapshot; 
           {model.robbers.map((robber, i) => <Robber3D key={i} {...robber} />)}
           {model.pirate && <Pirate3D {...model.pirate} />}
           <InteractionOverlay3D state={state} interaction={interaction} />
+          </VisualResources>
         </Canvas>
       </div>
       <div className="board3d-footer">

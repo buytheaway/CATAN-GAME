@@ -5,7 +5,7 @@ updated: 2026-10-05
 
 # Project State
 
-Last verified: 2026-10-05 — Board3D Phase 2 (проверки 4–5 октября): 186 pytest и 57 web tests без skip, TypeScript, production build, Docker build/up и реальный Chrome 154. Через Docker два React-клиента прошли всю 3D-расстановку на Base Standard и Gold Haven; Base: Roll → road → End Turn (tick 11), Gold Haven: ship, move ship, pirate и два хода (tick 15). Публичное состояние и фигуры совпадают у обоих клиентов, переключение renderer/resize не меняет GameState. Отдельные engine-built browser fixtures проверили оба renderer: settlement/city/ship/move ship, явный выбор жертвы, free roads, отказ без phantom pieces и SVG setup. rules.py, карты, lifecycle/reconnect/map_revision и deployment не менялись. Scenario suite не запускалась; исторический baseline 348/508 не перепроверен. Полная партия/mobile/нагрузка не сертифицированы. Подробности — [[React интерфейс]], [[Сервер и протокол]], [[plans/board3d]].
+Last verified: 2026-10-05 — Board3D Phase 3: 65/65 web tests, TypeScript, production build, Docker build/up и Chrome visual smoke прошли. Два реальных React-клиента: Base Standard — полная 3D setup, Roll, road, robber и 13 ходов (tick 37); Gold Haven — setup, Roll, ship, pirate и 5 ходов (tick 20). Публичные snapshots совпали, SVG/3D switching и desktop resize работают. Engine-built fixtures отдельно проверили оба renderer: settlement/city/road/ship, move ship, victims, free roads, отказ без phantom pieces; четыре новых ghost previews не отправляют commands. Проверены 19/50 hex, idle и cleanup. Python/engine/controller/protocol/maps/dependencies не изменены; pytest не повторялся (186/186 — результат Phase 2), scenario baseline 348/508 исторический. Полная партия/mobile/low-end/нагрузка не сертифицированы. Evidence и пределы — [[Design System]] и [[plans/board3d]].
 
 Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8812`), построение всех 12 карт в памяти, повторяемость seed, topology/ports/snapshot/legal и границы map validation. В рамках этого анализа полный test/build/scenario набор не повторялся, runtime и зависимости не менялись; последующая Docker verification указана выше. Подробности — [[Карты и сценарии]] и [[Design System]].
 
@@ -38,7 +38,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Reconnect token восстанавливает прежний слот до rematch. Сохранившиеся участники сохраняют token с новым pid; исключённый участник теряет доступ к слоту при новом матче. match_id увеличивается; tick, sequence и deduplication history сбрасываются.
 - В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для будущего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed и точные остатки банка не передаются, колода перемешивается независимо от карты.
 - Pirate использует одно разрешённое событие после 7/завершения discard либо Knight: pending `robber_move` позволяет выбрать land robber или sea pirate при enable_pirate. Успех закрывает pending и допускает максимум одну кражу; повтор без нового события отклоняется общим движком. React/PySide клики согласованы с этим событием.
-- 57 web cases проходят (24 transport + 3 LobbyPage + 5 BoardView + 4 URL + 12 Board3D projection/geometry + 9 shared interaction); 186 pytest passed без skip. TypeScript/production/Docker build и Chrome проверены 4–5 октября для Board3D Phase 2. Это не подтверждение полной корректности CATAN.
+- 65 web cases проходят (24 transport + 3 LobbyPage + 5 BoardView + 4 URL + 12 Board3D projection/geometry + 8 visual/preview/cleanup + 9 shared interaction). TypeScript/production/Docker build и Chrome проверены 2026-10-05 для Phase 3. 186 pytest без skip — историческая проверка Phase 2; Python в Phase 3 не менялся.
 
 ## Partially Implemented
 
@@ -87,8 +87,8 @@ Production Hardening Phase 1 завершена в утверждённом scop
 
 ## Next Engineering Tasks
 
-- Следующий шаг: review/checkpoint Board3D Phase 2. База текущего diff — чистый commit 5ff920a после lobby fix; предложены commit `feat: add interactive 3d board gameplay` и tag `board3d-phase-2`. Commit/tag не создаются автоматически.
-- Возможная Board3D Phase 3 ограничивается visual polish/UX и требует отдельной задачи; gameplay P1 остаются отдельным backlog.
+- Следующий шаг: review/checkpoint Board3D Phase 3. База текущего diff — чистый commit bcaf9d3 (Phase 2); предложены commit `feat: polish 3d board visuals` и tag `board3d-phase-3`. Commit/tag не создаются автоматически.
+- Дальнейшие accessibility/low-end/mobile/animation polish и gameplay P1 требуют отдельных задач; общий UI redesign не начат.
 - Открытый backlog: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения.
 - Дальнейшие ограничения Phase 1 и результаты — [[plans/server-authority-hardening]].
 - Уточнить gameplay-композицию, состояния и visual tokens актуального clean tabletop направления в [[Design System]].
@@ -124,3 +124,11 @@ Runtime diff ограничен GET /health в server_mp.py и общим URL re
 В 3D работают setup, settlement/road/city, ship/move ship, robber/pirate и явный выбор из нескольких victims. Selection сохраняется при смене renderer; новый матч сбрасывает его, новый snapshot удаляет недоступные source/victim, отказ снимает ожидание. SVG использует тот же controller и прошёл те же browser fixture cases плюс всю расстановку.
 
 26 новых Python legal cases и 9 новых web controller cases; один старый WS setup test теперь читает снимок действующего игрока вместо host legal. Подтверждённых новых P0/blocker regressions нет. Известные ограничения engine, в частности mixed routes/ship movement и deterministic theft, не исправлялись. frameloop=demand сохранён; 0 idle frames, unmount освобождает geometry/texture и WebGL context. Lazy chunk 876.54 KB / 235.24 KB gzip с прежним size warning. Новых зависимостей и CSS redesign нет. Тестовый Compose после проверки остановлен; commit/tag не созданы. Точные пределы и fixtures — [[plans/board3d]].
+
+## Board3D Phase 3 — Visual Polish
+
+**Completed — 2026-10-05. READY FOR CHECKPOINT.** Diff от bcaf9d3 ограничен web/src/board3d, восемью visual regression tests, тремя заметками и screenshot evidence. GamePage/controller, SVG и Python не менялись. Renderer остаётся renderer, not rules engine.
+
+Единый bevel и palette, различимые terrain silhouettes, крупные contrast tokens/ports, новые стилизованные road/house/city/ship/pawn/pirate pieces. Legal/hover/selected используют outline/ring/rails; translucent ghost строится только из server targets и не отправляет команд. Камера подгоняется по реальному контуру, не сбрасывается на обычном snapshot; navy canvas и нейтральный свет заменили большую светлую подложку. Координаты/IDs, default 2D и dependency versions сохранены.
+
+65 web tests, TypeScript, production/Docker build и Chrome проверки прошли. 19/50 hex дают 0 idle frames, общую hex geometry и cleanup до 0 geometry/texture после 2D. Восемь screenshot evidence, Base/Gold live flow и контролируемые previews/movement описаны в [[Design System]] и [[plans/board3d]]. Нет подтверждённых новых blocker regressions; полная accessibility/mobile/low-end/нагрузка не проверена. Lazy chunk 881.25 KB / 237.40 KB gzip, прежний Vite warning остаётся. Предложены commit `feat: polish 3d board visuals` и tag `board3d-phase-3`; не созданы автоматически.

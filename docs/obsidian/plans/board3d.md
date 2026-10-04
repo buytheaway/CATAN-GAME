@@ -107,3 +107,44 @@ Only visual polish and UX: improve placeholder pieces, target readability/hit ar
 Checkpoint proposal: commit `feat: add interactive 3d board gameplay`; tag `board3d-phase-2`. Neither is created automatically.
 
 Test Compose was stopped after verification, restoring its initial stopped state. Temporary browser fixtures/harnesses stayed outside the repository.
+
+## Phase 3 — Visual Polish (completed, 2026-10-05)
+
+Pre-change audit, 2026-10-05: Chrome opened Base Standard, Gold Haven and a generated 50-hex fixture on the unchanged Phase 2 production build. Original coordinates, terrain differentiation, ownership and whole-board fit work. The board occupies too little of the canvas; the large pale rectangular plane competes with it. Number and port labels are small; city/settlement silhouettes are similar; road/ship/port geometry looks provisional. Pale lighting flattens terrain and sea; gold and wheat need stronger shape separation. Legal markers need clearer, restrained feedback.
+
+- Good: original topology/IDs, whole-board fit, restrained terrain decoration and ownership colors.
+- Placeholder: box roads/ships, overlapping house blocks for cities, flat port markers.
+- Poor readability: small number/resource labels, detached small markers and excessive empty space.
+- Noise: the large tilted rectangular stage competes with the actual island; no particle/decor overload.
+- Flat: pale fill weakens shadows, bevels and separation of sea/background.
+- Prototype feel: primitive pieces, indistinct city silhouette and sparse decor clustered behind tokens.
+
+Scope: shared visual palette and reusable Three resources, bevelled hexes, stylized terrain and pieces, larger labels, renderer-local legal-target ghost previews, camera limits and neutral lighting/background. Keep server coordinates/IDs, shared interaction controller, SVG, engine, maps, protocol and dependencies unchanged. No animation loop, full HUD redesign or gameplay fixes. Verify existing controller tests, production/Docker builds, live two-client Chrome flows and prepared build/movement/50-hex fixtures; save only final visual evidence in the repository.
+
+### Implemented architecture and visuals
+
+GamePage → unchanged useBoardInteraction → BoardRenderer → lazy Board3D → R3F. The snapshot and shared targets/callbacks are unchanged. Renderer-only additions: preview.ts projects a hovered target into the same RenderBuilding/RenderEdge used for permanent pieces; resources.ts and VisualResources.tsx own a small per-scene cache of geometries/materials. Resources are reused across tiles/pieces and disposed on unmount; deferred lease cleanup tolerates React 18 StrictMode effect replay. Label textures remain declaratively owned/disposed by R3F. No new dependencies, server hooks or alternative GameState.
+
+Coordinate mapping stays server X→Three X, server Y→Three Z, visual elevation→Three Y. TILE_TOP remains 0.26; toScenePosition, tilePosition, edgePlacement, boardBounds and model.ts are unchanged. Only visual camera fitting in coordinates.ts changed: cameraFootprint uses six original hex-rim positions and port-label extents, without empty rectangle corners. A stable serialized footprint prevents ordinary snapshots resetting orbit; resize/reset/new footprint recomputes fit. Perspective view is higher, polar angles limited to 21.6–52.2°, azimuth ±45°, zoom 0.68–1.25 times fitted distance, pan off.
+
+Hex geometry is procedural bevelled extrusion shared by all tiles. Terrain colors and silhouette accents live in materials.ts; trees, wheat rows, sheep, hills, snowy peaks, dunes, gold nuggets and static curved waves stay simple. Number tokens and resource-port labels are larger/high contrast; 6/8 and printed dots are restrained. Gabled settlement, asymmetric city/tower, bevelled road, shaped ship hull/low sail, dark pawn and pirate flag/hull replace placeholders. Existing player colors and IDs are preserved. Navy background, neutral ambient/hemisphere fill and directional soft shadows replace the visible pale stage.
+
+Legal tile outline, vertex ring and fine edge rails use pale accents; hover is brighter white; selected is amber with brackets/thicker outline. Ghost settlement/city/road/ship previews use the permanent mesh geometry with translucent owner materials, depthWrite=false and disabled raycasting. No hover command, occupancy mutation, rule checks or full-field green fill. Leave/changed targets/waiting/victim selection hide previews. No animations added; frameloop=demand remains.
+
+### Verification and limits
+
+2026-10-05: web 65/65 (57 previous + 8 tests covering preview projection/gating/immutability, selected feedback, actual-footprint camera fit, shared resources, disposal/StrictMode and bevel height), TypeScript, production build and Docker production build/up pass. Python runtime, gameplay/controller, SVG, snapshots/protocol, map data/generator, dependency lockfile and Docker architecture are unchanged. pytest/scenario suite not rerun; 186/186 Phase 2 pytest and 348/508 scenario baseline are historical, not new evidence.
+
+Chrome 154, Windows / ANGLE / NVIDIA RTX 5050: two independent React clients used normal Host/Join/map/Start. Base Standard: eight setup actions, main road, robber, 13 natural rolls/turns, final tick 37. Gold Haven: eight setup actions, main ship, pirate, five natural rolls/turns, final tick 20. Public snapshots/occupancy matched, switching SVG/Three sent no commands or changed state. Natural Gold run did not execute move_ship; a separate real-engine controlled fixture verified source/cancel/destination [38,39]→[38,42] in both renderers. No claim of a fully completed match.
+
+Controlled browser fixtures use the unchanged engine/server snapshot, trusted funding outside the repository and mocked browser WS; actions run through the existing executor. Both renderers passed settlement/city/road/ship, ship movement, explicit second robber/pirate victim, two free roads before Roll, stale-affordability rejection without phantom pieces and SVG setup. Separate pointer checks proved all four ghost previews appear only at the server-listed original IDs, send zero commands, leave occupancy untouched and disappear on leave. Orbit/zoom/reset work; a repeated personal snapshot keeps the camera; 1440×1000, 1280×720 and 1024×768 resize has no horizontal overflow. Engine-built 50-hex offset fixture includes all eight terrains and fits the camera. No console errors/warnings in checked paths.
+
+Performance observations on this GPU: normal main pass Base 293 calls / 11,172 triangles, Gold 267 / 10,230, 50 hex 505 / 20,094. Extra calls versus Phase 2 buy static silhouette/label detail; no per-frame React updates or instancing platform. 19/50 hex each reuse one hex geometry; settled idle over 700ms produced zero new frames. Whole-scene loaded geometries: 15 Base with city markers, 13 on 50 hex; textures 28/39 including labels/shadow map. Switch to 2D returned geometry/texture counts to zero and released WebGL context. An isolated 25-render browser sample had median CPU render-submission ~2.1ms Base and ~1.3ms 50, P95 ~2.5/3.1ms. This is a small local CPU submission sample, not GPU frame time, an FPS guarantee or a low-end benchmark.
+
+Main bundle 172.26 KB / 55.04 KB gzip; lazy Three 881.25 KB / 237.40 KB gzip (Phase 2 876.54 / 235.24). Existing Vite size warning remains. No new downloaded assets/fonts. Deuteranopia screenshots were inspected: terrain silhouettes, number contrast and marker shapes survive; full six-owner non-color encodings, formal accessibility, mobile/low-end, full-match and load verification remain separate work. No confirmed new blocker/gameplay regression in checked scope; existing engine P1 remains untouched. No camera/hover animation was added.
+
+Eight final screenshots are stored in docs/design/references/board3d-phase3/ and linked in [[Design System#Phase 3 visual evidence]]. They show implemented prepared states, not final HUD concepts. Temporary test harnesses, snapshots and raw screenshots remain outside the repository. Only Project State, Design System and this existing plan are updated.
+
+Verdict: **READY FOR CHECKPOINT**. Proposal: commit `feat: polish 3d board visuals`, tag `board3d-phase-3`. Neither is created automatically. No automatic UI redesign, engine P1 or next graphics phase.
+
+Test Compose was stopped after Phase 3 verification, restoring its initial stopped state.

@@ -6,14 +6,14 @@ import { PerspectiveCamera, Vector3 } from "three";
 
 const compiled = await build({
   stdin: {
-    contents: 'export * from "./coordinates"; export * from "./model"; export * from "./materials";',
+    contents: 'export * from "./coordinates"; export * from "./model"; export * from "./materials"; export * from "./preview"; export * from "./resources";',
     resolveDir: fileURLToPath(new URL("../src/board3d/", import.meta.url)),
     loader: "ts",
   },
   bundle: true, write: false, platform: "node", format: "esm",
 });
-const { toScenePosition, tilePosition, edgePlacement, boardBounds, cameraFrame,
-  createRenderModel, terrainStyle, playerColor, portAppearance } = await import(
+const { toScenePosition, tilePosition, edgePlacement, boardBounds, cameraFrame, cameraFootprint, TILE_TOP,
+  createRenderModel, terrainStyle, playerColor, portAppearance, buildPreview, targetColor, createVisualResources } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 
 function snapshot(overrides = {}) {
@@ -173,4 +173,110 @@ test("missing optional ports/ships and stale piece coordinates do not invent new
   assert.deepEqual(model.ships, []);
   assert.deepEqual(model.robbers, []);
   assert.equal(model.pirate, null);
+});
+
+const previewInteraction = action => ({ action, legal: { pid: 0 },
+  targets: { vertices: [42], edges: [[42, 7]], sources: [], tiles: [] },
+  selection: { waiting: false, victim: null, shipSource: null },
+});
+
+test("four build previews preserve server targets, owner zero and existing piece transforms without mutation", () => {
+  const source = freeze(snapshot());
+  const before = JSON.stringify(source);
+  for (const action of ["settlement", "city", "road", "ship"]) {
+    const interaction = freeze(previewInteraction(action));
+    const preview = buildPreview(source, interaction, action === "city" || action === "settlement" ? "v:42" : "e:7,42");
+    assert.equal(preview.kind, action);
+    if (preview.building) {
+      assert.equal(preview.building.vertexId, 42);
+      assert.equal(preview.building.owner, 0);
+      assert.deepEqual([preview.building.position[0], preview.building.position[2]], [1, 1]);
+      assert.equal(preview.building.level, action === "city" ? 2 : 1);
+    } else {
+      assert.deepEqual(preview.edge.edge, [42, 7]);
+      assert.equal(preview.edge.owner, 0);
+      assert.deepEqual(preview.edge.position, edgePlacement([1, 0, 1], [1, 0, 0]).position);
+      assert.equal(preview.edge.rotation, Math.PI / 2);
+    }
+  }
+  assert.equal(JSON.stringify(source), before);
+});
+
+test("previews disappear on leave, waiting, victim choice, changed server targets or missing personal legal", () => {
+  const state = snapshot(), interaction = previewInteraction("settlement");
+  assert.equal(buildPreview(state, interaction, null), null);
+  assert.equal(buildPreview(state, interaction, "v:7"), null); // Valid coordinate, absent from server targets.
+  for (const changed of [
+    { legal: undefined }, { selection: { waiting: true } }, { selection: { victim: { tile: 0 } } },
+    { targets: { ...interaction.targets, vertices: [] } }, { action: "move_ship" }, { action: "robber" },
+  ]) assert.equal(buildPreview(state, { ...interaction, ...changed }, "v:42"), null);
+  assert.equal(buildPreview({ ...state, vertices: {} }, interaction, "v:42"), null);
+  assert.equal(buildPreview({ ...state, vertices: {} }, previewInteraction("ship"), "e:7,42"), null);
+});
+
+test("selected feedback has its own persistent accent instead of becoming hover feedback", () => {
+  assert.notEqual(targetColor(false), targetColor(true));
+  assert.notEqual(targetColor(true), targetColor(false, true));
+  assert.equal(targetColor(true, true), targetColor(false, true));
+});
+
+test("camera fits actual tile rims and port labels on asymmetric 50-hex and narrow layouts", () => {
+  const model = createRenderModel(snapshot({ tiles: Array.from({ length: 50 }, (_, i) => ({
+    center: [580 + (i % 10) * 101 + Math.floor(i / 10) * 50, -1160 + Math.floor(i / 10) * 87],
+    terrain: "sea",
+  })) }));
+  const points = cameraFootprint(model);
+  for (const aspect of [0.7, 1.45, 2.4]) {
+    const frame = cameraFrame(model.bounds, aspect, 38, points);
+    assert.ok(frame.distance <= cameraFrame(model.bounds, aspect).distance);
+    const camera = new PerspectiveCamera(38, aspect, 0.01, 1000);
+    camera.position.set(...frame.position); camera.lookAt(...frame.target); camera.updateMatrixWorld();
+    for (const point of points) {
+      const projected = new Vector3(...point).project(camera);
+      assert.ok(Math.abs(projected.x) < 1 && Math.abs(projected.y) < 1);
+    }
+  }
+  const changed = createRenderModel(snapshot({ ...snapshot(), tiles: model.tiles.map(t => ({
+    center: [t.position[0] * 58, t.position[2] * 58], terrain: "sea",
+  })), occupied_e: {}, occupied_v: {} }));
+  assert.deepEqual(cameraFootprint(changed), points); // Ownership updates cannot reset framing.
+});
+
+test("scene resources reuse geometry/materials and ghost materials do not write depth", async () => {
+  const pool = createVisualResources(); pool.retain();
+  assert.equal(pool.geometry("house"), pool.geometry("house"));
+  assert.equal(pool.standard(playerColor(0)), pool.standard(playerColor(0)));
+  assert.equal(pool.flat("#ffffff", 0.5), pool.flat("#ffffff", 0.5));
+  const ghost = pool.standard(playerColor(0), true);
+  assert.notEqual(ghost, pool.standard(playerColor(0)));
+  assert.ok(ghost.transparent && ghost.opacity < 1 && !ghost.depthWrite);
+  pool.release(); await Promise.resolve();
+});
+
+test("scene unmount disposes shared geometry and both material kinds, once per resource", async () => {
+  const pool = createVisualResources(); pool.retain();
+  const resources = [pool.geometry("hex"), pool.ring(0.18, 0.26), pool.standard("#ffffff"), pool.flat("#ffffff", 0.5)];
+  const disposed = resources.map(() => 0);
+  resources.forEach((r, i) => r.addEventListener("dispose", () => disposed[i]++));
+  pool.release(); await Promise.resolve();
+  assert.deepEqual(disposed, [1, 1, 1, 1]);
+});
+
+test("React StrictMode effect replay retains live scene resources until the actual unmount", async () => {
+  const pool = createVisualResources(); pool.retain();
+  const geo = pool.geometry("road"); let disposed = 0;
+  geo.addEventListener("dispose", () => disposed++);
+  pool.release(); pool.retain(); await Promise.resolve();
+  assert.equal(disposed, 0); assert.equal(pool.geometry("road"), geo);
+  pool.release(); await Promise.resolve(); assert.equal(disposed, 1);
+});
+
+test("bevelled tiles keep the original logical surface height and finite pointy-top geometry", async () => {
+  const pool = createVisualResources(); pool.retain();
+  const geo = pool.geometry("hex"); geo.computeBoundingBox();
+  assert.ok(Math.abs(geo.boundingBox.max.y - TILE_TOP) < 1e-6);
+  assert.ok(geo.boundingBox.min.y > 0 && geo.boundingBox.min.y < TILE_TOP);
+  assert.ok(geo.boundingBox.max.z > geo.boundingBox.max.x); // Pointy-top, matching server topology.
+  assert.ok(Array.from(geo.attributes.position.array).every(Number.isFinite));
+  pool.release(); await Promise.resolve();
 });

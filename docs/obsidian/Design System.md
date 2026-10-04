@@ -1,13 +1,13 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/web-ui-redesign]]
 
-Status: Clean modern tabletop direction accepted by user on 2026-10-04. Board3D Phase 1 visual foundation implemented and verified 2026-10-04. Surrounding UI redesign and final layout/assets/tokens remain unimplemented/TBD.
+Status: Clean modern tabletop direction accepted by user on 2026-10-04; Board3D Phase 3 visual polish implemented and verified 2026-10-05. Surrounding UI redesign and final layout/assets/tokens remain unimplemented/TBD.
 
 ## Reference versus accepted design
 
@@ -85,7 +85,36 @@ Verified 2026-10-05. **Renderer, not rules engine** сохраняется: Game
 
 Production Chrome + Docker: Base и Gold Haven, оба через normal lobby, два клиента, полная 3D setup и main road/ship/pirate actions. Раздельные fixtures проверили settlement/city/move ship/victim choice/free-road/rejection в SVG и 3D; это контролируемые состояния, не полная естественная партия. Desktop resize проходит, 0 новых idle frames; frameloop=demand. Web 57/57, pytest 186/186, TypeScript/production/Docker build проходят. Lazy Three chunk 876.54 KB / 235.24 KB gzip; прежний size warning и low-end/mobile ограничения остаются.
 
-Следующая Phase 3 возможна только отдельной задачей: читаемость/размеры hit areas, контраст, качество placeholder pieces, подсказки и accessibility/camera UX. Известные gameplay P1 относятся к engine backlog и не являются graphics polish. Полный scope — [[plans/board3d]], controller path — [[React интерфейс]], contract — [[Сервер и протокол]].
+Visual polish Phase 3 реализован отдельной задачей ниже. Известные gameplay P1 относятся к engine backlog и не являются graphics polish. Полный scope — [[plans/board3d]], controller path — [[React интерфейс]], contract — [[Сервер и протокол]].
+
+### Board3D Phase 3 — accepted visual polish
+
+**Accepted:** clean modern tabletop 3D, stylized board pieces, readable tokens. **Rejected/historical:** fantasy/MMORPG/tavern, cinematic castles, massive gold frames and decorative particles. These restrictions apply to the board; surrounding HUD redesign is not implemented.
+
+All hexes share a shallow bevelled mesh, the original pointy-top orientation and logical surface height. Forest: green with three faceted trees. Fields: bright wheat with three short planting rows. Pasture: light green with a white sheep silhouette. Hills: clay with two rounded elevations. Mountains: cool gray with two snowy low-poly peaks. Desert: pale sand with low dunes. Gold: muted bronze with gray rock and bright angular nuggets, distinct from wheat rows. Sea: calm blue with static curved wave marks. No downloaded models/photos/fonts or water simulation.
+
+Number tokens have larger ivory faces, dark numerals, printed probability dots and a restrained red 6/8 accent. Ports keep the exact snapshot edge and 3:1 / 2:1 + resource text; a colored rim and short dock support the label. Road is a bevelled rectangular board piece; settlement a gabled house; city an asymmetric house/tower silhouette, not a scaled settlement. Ships have a shaped owner-colored hull and low triangular sail. Robber is a dark pawn; pirate a distinct dark hull/flag marker.
+
+Legal vertices use pale translucent rings; edges use fine rails; tiles use an outline without a green fill. Hover is white and stronger; selected is amber with additional end brackets/thicker outline. Cursor indicates selectable targets. Hovering a server-approved settlement/city/road/ship target shows a translucent owner-colored preview using the final piece geometry. Preview has no raycast, sends no command and vanishes on leave/waiting/changed targets. Source/victim/action and commands still belong to the unchanged shared controller.
+
+Camera is a higher three-quarter perspective with framing from actual tile rims/port labels, limited orbit/zoom, no pan and Reset Camera. Ordinary snapshots do not reset orbit. Neutral navy background, ambient/hemisphere fill and one soft directional light replace the pale visible rectangular stage. No continuous animation or postprocessing; frameloop=demand remains.
+
+**Verified 2026-10-05:** Chrome 154 on Windows / ANGLE / RTX 5050. Live two-client Base/Gold Haven flows and separate engine-built snapshots for city, previews, move-ship states and an offset 50-hex map. SVG/3D interactions, resize, camera and cleanup passed. Deuteranopia emulation was visually inspected: terrain silhouettes, numbers and marker shapes remain readable; all-six-player ownership patterns and formal accessibility certification remain future work. 65 web tests, TypeScript, production/Docker build pass. Idle adds zero frames on 19 and 50 hex; shared tile geometry is one instance; unmount returns geometry/texture counts to zero. Main-pass calls: Base 293, Gold 267, 50-hex 505. Lazy Three chunk 881.25 KB / 237.40 KB gzip; existing Vite size warning remains. Details/limits — [[plans/board3d]].
+
+#### Phase 3 visual evidence
+
+These are inspected screenshots of the implemented renderer, not design concepts. Prepared states use the unchanged engine with trusted test funding and mocked browser transport; they do not certify a full natural production game. Temporary harnesses and raw snapshots remain outside the repository.
+
+| State | Screenshot |
+| --- | --- |
+| Base Standard: road, settlements, city, robber, tokens and ports | [base-standard](../design/references/board3d-phase3/base-standard.png) |
+| Base city targets and hovered upgrade preview | [base-build-highlight](../design/references/board3d-phase3/base-build-highlight.png) |
+| Gold Haven: sea, gold, ships and pirate | [seafarers-gold-haven](../design/references/board3d-phase3/seafarers-gold-haven.png) |
+| Selected ship source and movement destinations | [ship-selected](../design/references/board3d-phase3/ship-selected.png) |
+| Offset 50-hex map, all eight terrains, default fit | [board-50-fit](../design/references/board3d-phase3/board-50-fit.png) |
+| Hovered settlement preview | [settlement-preview](../design/references/board3d-phase3/settlement-preview.png) |
+| Hovered ship preview | [ship-preview](../design/references/board3d-phase3/ship-preview.png) |
+| Base with Chrome deuteranopia emulation | [deuteranopia-check](../design/references/board3d-phase3/deuteranopia-check.png) |
 
 Геометрия snapshot уже достаточна. Ограничения server legal для полного rule-free interaction и готовность generator — [[Карты и сценарии#Готовность к Board3D]] и [[Карты и сценарии#Будущий Random Map Generator — предложение, не реализация]].
 

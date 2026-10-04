@@ -1,15 +1,30 @@
 import { PLAYER_COLORS } from "../board/constants";
 
 export const TERRAIN_STYLES = {
-  forest: { color: "#4b995b", side: "#327044", hint: "trees" },
-  hills: { color: "#d78161", side: "#a95940", hint: "clay" },
-  pasture: { color: "#a6cf74", side: "#75984e", hint: "sheep" },
-  fields: { color: "#e7c56c", side: "#b19448", hint: "wheat" },
-  mountains: { color: "#a6b5c4", side: "#728493", hint: "peaks" },
-  desert: { color: "#e5d3a7", side: "#bfa979", hint: "dunes" },
-  sea: { color: "#6cb9d3", side: "#41839b", hint: "waves" },
-  gold: { color: "#bba363", side: "#87733f", hint: "gold" },
+  forest: { color: "#43825c", side: "#285c43", hint: "trees" },
+  hills: { color: "#cc785a", side: "#964c39", hint: "clay" },
+  pasture: { color: "#a8ca79", side: "#728e51", hint: "sheep" },
+  fields: { color: "#e8ba54", side: "#a78032", hint: "wheat" },
+  mountains: { color: "#9baebc", side: "#637b8b", hint: "peaks" },
+  desert: { color: "#e8d5ac", side: "#baa078", hint: "dunes" },
+  sea: { color: "#347f9b", side: "#22576e", hint: "waves" },
+  gold: { color: "#a59055", side: "#6e5d37", hint: "gold" },
 } as const;
+
+// Visual accents only; gameplay ownership still uses the existing player palette.
+export const VISUAL = {
+  background: "#203743", ink: "#202c35", ivory: "#fff7e5", tokenSide: "#c1ac89",
+  accent: "#b63831", legal: "#c5f0df", hover: "#ffffff", selected: "#ffc66b",
+  tree: "#21563e", treeLight: "#307851", trunk: "#806345", wheat: "#fff0ad",
+  fur: "#fff9e9", sheep: "#46544b", clay: "#b05b44", clayLight: "#e49b73",
+  peak: "#5d7587", snow: "#e5edf0", sand: "#f1e0bc", sandShade: "#d5bb8b",
+  nugget: "#ffda65", nuggetShade: "#c99c35", wave: "#82bdcc", dock: "#b39772",
+  pirate: "#25313c", robber: "#303b45",
+} as const;
+
+export function targetColor(hovered: boolean, selected = false) {
+  return selected ? VISUAL.selected : hovered ? VISUAL.hover : VISUAL.legal;
+}
 
 export function terrainStyle(terrain: string): { color: string; side: string; hint: string } {
   return TERRAIN_STYLES[terrain as keyof typeof TERRAIN_STYLES]
@@ -23,7 +38,8 @@ export function playerColor(owner: number): string {
 export function portAppearance(kind: string) {
   const resource = kind.split(":")[2];
   const colors: Record<string, string> = {
-    wood: "#4b995b", brick: "#d78161", sheep: "#a6cf74", wheat: "#e7c56c", ore: "#a6b5c4",
+    wood: TERRAIN_STYLES.forest.color, brick: TERRAIN_STYLES.hills.color,
+    sheep: TERRAIN_STYLES.pasture.color, wheat: TERRAIN_STYLES.fields.color, ore: TERRAIN_STYLES.mountains.color,
   };
   return kind.includes("3:1")
     ? { label: "3:1", color: "#f6f3e9" }

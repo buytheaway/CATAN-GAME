@@ -1,11 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import { PerspectiveCamera } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { cameraFrame } from "./coordinates";
-import type { BoardBounds } from "./types";
+import type { BoardBounds, Point3D } from "./types";
 
-export default function CameraRig({ bounds, resetVersion }: { bounds: BoardBounds; resetVersion: number }) {
+export default function CameraRig({ bounds, footprint, resetVersion }: {
+  bounds: BoardBounds; footprint: string; resetVersion: number;
+}) {
+  // The value stays stable across turn/ownership snapshots of the same map.
+  const fitPoints = useMemo(() => JSON.parse(footprint) as Point3D[], [footprint]);
   const { camera, gl, size, invalidate } = useThree();
   const controlsRef = useRef<OrbitControls | null>(null);
   const centerX = bounds.center[0];
@@ -18,10 +22,10 @@ export default function CameraRig({ bounds, resetVersion }: { bounds: BoardBound
     controlsRef.current = controls;
     controls.enablePan = false;
     controls.enableDamping = false;
-    controls.minPolarAngle = Math.PI * 0.16;
-    controls.maxPolarAngle = Math.PI * 0.36;
-    controls.minAzimuthAngle = -Math.PI / 3;
-    controls.maxAzimuthAngle = Math.PI / 3;
+    controls.minPolarAngle = Math.PI * 0.12;
+    controls.maxPolarAngle = Math.PI * 0.29;
+    controls.minAzimuthAngle = -Math.PI / 4;
+    controls.maxAzimuthAngle = Math.PI / 4;
     const requestFrame = () => invalidate();
     controls.addEventListener("change", requestFrame);
     return () => {
@@ -34,17 +38,18 @@ export default function CameraRig({ bounds, resetVersion }: { bounds: BoardBound
   useEffect(() => {
     const controls = controlsRef.current;
     if (!(camera instanceof PerspectiveCamera) || !controls) return;
-    const frame = cameraFrame({ center: [centerX, 0, centerZ], width, depth }, size.width / Math.max(1, size.height), camera.fov);
+    const frame = cameraFrame({ center: [centerX, 0, centerZ], width, depth },
+      size.width / Math.max(1, size.height), camera.fov, fitPoints);
     camera.position.set(...frame.position);
     camera.near = Math.max(0.01, radius / 100);
     camera.far = frame.distance * 6;
     camera.updateProjectionMatrix();
     controls.target.set(...frame.target);
-    controls.minDistance = frame.distance * 0.5;
-    controls.maxDistance = frame.distance * 1.6;
+    controls.minDistance = frame.distance * 0.68;
+    controls.maxDistance = frame.distance * 1.25;
     controls.update();
     invalidate();
     // Numeric bounds keep ordinary snapshots from resetting a player's camera.
-  }, [camera, gl, centerX, centerZ, radius, width, depth, size.width, size.height, resetVersion, invalidate]);
+  }, [camera, gl, centerX, centerZ, radius, width, depth, fitPoints, size.width, size.height, resetVersion, invalidate]);
   return null;
 }
