@@ -12,7 +12,8 @@ import * as jsxRuntime from "react/jsx-runtime";
 // The existing Vite dependency bundles TSX in memory; no files or dependencies added.
 const require = createRequire(import.meta.url);
 const compiled = await build({
-  entryPoints: [fileURLToPath(new URL("../src/components/BoardView.tsx", import.meta.url))],
+  stdin: { contents: 'export {default as BoardView} from "./components/BoardView"; export {default as BoardControls} from "./board/BoardControls"; export {createBoardInteraction,emptySelection} from "./board/interaction";',
+    resolveDir: fileURLToPath(new URL("../src/", import.meta.url)), loader: "tsx" },
   bundle: true, write: false, platform: "node", format: "cjs", jsx: "automatic",
   external: ["react", "react/jsx-runtime"],
 });
@@ -24,7 +25,7 @@ const tracedRuntime = Object.fromEntries(["jsx", "jsxs"].map(name => [name, (typ
 const loaded = { exports: {} };
 new Script(`(function(require, module, exports) { ${compiled.outputFiles[0].text}\n})`)
   .runInThisContext()(name => name === "react/jsx-runtime" ? tracedRuntime : require(name), loaded, loaded.exports);
-const BoardView = loaded.exports.default;
+const { BoardView, BoardControls, createBoardInteraction, emptySelection } = loaded.exports;
 
 function render(overrides = {}) {
   clicks = [];
@@ -41,10 +42,14 @@ function render(overrides = {}) {
     pending_action: "robber_move", pending_pid: 0, turn: 0, phase: "main",
     rules_config: { enable_seafarers: true, enable_pirate: true }, ...overrides,
   };
-  const html = renderToStaticMarkup(React.createElement(BoardView, {
-    state, youPid: 0, selectedAction: "pirate",
-    onSendCmd: cmd => sent.push(cmd), onSelectAction: () => {},
-  }));
+  state.legal = { pid: 0, settlements: [], roads: [], cities: [], ships: [],
+    robber_tiles: state.pending_action === "robber_move" && state.pending_pid === 0 ? [1] : [],
+    pirate_tiles: state.pending_action === "robber_move" && state.pending_pid === 0 && state.rules_config.enable_pirate ? [3] : [],
+    robber_victims: {}, pirate_victims: {} };
+  const interaction = createBoardInteraction(state, 0, emptySelection(), () => {}, cmd => sent.push(cmd));
+  const html = renderToStaticMarkup(React.createElement(React.Fragment, null,
+    React.createElement(BoardView, { state, interaction }),
+    React.createElement(BoardControls, { state, interaction })));
   assert.equal(clicks.length, 4);
   return { sent, html, click: tile => clicks[tile]() };
 }
@@ -69,7 +74,7 @@ test("completed event disables pirate and map clicks send no commands", () => {
   click(1);
   click(3);
   assert.deepEqual(sent, []);
-  assert.match(html, /<button disabled=""[^>]*>Pirate<\/button>/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>Pirate<\/button>/);
 });
 
 test("another player's pending event does not authorize local map clicks", () => {

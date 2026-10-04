@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useState } from "react";
 import type { ReactNode } from "react";
 import BoardView from "./BoardView";
 import type { BoardViewProps } from "./BoardView.types";
+import BoardControls from "../board/BoardControls";
 import "../board3d/board3d.css";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
@@ -27,10 +28,11 @@ export default function BoardRenderer(props: BoardViewProps) {
       {mode === "2d" ? <BoardView {...props} /> : (
         <Board3DErrorBoundary>
           <Suspense fallback={<div className="board3d-fallback" role="status">Loading 3D board…</div>}>
-            <Board3D state={props.state} />
+            <Board3D state={props.state} interaction={props.interaction} />
           </Suspense>
         </Board3DErrorBoundary>
       )}
+      <BoardControls state={props.state} interaction={props.interaction} />
     </div>
   );
 }

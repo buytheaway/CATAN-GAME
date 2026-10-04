@@ -7,6 +7,8 @@ import Port3D from "./Port3D";
 import { City3D, Pirate3D, Road3D, Robber3D, Settlement3D, Ship3D } from "./Pieces3D";
 import { createRenderModel } from "./model";
 import type { BoardBounds, BoardSnapshot } from "./types";
+import type { BoardInteraction } from "../board/interaction";
+import InteractionOverlay3D from "./InteractionOverlay3D";
 
 function BoardLight({ bounds }: { bounds: BoardBounds }) {
   const light = useRef<DirectionalLight>(null);
@@ -26,13 +28,16 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
     shadow-camera-far={reach * 4} shadow-bias={-0.0005} shadow-normalBias={0.025} />;
 }
 
-export default function Board3D({ state }: { state: BoardSnapshot }) {
+export default function Board3D({ state, interaction }: { state: BoardSnapshot; interaction: BoardInteraction }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
   const [inspectedTile, setInspectedTile] = useState<number | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
   const hover = useCallback((tileIndex: number | null) => setHoveredTile(tileIndex), []);
-  const inspect = useCallback((tileIndex: number) => setInspectedTile(tileIndex), []);
+  const inspect = useCallback((tileIndex: number) => {
+    setInspectedTile(tileIndex);
+    interaction.onTileClick(tileIndex);
+  }, [interaction.onTileClick]);
   const visibleTile = hoveredTile ?? inspectedTile;
   const tile = visibleTile != null ? state.tiles[visibleTile] : null;
   const { bounds } = model;
@@ -60,7 +65,9 @@ export default function Board3D({ state }: { state: BoardSnapshot }) {
             <planeGeometry args={[bounds.width + 2, bounds.depth + 2]} />
             <meshStandardMaterial color="#c6dce1" roughness={1} />
           </mesh>
-          {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex} onHover={hover} onInspect={inspect} />)}
+          {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
+            legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
+            onHover={hover} onInspect={inspect} />)}
           {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} />)}
           {model.ships.map(ship => <Ship3D key={ship.edge.join(",")} ship={ship} />)}
           {model.buildings.map(building => building.level === 1
@@ -69,10 +76,11 @@ export default function Board3D({ state }: { state: BoardSnapshot }) {
           {model.ports.map(port => <Port3D key={port.edge.join(",")} port={port} />)}
           {model.robbers.map((robber, i) => <Robber3D key={i} {...robber} />)}
           {model.pirate && <Pirate3D {...model.pirate} />}
+          <InteractionOverlay3D state={state} interaction={interaction} />
         </Canvas>
       </div>
       <div className="board3d-footer">
-        <span>View only · Use 2D to place pieces or move the robber/pirate.</span>
+        <span>Click highlighted targets to play. Drag to orbit.</span>
         <span aria-live="polite">{tile ? `Tile ${visibleTile} · ${tile.terrain}${tile.number != null ? ` · ${tile.number}` : ""}` : "Hover or click a hex to inspect it."}</span>
       </div>
     </div>

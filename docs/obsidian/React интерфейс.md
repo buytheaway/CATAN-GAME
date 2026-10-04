@@ -8,7 +8,7 @@ tags: [catan, web, интерфейс]
 
 Основные UI-границы: App, LobbyPage, GamePage, BoardRenderer, SVG BoardView и экспериментальный Board3D. Scene-компоненты находятся в board3d/. Остальные панели — JSX-блоки внутри крупных компонентов. Отдельных ResourceCard, PlayerList, TradeDialog и MainMenu в web нет.
 
-Board3D Phase 1 verified 2026-10-04: renderer selector и отдельная visual scene добавлены без миграции command/controller logic. 37 web cases, TypeScript/build и Docker/browser checks проходят; детали и ограничения — [[plans/board3d]].
+Board3D Phase 2 verified 2026-10-05: общий controller перенесён из SVG в GamePage, оба renderer используют персональные server targets. 57 web cases, TypeScript/build, Docker и Chrome проверки проходят; детали и ограничения — [[plans/board3d]].
 
 Контракт проверен 2026-10-02: UI-композиция не менялась в Phase 1. MatchState типизирован под персональный server snapshot, чужой player.res опционален, own res сохранена. BoardView Port соответствует текущему JSON `[edge, kind]`, pending_action/pending_pid допускают null. TypeScript проходит; отсутствие чужой руки обеспечивается сервером, а не JSX.
 
@@ -18,10 +18,11 @@ Board3D Phase 1 verified 2026-10-04: renderer selector и отдельная vis
 | --- | --- | --- | --- |
 | [App](../../web/src/App.tsx) | main.tsx | Нет | client, room, match, status, log, error |
 | [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, pendingMapId, customLabel; отображаемый mapId = pending или room.map_id |
-| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error | selectedAction, discard, goldRes, goldQty |
-| [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | Прежние BoardViewProps, тот же state | mode=2d/3d, default 2d; lazy/failure boundary |
-| [BoardView](../../web/src/components/BoardView.tsx) | BoardRenderer, режим 2D | state, youPid, selectedAction, onSendCmd, onSelectAction | moveFrom |
-| [Board3D](../../web/src/board3d/Board3D.tsx) | BoardRenderer, режим 3D | state geometry/occupancy, без command callbacks | hovered/inspected tile index, reset camera version; read-only render projection |
+| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error | useBoardInteraction: action, shipSource, victim, waiting; discard, goldRes, goldQty |
+| [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | state + interaction | mode=2d/3d, default 2d; lazy/failure boundary |
+| [BoardControls](../../web/src/board/BoardControls.tsx) | BoardRenderer, оба режима | state + interaction | Общие tools/status/victim chooser; собственного selection нет |
+| [BoardView](../../web/src/components/BoardView.tsx) | BoardRenderer, режим 2D | state + interaction | SVG presentation, selection берётся из controller |
+| [Board3D](../../web/src/board3d/Board3D.tsx) | BoardRenderer, режим 3D | state geometry/occupancy + interaction | hovered/inspected tile index, reset camera; InteractionOverlay3D хранит только hover |
 
 ## Экраны
 
@@ -44,7 +45,8 @@ App показывает LobbyPage до первого match и GamePage пос�
 | Ошибки | LobbyPage и GamePage | error.message |
 | Журнал | GamePage | log из App; сетевые ошибки и сообщения клиента |
 | Trade | UI отсутствует | Порты на поле не являются формой обмена |
-| Строительство | BoardView | Выбранный инструмент, legal, turn, phase, occupied_* |
+| Строительство и перемещения | BoardControls + оба renderer | interaction.action/targets/selection; server legal, исходные vertex/edge/tile IDs |
+| Выбор жертвы | BoardControls | selection.victim.victims из personal legal, публичные player names; move_robber/move_pirate с victim |
 
 Roll доступен в свой ход основной фазы до броска и без pending-action. End Turn зависит от своего хода, rolled и отсутствия pending-action. GamePage рассчитывает эти условия.
 
@@ -64,11 +66,15 @@ Start Match disabled до подтверждения последнего выб
 
 BoardView получает геометрию, фигуры, правила и состояние хода. SVG-слои: гексы и номера → дороги/корабли → поселения/города → разбойник/пират → интерактивные рёбра/вершины → порты. Порядок влияет на наложение и обработку кликов.
 
-`handleVertexClick` отправляет поселение или город; `handleEdgeClick` — дорогу, корабль или его перемещение; `handleTileClick` — разбойника/пирата. `canPlace*` использует legal сервера либо локальные упрощённые проверки.
+[interaction.ts](../../web/src/board/interaction.ts) строит общий highlight model по legal.pid=youPid и выбранному инструменту. onVertexClick → place_settlement/upgrade_city; onEdgeClick → place_road/build_ship либо source → destination → move_ship; onTileClick → move_robber/move_pirate. Membership в серверных списках — единственная клиентская проверка цели; локальных canPlace* fallback больше нет. Без personal legal нет целей/команд. Setup автоматически выбирает settlement/road по setup_need; free=true берётся из legal.road_free.
 
-selectedAction хранит GamePage, хотя кнопки инструмента находятся в BoardView. Перемещение корабля хранит промежуточный moveFrom внутри BoardView.
+[useBoardInteraction](../../web/src/board/useBoardInteraction.ts) хранит selection в GamePage. [BoardControls](../../web/src/board/BoardControls.tsx) рисует прежние tools и небольшую панель victims. При нескольких victims click сначала открывает выбор без команды; при одной жертве её pid передаётся явно, при нуле поле victim опускается. Список берётся с сервера, клиент не вычисляет кражу или ownership rules.
 
-Board3D сохраняет IDs и отображает snapshot, без legal/cost/turn checks. Terrain/number meshes, ports и placeholder pieces не отправляют команды. Hover/click только инспектирует tile index; placement/robber/pirate требуют 2D. Sidebar Roll/End Turn остаётся в GamePage и работает с тем же client. При переключении renderer перемонтируется; незавершённый локальный moveFrom SVG сбрасывается, selectedAction в GamePage сохраняется. GameState этим не меняется.
+BoardView рисует SVG markers; [InteractionOverlay3D](../../web/src/board3d/InteractionOverlay3D.tsx) — vertex rings/edge prisms, HexTile3D — tile outline. Hover усиливает подсветку, выбранный ship source/victim tile выделен янтарным. Оба renderer вызывают одинаковые callbacks. Three не импортирует SVG internals; общие PLAYER_COLORS/edgeId находятся в board/constants.ts. Coordinate mapping Phase 1 сохранён.
+
+Путь: click → shared callback → GamePage.sendCmd → WSClient → server._apply_cmd → неизменный engine.apply_cmd → _snapshot_state с personal legal → App.setMatch → GamePage → оба renderer. Waiting блокирует повторные board clicks до ответа. Фигуры не создаются optimistic. Error снимает ожидание/source/victim и показывает существующий feedback; snapshot заново проверяет доступность selection. Новый room+match сбрасывает selection. При 2D↔3D сохраняются tool, ship source и victim choice; GameState и tick не меняются. Sidebar Roll/End/discard/gold сохранён.
+
+Проверено в Chrome 154 через production Docker: Base два клиента, 8 setup commands через 3D → Roll → road → End (tick 11); Gold Haven выбран через lobby, 3D setup, pirate после 7, ship и move ship [6,9]→[9,12], End; 2 хода/tick 15. Public state и pieces совпадают у клиентов, build mode/обычный turn/setup переживают переключение, 1440×1000/1280×720/1024×768 без horizontal overflow. Отдельные engine-built fixtures с mocked browser transport проверили SVG и 3D settlement/city/road/ship, move source/cancel/destination с переключением, robber/pirate с выбором второго из двух victims, free roads до Roll и rejected stale command без phantom piece. SVG fixture setup завершён всеми 8 кликами. Fixtures не означают естественное достижение этих состояний в короткой партии. Полная партия/mobile не проверялись.
 
 ## Текущее дерево
 
@@ -90,17 +96,19 @@ Board3D сохраняет IDs и отображает snapshot, без legal/co
 └── Если есть match: <GamePage>
     ├── <BoardRenderer>
     │   ├── 2D / 3D Experimental selector
-    │   ├── 2D: <BoardView>
-    │   │   ├── Выбранное действие
-    │   │   ├── SVG: клетки / фигуры / подсветка / порты
-    │   │   └── Settlement / Road / City / Ship / Move Ship / Pirate
-    │   └── 3D: lazy <Board3D>, Suspense / failure boundary
-    │       ├── Camera toolbar / Reset Camera
-    │       ├── <Canvas> → CameraRig / lights / HexTile3D
-    │       │   ├── TerrainHints / NumberToken3D
-    │       │   ├── Pieces3D: road / settlement / city / ship / robber / pirate
-    │       │   └── Port3D
-    │       └── View-only notice / inspected tile
+    │   ├── 2D: <BoardView> → SVG клетки / фигуры / targets / порты
+    │   ├── 3D: lazy <Board3D>, Suspense / failure boundary
+    │   │   ├── Camera toolbar / Reset Camera
+    │   │   ├── <Canvas> → CameraRig / lights / HexTile3D
+    │   │   │   ├── TerrainHints / NumberToken3D
+    │   │   │   ├── Pieces3D: road / settlement / city / ship / robber / pirate
+    │   │   │   ├── Port3D
+    │   │   │   └── InteractionOverlay3D: vertex / edge targets
+    │   │   └── Interaction hint / inspected tile
+    │   └── <BoardControls>
+    │       ├── Settlement / Road / City / Ship / Move Ship / Robber / Pirate
+    │       ├── Waiting / target hint / Cancel move
+    │       └── Choose player, если несколько victims
     └── Sidebar
         ├── Статус / ошибка
         ├── My Resources

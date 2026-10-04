@@ -239,13 +239,17 @@ def test_private_snapshots_are_per_player_and_do_not_alias_engine(live_server):
 def test_match_has_only_present_players_and_setup_finishes(live_server):
     async def run():
         async with websockets.connect(live_server) as a, websockets.connect(live_server) as b:
-            room, _, _, ma, _ = await start_pair(a, b, capacity=4)
+            room, _, _, ma, mb = await start_pair(a, b, capacity=4)
             assert len(room.game.players) == 2
             assert ma["state"]["max_players"] == 2
             assert room.game.setup_order == [0, 1, 1, 0]
             clients, seq = {0: a, 1: b}, {0: 0, 1: 0}
             while room.game.phase == "setup":
-                state, pid = ma["state"], ma["state"]["turn"]
+                pid = room.game.turn
+                state = (ma if pid == 0 else mb)["state"]
+                other = (mb if pid == 0 else ma)["state"]["legal"]
+                assert state["legal"]["pid"] == pid
+                assert other["settlements"] == other["roads"] == []
                 if state["setup_need"] == "settlement":
                     cmd = {"type": "place_settlement", "vid": state["legal"]["settlements"][0]}
                 else:

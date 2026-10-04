@@ -37,7 +37,7 @@ Status: Clean modern tabletop direction accepted by user on 2026-10-04. Board3D 
 
 Та же визуальная система и тот же UI вокруг игры. Добавляются sea hexes, несколько островов, ships, pirate, gold field и maritime ports. Fog/unexplored показываются только при фактической поддержке выбранного сценария: сейчас такой модели в engine нет. Поставляемые Seafarers presets имеют один связный land core; несколько островов — направление для будущих custom/generated карт, не описание уже готового сценария. Отдельная fantasy/pirate theme не создаётся.
 
-### Board3D Phase 1 — implemented visual foundation
+### Board3D Phase 1 — visual foundation checkpoint
 
 Python GameState → player-specific snapshot → WSClient/App React state → GamePage → BoardRenderer → Board3D → Three.js scene. **Renderer, not rules engine.** Board3D получает геометрию/occupied data, не получает WSClient или command callbacks и не вычисляет стоимость, legal targets либо игровые решения. model.ts — read-only projection позиций для meshes, без альтернативной модели партии. Hover/click возвращает только исходный tile index в локальную подпись; GameState и network tick не меняются.
 
@@ -59,7 +59,7 @@ web/src/board3d/
   board3d.css
 ```
 
-coordinates.ts: server X / state.size → Three X; server Y / state.size → Three Z; visual elevation → Three Y. Centers имеют приоритет, q/r — fallback при отсутствии center. Radius гекса = 1 scene unit. Ориентация совпадает с pointy-top server grid; игровой graph/IDs не пересоздаются. Фигуры используют исходные vertex/edge IDs и цвета PLAYER_COLORS из BoardView.constants.ts. Порт остаётся связанным с исходным edge; небольшой внешний offset label — только оформление. Ошибки auto-port placement не исправлялись.
+coordinates.ts: server X / state.size → Three X; server Y / state.size → Three Z; visual elevation → Three Y. Centers имеют приоритет, q/r — fallback при отсутствии center. Radius гекса = 1 scene unit. Ориентация совпадает с pointy-top server grid; игровой graph/IDs не пересоздаются. Фигуры используют исходные vertex/edge IDs и PLAYER_COLORS (после Phase 2 общий board/constants.ts). Порт остаётся связанным с исходным edge; небольшой внешний offset label — только оформление. Ошибки auto-port placement не исправлялись.
 
 Закреплены @react-three/fiber 8.18.0, Three.js 0.180.0 и dev @types/three 0.180.0. React/React DOM 18.3.1, Vite 5.4.21 и TypeScript 5.9.3 сохранены; версии прежних lockfile packages не изменились. Fiber 8 соответствует React 18 ([официальная compatibility](https://r3f.docs.pmnd.rs/getting-started/introduction), проверено 2026-10-04). OrbitControls берётся из Three.js; drei, внешние 3D assets и font downloads отсутствуют. Board3D загружается отдельным lazy chunk только после выбора 3D.
 
@@ -71,7 +71,21 @@ NumberToken3D — светлый настольный token с CanvasTexture-ч�
 
 37 web tests (25 прежних + 12 pure geometry/projection cases), TypeScript, production build и Docker build проходят. В покое frameloop=demand даёт 0 дополнительных кадров; unmount освобождает geometry/texture и WebGL context. Около 180–190 main-pass draw calls на 19 hex, 352 на test 50; это наблюдение на проверенном GPU, не гарантия low-end FPS. Lazy 3D chunk ~874 KB / ~235 KB gzip; Vite size warning сохраняется. Полная партия/mobile/fallback на слабых устройствах не проверены.
 
-**Known existing limitation:** LobbyPage mapId-sync effects могут откатить выбор пресета и отправить set_map после старта. Подтверждено до загрузки 3D chunk; LobbyPage не менялся. Для live Seafarers verification host задавал карту напрямую через существующий protocol, React-клиент входил как participant. Полные действия/пределы — [[plans/board3d]].
+**Lobby limitation resolved separately:** Phase 1 обнаружила откат mapId старым room_state. Fix 5ff920a удалил встречные effects и добавил server-authoritative map_revision/pending ordering; два React-клиента теперь выбирают Gold Haven через обычный UI. При текущей Phase 2 workaround не применяется. Исторические действия/пределы — [[plans/board3d]].
+
+### Board3D Phase 2 — implemented interaction
+
+Verified 2026-10-05. **Renderer, not rules engine** сохраняется: GamePage.useBoardInteraction передаёт одинаковые targets/selection/callbacks в SVG и Three. Targets приходят из персонального server legal; cost, piece limits, phase и shipping/victim rules не копируются в TypeScript. Финальные фигуры всегда берутся из snapshot. Общие BoardControls используют существующие кнопки; HUD, lobby, trade/dev UI и CSS не redesign'ились.
+
+- Legal vertex — компактное зелёное кольцо/полупрозрачная hit surface; city marker выше существующего settlement.
+- Legal edge — небольшой полупрозрачный prism между исходными vertices; ship source marker выше placeholder sail.
+- Legal tile — лёгкий outline/emissive accent. Hover усиливает marker; selected ship source и выбранный victim tile — янтарные. Никаких particles, fantasy effects или continuous animation.
+- Setup следует server setup_need автоматически. Move ship: source → destinations → команда; source можно отменить кликом/Cancel. Несколько victims открывают небольшую общую Choose player панель до отправки команды.
+- Switching сохраняет tool/source/victim; waiting убирает доступные board clicks. Error снимает transient selection, существующий feedback показывает отказ; optimistic permanent pieces нет.
+
+Production Chrome + Docker: Base и Gold Haven, оба через normal lobby, два клиента, полная 3D setup и main road/ship/pirate actions. Раздельные fixtures проверили settlement/city/move ship/victim choice/free-road/rejection в SVG и 3D; это контролируемые состояния, не полная естественная партия. Desktop resize проходит, 0 новых idle frames; frameloop=demand. Web 57/57, pytest 186/186, TypeScript/production/Docker build проходят. Lazy Three chunk 876.54 KB / 235.24 KB gzip; прежний size warning и low-end/mobile ограничения остаются.
+
+Следующая Phase 3 возможна только отдельной задачей: читаемость/размеры hit areas, контраст, качество placeholder pieces, подсказки и accessibility/camera UX. Известные gameplay P1 относятся к engine backlog и не являются graphics polish. Полный scope — [[plans/board3d]], controller path — [[React интерфейс]], contract — [[Сервер и протокол]].
 
 Геометрия snapshot уже достаточна. Ограничения server legal для полного rule-free interaction и готовность generator — [[Карты и сценарии#Готовность к Board3D]] и [[Карты и сценарии#Будущий Random Map Generator — предложение, не реализация]].
 
@@ -81,7 +95,7 @@ NumberToken3D — светлый настольный token с CanvasTexture-ч�
 | --- | --- | --- |
 | Main Menu | Левая часть lobby-concept | Отдельного нет |
 | Multiplayer Lobby | lobby-concept | LobbyPage с более простым набором функций |
-| Match | gameplay-concept и gameplay-concept-alt | GamePage + BoardView |
+| Match | gameplay-concept и gameplay-concept-alt | GamePage + BoardRenderer (SVG BoardView / Board3D), общий interaction |
 | Rules / Help | rules-help-concept | Отдельного нет |
 | Settings | settings-concept | Отдельного нет |
 | Map Editor | Только пункт меню на lobby-concept; экран не показан | Есть загрузка JSON, редактора нет |

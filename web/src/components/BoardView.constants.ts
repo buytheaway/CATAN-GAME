@@ -15,14 +15,7 @@ export const TERRAIN_COLORS: Record<string, string> = {
   gold: "#eab308",
 } as const;
 
-export const PLAYER_COLORS = [
-  "#ef4444",
-  "#3b82f6",
-  "#22c55e",
-  "#f59e0b",
-  "#a855f7",
-  "#14b8a6",
-] as const;
+export { PLAYER_COLORS } from "../board/constants";
 
 export enum ActionType {
   Settlement = "settlement",

@@ -19,10 +19,6 @@ from app.engine import (
     DEFAULT_PRESET_ID,
     GameState,
     RuleError,
-    can_place_road,
-    can_place_settlement,
-    can_place_ship,
-    can_upgrade_city,
     apply_cmd,
     build_game,
     get_preset_meta,
@@ -31,6 +27,7 @@ from app.engine import (
     parse_rules_config,
 )
 from app.engine import maps as map_loader
+from app.engine.legal import board_legal_moves
 from app.engine.serialize import to_player_dict
 
 
@@ -173,48 +170,12 @@ MULTIPLAYER_COMMANDS = frozenset({
 def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
     state = to_player_dict(game, pid)
     state["you_pid"] = pid
-    state["legal"] = _legal_moves(game)
+    state["legal"] = _legal_moves(game, pid)
     return state
 
 
-def _legal_moves(g: GameState) -> Dict[str, Any]:
-    if g.game_over:
-        return {}
-    if g.pending_action is not None:
-        return {"pid": g.turn, "settlements": [], "roads": [], "cities": [], "ships": []}
-    pid = g.turn
-    settlements: List[int] = []
-    roads: List[List[int]] = []
-    cities: List[int] = []
-    ships: List[List[int]] = []
-    if g.phase == "setup":
-        if g.setup_order and pid != g.setup_order[g.setup_idx]:
-            return {"pid": pid, "settlements": [], "roads": [], "cities": [], "ships": []}
-        if g.setup_need == "settlement":
-            for vid in g.vertices.keys():
-                if can_place_settlement(g, pid, int(vid), require_road=False):
-                    settlements.append(int(vid))
-        else:
-            anchor = g.setup_anchor_vid
-            if anchor is not None:
-                for a, b in g.edges:
-                    if anchor in (a, b) and can_place_road(g, pid, (a, b), must_touch_vid=anchor):
-                        roads.append([a, b])
-        return {"pid": pid, "settlements": settlements, "roads": roads, "cities": [], "ships": []}
-    if g.phase == "main":
-        if not g.rolled:
-            return {"pid": pid, "settlements": [], "roads": [], "cities": [], "ships": []}
-        for vid in g.vertices.keys():
-            if can_place_settlement(g, pid, int(vid), require_road=True):
-                settlements.append(int(vid))
-            if can_upgrade_city(g, pid, int(vid)):
-                cities.append(int(vid))
-        for a, b in g.edges:
-            if can_place_road(g, pid, (a, b)):
-                roads.append([a, b])
-            if can_place_ship(g, pid, (a, b)):
-                ships.append([a, b])
-    return {"pid": pid, "settlements": settlements, "roads": roads, "cities": cities, "ships": ships}
+def _legal_moves(g: GameState, pid: int) -> Dict[str, Any]:
+    return board_legal_moves(g, pid)
 
 
 async def _send(ws: WebSocket, obj: Dict) -> None:

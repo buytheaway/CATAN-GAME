@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { MatchState, RoomState, ServerError, WSClient } from "../wsClient";
 import BoardRenderer from "./BoardRenderer";
+import { useBoardInteraction } from "../board/useBoardInteraction";
 
 const RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"];
 
@@ -44,7 +45,8 @@ export default function GamePage({
   const [discard, setDiscard] = useState<Record<string, number>>({});
   const [goldRes, setGoldRes] = useState(RESOURCES[0]);
   const [goldQty, setGoldQty] = useState(1);
-  const [selectedAction, setSelectedAction] = useState<string | null>(null);
+  const interaction = useBoardInteraction(state, youPid, `${match.room_code}:${match.match_id}`, error,
+    cmd => client.sendCmd(cmd));
 
   const resKeys = useMemo(() => Object.keys(res), [res]);
 
@@ -64,10 +66,7 @@ export default function GamePage({
       <div className="board-wrap card">
         <BoardRenderer
           state={state}
-          youPid={youPid}
-          selectedAction={selectedAction}
-          onSendCmd={(cmd) => client.sendCmd(cmd)}
-          onSelectAction={(a) => setSelectedAction(a)}
+          interaction={interaction}
         />
       </div>
 

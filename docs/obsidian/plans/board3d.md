@@ -1,15 +1,19 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-04
+updated: 2026-10-05
 ---
 
-# Board3D Phase 1 — Visual Foundation
+# Board3D
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[Карты и сценарии]]
 
+## Phase 1 — Visual Foundation
+
+Historical checkpoint, completed 2026-10-04. The behavior and test counts below describe Phase 1; current interaction is in Phase 2 below.
+
 Status: Completed — 2026-10-04. READY FOR CHECKPOINT. Scope authorized by the user's Board3D Phase 1 request.
 
-## Audit before implementation
+### Audit before implementation
 
 GamePage receives match.state from App/WSClient and passes the same object to BoardView. Python GameState → to_player_dict → _snapshot_state → match_state → WSClient.onMatchState → App.setMatch → GamePage is the existing data path. Commands remain GamePage/BoardView → WSClient.sendCmd → server/engine → new snapshot.
 
@@ -19,13 +23,13 @@ Existing SVG BoardView also contains placement/robber/ship handlers. Preserve it
 
 Git baseline: clean working tree at f754457 (Docker commit), hardening-phase-1 points to 3cd8812. The user names infrastructure-phase-1, but that tag is absent locally; this task does not create it.
 
-## Architecture and coordinates
+### Architecture and coordinates
 
 GamePage → BoardRenderer → BoardView OR lazy-loaded Board3D → R3F/Three scene. Both renderers consume the same state. A read-only render projection computes mesh positions and bounds, not game decisions.
 
 coordinates.ts owns conversion: server X / state.size → Three X; server Y / state.size → Three Z; visual elevation → Three Y. Server centers take priority; axial q/r can supply a missing center. Snapshot graph/IDs stay authoritative. Hex radius becomes one scene unit. Road midpoint, length and rotation derive from existing edge endpoints. Bounds include actual tiles/vertices/ports and camera framing adapts to aspect ratio; there is no fixed list of 19 positions.
 
-## Implementation
+### Implementation
 
 1. Install exact compatible dependencies: @react-three/fiber 8.18.0 (React 18), Three.js 0.180.0 and matching @types/three 0.180.0. Keep React/Vite/TypeScript versions. OrbitControls comes from Three itself; no drei or external assets. The initially checked Three 0.186.1 emits deprecation warnings for Fiber 8's Clock and the selected soft-shadow API; 0.180.0 keeps this React 18 stack compatible without patching libraries.
 2. Build pure coordinates/materials/render projection and behavior tests for IDs, centers, bounds, terrain and player colors.
@@ -36,13 +40,13 @@ coordinates.ts owns conversion: server X / state.size → Three X; server Y / st
 7. Verify web tests, TypeScript, production build, Docker build and actual browser flow on Base Standard and Seafarers Gold Haven, including switch-back/gameplay and resizing.
 8. Update Project State/Design System and existing affected UI notes; check references and scope boundaries.
 
-## Phase 2 boundary
+### Phase 2 boundary
 
 Build/upgrade/ship movement, robber/pirate targets and victims, port interaction, complete server-produced legal availability and controller migration are deferred. No Python, rules, map JSON, protocol/serialization/reconnect, Docker architecture, lobby/trade/development/settings redesign or persistence changes.
 
 Clean modern digital tabletop is the visual direction. Fantasy/MMORPG/medieval tavern/gold-frame references remain historical and their decorative direction is rejected.
 
-## Verification
+### Verification
 
 Verified 2026-10-04 on Docker Desktop Linux containers and actual Chrome 154 (Windows, ANGLE/NVIDIA RTX 5050). 37 web tests passed (25 existing + 12 new); TypeScript and production build passed. Docker production build used clean npm ci and served the lazy 3D chunk through existing Nginx; final compose down removed both services/network with exit 0 for both containers. Test Compose is stopped. React/Vite/TypeScript and all existing lockfile package versions stayed unchanged.
 
@@ -61,3 +65,45 @@ During the original Phase 1 verification, unchanged LobbyPage effects could reve
 Resolved separately 2026-10-04: delayed Gold Haven confirmation reproduced the selector returning to Base and sending Base back. Narrow LobbyPage/WSClient/Room/room_state changes removed effect-driven sends and added map_revision ordering plus one in-flight/last queued choice. Full 160 pytest, 48 web tests, TypeScript, production build and Docker build passed. Two production React browser clients now select Gold Haven through normal UI, survive delayed/stale room_state and token reconnect, then Start uses the confirmed Seafarers map. Both actual Three scenes match 19 hex/4 sea/2 gold/9 ports/pirate; switch-back → eight setup placements → Roll reaches tick 9. Custom JSON, rejection and fresh-room defaults also passed. Board3D/BoardView, engine, maps and deployment architecture stayed unchanged. This lobby blocker is closed; Phase 2 is not started. Current flow and verification limits — [[React интерфейс]], [[Сервер и протокол]], [[Project State]].
 
 Test Compose was stopped after the separate lobby verification. No commit/tag created automatically. Original renderer checkpoint proposal: feat: add experimental 3d board renderer; tag: board3d-phase-1.
+
+## Phase 2 — Interaction
+
+Status: Completed — 2026-10-05. READY FOR CHECKPOINT within the verified scope. Authorized by the separate Phase 2 request; baseline clean commit 5ff920a after the lobby map_revision fix. No automatic commit/tag or Phase 3.
+
+### Interaction audit and resulting architecture
+
+Before: GamePage held selectedAction, SVG BoardView embedded canPlace* fallbacks, command construction, local moveFrom and tools. Board3D only inspected tiles. Server legal projected geometric availability for g.turn and missed affordability/pieces/free road/movement/victims. Existing apply_cmd already validated these commands; move_robber/move_pirate already accepted a victim in the same payload.
+
+After: GamePage.useBoardInteraction → renderer-neutral createBoardInteraction/interactionTargets → BoardRenderer → SVG BoardView or Board3D + shared BoardControls. Both get state, action, targets, selection and the same callbacks. Source ship, victim choice and waiting feedback are UI state; rule legality and final pieces remain server state. No Redux/new dependencies. Shared PLAYER_COLORS and canonical edgeId are in board/constants.ts; Three imports no SVG helpers, SVG imports no Three code.
+
+Click → shared callback → existing WSClient.sendCmd → server._apply_cmd → unchanged engine.apply_cmd → player-specific snapshot/legal → App/GamePage → renderer. Setup automatically follows setup_need. Free roads use server road_free metadata. Move ship is source → server destinations → existing move_ship. Multiple victims open an explicit chooser; one victim is sent explicitly, zero omits the field. No optimistic permanent figures.
+
+Tool/source/victim survive renderer switching. New room+match resets selection; a fresh snapshot reconciles source/victim; rejection clears waiting/source/victim and uses existing error feedback. Missing personal legal gives no targets or commands. Temporary hover remains renderer-local. Coordinate mapping and original IDs from Phase 1 stay unchanged.
+
+### Personal legal contract and scope
+
+engine/legal.py probes the unchanged executor on isolated copies. Existing pid/settlements/roads/cities/ships stay; new road_free, robber/pirate_tiles, per-tile victim pid dictionaries and move_ship.sources/targets cover the seven board commands. legal.pid is the recipient; other recipients get empty targets and no private affordability hints. Read-only geometry is reused only inside the already isolated copy; mutable hands/bank/occupancy/flags are copied for every probe. Projection must leave the entire live GameState unchanged. Server execution revalidates every command; hints are not a security boundary.
+
+VERSION, command payload/envelope/ACK, serialization privacy, room lifecycle, reconnect, map_revision, rules.py, map data/generator and deployment architecture are unchanged. New web board interaction needs the expanded legal from the matching backend; there is no client geometry fallback. Desktop ignores legal and keeps its existing flow. Known ship movement adjacency/mixed-route limitations are faithfully projected, not corrected.
+
+Three adds vertex rings, edge prisms and tile outlines; hover/selected colors are modest tabletop accents. Source hit geometry sits above the ship, upgrade marker above the house. Camera, terrain and placeholder figures retain Phase 1 design. Build tools/victim panel use existing button/card styles. Trade/development/HUD/mobile/redesign are outside this phase.
+
+### Verification and limits
+
+Verified 2026-10-05 (checks spanning October 4–5): 186 pytest passed without skips (160 prior + 26 new legal cases), 57 web passed (48 prior + 9 shared-controller cases), TypeScript and production build passed. One old WS setup test now reads the active recipient snapshot, preserving setup assertions and additionally checking the inactive legal is empty. Full suite retains privacy/reconnect/ownership/map_revision regressions. Differential legal tests compare every build coordinate and ship destination against actual executor acceptance; complete-state equality checks prove projection immutability. Explicit robber/pirate victim tests prove only the selected opponent loses one resource.
+
+Docker production build/up passed with the new engine/legal.py included; frontend dependency versions and deployment files unchanged. Chrome 154 / ANGLE / NVIDIA RTX 5050 on Windows ran two independent React clients through normal Host/Join/map/Start. Base Standard: all eight setup actions through actual 3D raycasts, Roll, main road build, End Turn, tick 11. Gold Haven: all eight 3D setup actions, pending pirate movement after a natural 7, main ship build and move [6,9]→[9,12], two normal turns, tick 15. Both clients agree on public geometry/occupancy/turn/pending state. Pieces and original IDs matched the scene and survived 2D↔3D. Normal turn/build/setup switching and 1440×1000, 1280×720, 1024×768 layouts passed without horizontal overflow, page errors or console warnings. Screenshots inspected visually.
+
+Separate controlled fixtures were built by unchanged Python setup/build/card commands with trusted funding outside the repository, delivered via mocked browser WS on the Docker-served React app. Subsequent clicks called the real _apply_cmd/executor and returned personal snapshots. Both SVG and Three passed settlement/city/road/ship, move ship [38,39]→[38,42], source cancellation and switch preservation, robber/pirate selecting the second of two eligible victims, two free roads before Roll, and rejection after stale affordability without phantom pieces. SVG completed all eight setup clicks. These fixtures validate interaction with prepared states, not natural reachability or a full production match. Temporary harness files/screenshots stayed outside the repository; no runtime debug API was added.
+
+Performance: frameloop=demand preserved; production scenes produced zero new idle frames after controls settled. The final build also passed hover settling and unmount cleanup: geometry/texture counts returned to zero and the WebGL context was released. Observed final main-pass draw calls 191 Base / 186 Gold Haven; highlights are small meshes updated only on snapshots/selection/pointer events, no React updates per frame. Main bundle 172.26 KB / 55.04 KB gzip, lazy Three 876.54 KB / 235.24 KB gzip; prior Vite size warning remains. 100 isolated legal projections each: Base mean ~1.62ms, Gold mean ~1.90ms on this machine. This is a small-board observation, not a load/50-hex/low-end benchmark.
+
+rules.py did not change, so scenario suite was not repeated; 348/508 remains historical. Full games, mobile, broad GPU compatibility and multiplayer load are not certified. No newly confirmed gameplay bugs in the checked paths; existing deterministic theft, mixed routes/Longest Trade Route/ship movement, achievements/victory and save/load remain separate P1 backlog. No confirmed new P0 or blocker regression.
+
+### Phase 3 boundary
+
+Only visual polish and UX: improve placeholder pieces, target readability/hit areas, contrast and feedback, accessibility and camera onboarding. No automatic Phase 3. Engine P1 and trade/development/lobby redesign require separate tasks.
+
+Checkpoint proposal: commit `feat: add interactive 3d board gameplay`; tag `board3d-phase-2`. Neither is created automatically.
+
+Test Compose was stopped after verification, restoring its initial stopped state. Temporary browser fixtures/harnesses stayed outside the repository.

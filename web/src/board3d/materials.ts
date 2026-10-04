@@ -1,4 +1,4 @@
-import { PLAYER_COLORS } from "../components/BoardView.constants";
+import { PLAYER_COLORS } from "../board/constants";
 
 export const TERRAIN_STYLES = {
   forest: { color: "#4b995b", side: "#327044", hint: "trees" },

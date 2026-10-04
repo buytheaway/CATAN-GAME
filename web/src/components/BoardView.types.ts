@@ -27,6 +27,12 @@ export interface LegalMoves {
   roads: EdgeTuple[];
   cities: number[];
   ships: EdgeTuple[];
+  road_free?: boolean;
+  robber_tiles?: number[];
+  pirate_tiles?: number[];
+  robber_victims?: Record<string, number[]>;
+  pirate_victims?: Record<string, number[]>;
+  move_ship?: { sources: EdgeTuple[]; targets: Record<string, EdgeTuple[]> };
 }
 
 export interface Tile {
@@ -75,6 +81,7 @@ export interface GameState {
   rules_config?: RulesConfig;
   legal?: LegalMoves;
   ports?: Port[];
+  players?: { pid: number; name: string }[];
 }
 
 export interface MoveShipState {
@@ -83,10 +90,7 @@ export interface MoveShipState {
 
 export interface BoardViewProps {
   state: GameState;
-  youPid: number;
-  selectedAction: string | null;
-  onSendCmd: (cmd: Command) => void;
-  onSelectAction: (action: string | null) => void;
+  interaction: import("../board/interaction").BoardInteraction;
 }
 
 export interface Command {

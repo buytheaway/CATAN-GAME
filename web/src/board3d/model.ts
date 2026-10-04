@@ -1,4 +1,4 @@
-import { edgeKey } from "../components/BoardView.utils";
+import { edgeId } from "../board/constants";
 import { boardBounds, edgePlacement, tilePosition, toScenePosition, TILE_TOP } from "./coordinates";
 import type { BoardRenderModel, BoardSnapshot, Point3D, RenderEdge } from "./types";
 
@@ -16,7 +16,7 @@ export function createRenderModel(state: BoardSnapshot): BoardRenderModel {
   for (const edge of state.edges) {
     const [a, b] = edge;
     if (!vertices[a] || !vertices[b]) continue;
-    const key = edgeKey(a, b);
+    const key = edgeId(edge);
     const placement = edgePlacement(vertices[a], vertices[b]);
     const roadOwner = state.occupied_e[key];
     const shipOwner = state.occupied_ships[key];
