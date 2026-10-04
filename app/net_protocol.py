@@ -90,6 +90,7 @@ def room_state_message(room) -> Dict[str, Any]:
     msg = {
         "type": "room_state",
         "room_code": room.room_code,
+        "map_revision": room.map_revision,
         "host_pid": room.host_pid,
         "players": [
             {"pid": p.pid, "name": p.name, "connected": p.connected}

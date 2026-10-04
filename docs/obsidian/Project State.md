@@ -5,7 +5,7 @@ updated: 2026-10-04
 
 # Project State
 
-Last verified: 2026-10-04 — Board3D Phase 1: 37 web tests, TypeScript, production build, Docker build/up и реальный Chrome на Base Standard/Gold Haven; coordinates/IDs/terrain/ports/pieces, toggle, camera/resize и setup→Roll. City/ship и 50 hex — engine-built snapshots с mocked transport. Python runtime не менялся: pytest сегодня повторно для Board3D не запускался; 158 passed относится к предыдущей infrastructure verification этого дня. Scenario suite не повторялась; исторический baseline от 2026-10-03: 348/508. Полная партия/mobile/нагрузка не проверялись. Подробности — [[plans/board3d]] и [[Deployment]].
+Last verified: 2026-10-04 — узкий lobby map fix: 160 pytest и 48 web tests без skip, TypeScript, production build, Docker build/up и Chrome 154. Два React-клиента: задержанное подтверждение A, быстрый выбор B, повтор старых room_state после B, refresh/token reconnect, custom JSON/отказ, новая комната и Start с подтверждённой картой. Gold Haven открыт обычным lobby UI; обе 3D-сцены соответствуют snapshot (19 hex, 4 sea, 2 gold, 9 ports, pirate), возврат в 2D → setup → Roll до tick 9. Engine/карты/Board3D не менялись. Scenario suite не повторялась; исторический baseline от 2026-10-03: 348/508. Полная партия/mobile/нагрузка не проверялись. Подробности — [[React интерфейс]], [[Сервер и протокол]], [[plans/board3d]].
 
 Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8812`), построение всех 12 карт в памяти, повторяемость seed, topology/ports/snapshot/legal и границы map validation. В рамках этого анализа полный test/build/scenario набор не повторялся, runtime и зависимости не менялись; последующая Docker verification указана выше. Подробности — [[Карты и сценарии]] и [[Design System]].
 
@@ -28,6 +28,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Создание поля из JSON-пресета, начальная расстановка и основной цикл реализованы в движке.
 - Desktop offline имеет бот, строительство, обмены, карты развития и сохранения; у этих возможностей есть ограничения и ошибки.
 - Сервер обрабатывает комнаты, команды и снимки; web показывает lobby и match с интерактивным SVG-полем.
+- Lobby map selection: Room authoritative; map_revision растёт при успешном set_map. WSClient отбрасывает меньшую revision в той же комнате, сохраняет последний pending выбор и держит один запрос в ожидании плюс последний queued выбор. Start ждёт подтверждения; disconnect/смена комнаты сбрасывают pending, reconnect получает актуальную карту сервера.
 - BoardRenderer сохраняет default 2D и добавляет lazy 3D Experimental на том же snapshot. Board3D только визуализирует, без gameplay/command logic; placement и robber/pirate остаются в 2D. Scope и проверка — [[plans/board3d]].
 - Production roll принимает только `{type: "roll"}`; две кости генерирует сервер. CATAN_DEBUG_ROLLS больше не открывает публичный debug-путь.
 - Публичный список команд исключает grant_resources. Helper остался в trusted engine для подготовки тестов и проверяет весь payload перед выдачей.
@@ -37,7 +38,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Reconnect token восстанавливает прежний слот до rematch. Сохранившиеся участники сохраняют token с новым pid; исключённый участник теряет доступ к слоту при новом матче. match_id увеличивается; tick, sequence и deduplication history сбрасываются.
 - В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для будущего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed и точные остатки банка не передаются, колода перемешивается независимо от карты.
 - Pirate использует одно разрешённое событие после 7/завершения discard либо Knight: pending `robber_move` позволяет выбрать land robber или sea pirate при enable_pirate. Успех закрывает pending и допускает максимум одну кражу; повтор без нового события отклоняется общим движком. React/PySide клики согласованы с этим событием.
-- 37 web cases проходят (16 transport + 5 BoardView + 4 URL + 12 Board3D projection/geometry); TypeScript/production/Docker build проверены 2026-10-04. 158 pytest passed без skip — предыдущая infrastructure verification этого дня, не повторный запуск после добавления renderer. Это не подтверждение полной корректности CATAN.
+- 48 web cases проходят (24 transport + 3 LobbyPage + 5 BoardView + 4 URL + 12 Board3D projection/geometry); 160 pytest passed без skip, TypeScript/production/Docker build проверены после lobby fix 2026-10-04. Это не подтверждение полной корректности CATAN.
 
 ## Partially Implemented
 
@@ -54,6 +55,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 | Production roll / grant_resources | Исправлено 2026-10-02, проверено через WebSocket |
 | Чужой слот по имени | Исправлено; токен и единственный active_ws на слот |
 | React Join с token на открытом WS | Исправлено 2026-10-02; повторный reconnect, отказ без fallback, другой room/name и create-room проверены |
+| Откат карты в React lobby | Исправлено 2026-10-04; удалены встречные mapId effects, добавлены map_revision/pending ordering. Старые ответы, custom JSON, новый room и подтверждённый Start проверены двумя браузерными клиентами |
 | Координаты | Исправлено существование vertex/edge/hex и land/sea; setup нельзя включить клиентским флагом после расстановки |
 | Атомарность / Year of Plenty | Подтверждённые места исправлены; весь state сравнивается при отказе. Повторный discard тоже отклоняется |
 | Скрытая информация | Персональные снимки; active hidden VP закрыты, final total VP раскрываются. Финальная policy проверена 2026-10-03; чужая res/dev hand, точный bank и seed закрыты |
@@ -85,7 +87,7 @@ Production Hardening Phase 1 завершена в утверждённом scop
 
 ## Next Engineering Tasks
 
-- Следующий шаг: review/checkpoint Board3D Phase 1. Предлагаемые commit: feat: add experimental 3d board renderer; tag: board3d-phase-1. Агент не создаёт их автоматически.
+- Следующий шаг: review/checkpoint узкого lobby map fix. Локальная база diff: commit 104b027 (3d board); указанный пользователем tag board3d-phase-1 локально не найден. Агент не создаёт commit/tag автоматически.
 - Board3D Phase 2 потребует отдельной задачи на interaction/controller и достаточный server legal contract. Не начат автоматически.
 - Открытый backlog: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения.
 - Дальнейшие ограничения Phase 1 и результаты — [[plans/server-authority-hardening]].
@@ -111,4 +113,4 @@ Runtime diff ограничен GET /health в server_mp.py и общим URL re
 
 Браузерная проверка: Base Standard — два React-клиента; Gold Haven — live protocol host и React participant, 4 sea/2 gold/9 ports, setup/Roll. Город/корабль и 50 hex проверены отдельно test snapshots, не полным gameplay. GPU resource cleanup и отсутствие idle frames подтверждены; low-end/mobile/full-match не проверены. Lazy chunk ~874 KB / ~235 KB gzip, Vite size warning остаётся.
 
-Обнаружено существующее расхождение вне scope: LobbyPage mapId effects способны откатить выбор пресета и отправить set_map после старта; подтверждено до загрузки Board3D. Для Seafarers host задавал map через обычный protocol; React join не менял карту. LobbyPage сохранён. Plan, verification и Phase 2 границы — [[plans/board3d]], визуальное направление — [[Design System]].
+Обнаруженный при Board3D откат lobby карты закрыт отдельным узким fix 2026-10-04. До правок задержка ответа Gold Haven воспроизвела возврат selector на Base и отправку старого Base обратно серверу. Теперь оба React-клиента выбрали/подтвердили Gold Haven через UI и запустили корректный Seafarers snapshot; workaround с protocol host больше не нужен. Runtime diff ограничен LobbyPage/WSClient/Room/room_state; renderer/engine/reconnect identity/Docker architecture сохранены. Подтверждённых blockers для отдельного начала Board3D Phase 2 в проверенном scope нет; Phase 2 не начата. Plan и границы — [[plans/board3d]], визуальное направление — [[Design System]].

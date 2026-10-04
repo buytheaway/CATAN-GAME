@@ -17,7 +17,7 @@ Board3D Phase 1 verified 2026-10-04: renderer selector и отдельная vis
 | Компонент | Кто создаёт | Props | Локальные данные |
 | --- | --- | --- | --- |
 | [App](../../web/src/App.tsx) | main.tsx | Нет | client, room, match, status, log, error |
-| [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, mapId, customLabel; lastSentMap в ref |
+| [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, pendingMapId, customLabel; отображаемый mapId = pending или room.map_id |
 | [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error | selectedAction, discard, goldRes, goldQty |
 | [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | Прежние BoardViewProps, тот же state | mode=2d/3d, default 2d; lazy/failure boundary |
 | [BoardView](../../web/src/components/BoardView.tsx) | BoardRenderer, режим 2D | state, youPid, selectedAction, onSendCmd, onSelectAction | moveFrom |
@@ -33,7 +33,7 @@ App показывает LobbyPage до первого match и GamePage пос�
 | --- | --- | --- |
 | Главное меню | Отдельного нет | Стартовый экран — LobbyPage |
 | Connection | LobbyPage | URL, имя, код, число мест; Host/Join |
-| Карта комнаты | LobbyPage | room.map_presets/id/meta/rules, isHost; setMap |
+| Карта комнаты | LobbyPage | room.map_presets/id/meta/rules и map_revision, isHost, client.pendingMapId; setMap из onChange/FileReader |
 | Участники лобби | LobbyPage | room.players, host_pid, connected |
 | Статус матча | GamePage | Код комнаты, tick, turn, phase, pending_action, status, rules_config |
 | Ресурсы | GamePage | state.players[youPid].res; res-chip по каждому ресурсу |
@@ -47,6 +47,18 @@ App показывает LobbyPage до первого match и GamePage пос�
 | Строительство | BoardView | Выбранный инструмент, legal, turn, phase, occupied_* |
 
 Roll доступен в свой ход основной фазы до броска и без pending-action. End Turn зависит от своего хода, rolled и отсутствия pending-action. GamePage рассчитывает эти условия.
+
+## Выбор карты в lobby
+
+Исправлено и проверено 2026-10-04. Раньше один effect возвращал локальный mapId к старому room.map_id, а второй отправлял изменившийся mapId обратно. Задержка room_state воспроизвела selector Gold Haven → Base и лишний set_map(Base) при подтверждении Gold Haven. Это происходило до загрузки Board3D.
+
+Теперь путь: onChange/FileReader → WSClient.setMap → server set_map → Room.selected_map_* + map_revision → room_state → WSClient.handleMessage → App.setRoom → LobbyPage. Snapshot эффекты не отправляют set_map. Подтверждённый выбор берётся из Room; pendingMapId — только временное отображение последнего намерения пользователя.
+
+WSClient держит один отправленный запрос и один последний queued выбор. Пока подтверждается A, быстрый выбор B виден в selector; ACK A отправляет B, не возвращая selector на A. ACK распознаётся по росту map_revision; обычный presence broadcast не завершает ожидание. Меньшая revision той же комнаты и ответы других комнат отбрасываются до onRoomState. Это порядок выбора карты, не общая версия players/status комнаты.
+
+Start Match disabled до подтверждения последнего выбора; startMatch также защищён в клиенте. Отказ с detail.request_type=set_map завершает только map request: queued выбор отправляется либо selector возвращается к подтверждённому состоянию. Disconnect/Host/Join сбрасывают map intentions; reconnect получает текущую карту сервера. Custom ID имеет собственную option; завершившееся чтение файла прежней комнаты игнорируется, customLabel сбрасывается при смене room.
+
+Проверки: 8 новых transport cases и 3 LobbyPage render/handler cases, live Python map tests, production Chrome с двумя независимыми React contexts и реальными server messages. Задержка ACK и повтор старых frames контролировались браузерным test harness без изменения runtime; обычные Host/Join/map/Start прошли на Gold Haven и custom JSON. Полный web набор: 48 passed; TypeScript/build проходят. Сетевой контракт — [[Сервер и протокол]].
 
 ## Поле
 

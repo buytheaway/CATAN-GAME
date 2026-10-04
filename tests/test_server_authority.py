@@ -64,6 +64,80 @@ async def start_trio(clients):
     return server.manager.rooms[state["room_code"]], tokens
 
 
+def test_lobby_map_revision_final_preset_reconnect_and_start(live_server):
+    async def latest_map(ws, map_id):
+        while (state := await _recv_type(ws, "room_state"))["map_id"] != map_id:
+            pass
+        return state
+
+    async def run():
+        async with websockets.connect(live_server) as a, websockets.connect(live_server) as b:
+            await _send(a, {"type": "create_room", "name": "Alice", "max_players": 2})
+            first = await _recv_type(a, "room_state")
+            token = await _recv_type(a, "reconnect_token")
+            code = first["room_code"]
+            assert first["map_revision"] == 0
+            await _send(b, {"type": "join_room", "room_code": code, "name": "Bob"})
+            await _recv_type(b, "room_state")
+            await _recv_type(b, "reconnect_token")
+            await _recv_type(a, "room_state")
+            await _send(a, {"type": "set_map", "map_id": "base_12vp"})
+            await _send(a, {"type": "set_map", "map_id": "seafarers_gold_haven"})
+            final_a = await latest_map(a, "seafarers_gold_haven")
+            final_b = await latest_map(b, "seafarers_gold_haven")
+            assert final_a["map_revision"] == final_b["map_revision"] == 2
+            async with websockets.connect(live_server) as replacement:
+                await _send(replacement, {"type": "reconnect", "room_code": code,
+                                          "reconnect_token": token["reconnect_token"]})
+                restored = await _recv_type(replacement, "room_state")
+                await _recv_type(replacement, "reconnect_token")
+                assert restored["map_id"] == "seafarers_gold_haven"
+                assert restored["map_revision"] == 2
+                await _send(replacement, {"type": "start_match"})
+                started = await _recv_type(replacement, "room_state")
+                assert started["map_revision"] == 2
+                for ws in (replacement, b):
+                    state = (await _recv_type(ws, "match_state"))["state"]
+                    assert state["map_id"] == "seafarers_gold_haven"
+                    assert sum(t["terrain"] == "sea" for t in state["tiles"]) == 4
+                    assert sum(t["terrain"] == "gold" for t in state["tiles"]) == 2
+                    assert state["tiles"][state["pirate_tile"]]["terrain"] == "sea"
+    asyncio.run(run())
+
+
+def test_lobby_map_errors_do_not_advance_revision_and_new_room_resets(live_server):
+    async def run():
+        async with websockets.connect(live_server) as a, websockets.connect(live_server) as b:
+            await _send(a, {"type": "create_room", "name": "Alice", "max_players": 2})
+            first = await _recv_type(a, "room_state")
+            await _recv_type(a, "reconnect_token")
+            room = server.manager.rooms[first["room_code"]]
+            await _send(b, {"type": "join_room", "room_code": room.room_code, "name": "Bob"})
+            await _recv_type(b, "room_state")
+            await _recv_type(b, "reconnect_token")
+            await _recv_type(a, "room_state")
+            await _send(a, {"type": "set_map", "map_id": "base_12vp"})
+            assert (await _recv_type(a, "room_state"))["map_revision"] == 1
+            await _recv_type(b, "room_state")
+            before = net_protocol.room_state_message(room)
+            for ws, payload, code in (
+                (a, {"map_data": "invalid"}, "invalid"),
+                (a, {"map_data": {"version": 1, "tiles": []}}, "invalid"),
+                (a, {"map_id": "unknown"}, "invalid"),
+                (b, {"map_id": "base_standard"}, "forbidden"),
+            ):
+                await _send(ws, {"type": "set_map", **payload})
+                error = await _recv_error(ws, code)
+                assert error["detail"]["request_type"] == "set_map"
+                assert net_protocol.room_state_message(room) == before
+            await _send(a, {"type": "create_room", "name": "Alice", "max_players": 2})
+            new = await _recv_type(a, "room_state")
+            assert new["room_code"] != room.room_code
+            assert new["map_id"] == "base_standard" and new["map_revision"] == 0
+            assert room.selected_map_id == "base_12vp" and room.map_revision == 1
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("extra", [
     {"roll": 12}, {"forced": 12}, {"dice": [6, 6]}, {"die1": 6, "die2": 6},
     {"roll": None}, {"forced": "bad"},

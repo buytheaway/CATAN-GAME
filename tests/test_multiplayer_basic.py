@@ -394,6 +394,7 @@ async def _run_map_selection(port: int):
         room_code = room_state["room_code"]
 
         presets = room_state.get("map_presets", [])
+        assert room_state["map_revision"] == 0
         assert isinstance(presets, list) and len(presets) >= 2
         pick_id = presets[1].get("id")
         assert isinstance(pick_id, str)
@@ -405,7 +406,9 @@ async def _run_map_selection(port: int):
 
         # invalid map id rejected
         await _send(ws1, {"type": "set_map", "map_id": "no_such_map"})
-        await _recv_error(ws1, "invalid")
+        error = await _recv_error(ws1, "invalid")
+        assert error["detail"]["request_type"] == "set_map"
+        assert server_mp.manager.rooms[room_code].map_revision == 0
 
         # valid map id applied
         await _send(ws1, {"type": "set_map", "map_id": pick_id})
@@ -413,10 +416,13 @@ async def _run_map_selection(port: int):
         rs2 = await _recv_room_with_map(ws2, pick_id)
         assert rs1.get("map_id") == pick_id
         assert rs2.get("map_id") == pick_id
+        assert rs1["map_revision"] == rs2["map_revision"] == 1
 
         # invalid map data rejected
         await _send(ws1, {"type": "set_map", "map_data": {"version": 1, "tiles": []}})
-        await _recv_error(ws1, "invalid")
+        error = await _recv_error(ws1, "invalid")
+        assert error["detail"]["request_type"] == "set_map"
+        assert server_mp.manager.rooms[room_code].map_revision == 1
 
         # valid custom map data applied
         custom = map_loader.get_preset_map("base_standard")
@@ -426,6 +432,7 @@ async def _run_map_selection(port: int):
         await _send(ws1, {"type": "set_map", "map_data": custom})
         rs_custom = await _recv_type(ws1, "room_state")
         assert rs_custom.get("map_meta", {}).get("name") == "Custom Test Map"
+        assert rs_custom["map_revision"] == 2
         custom_id = rs_custom.get("map_id") or "Custom Test Map"
 
         await _send(ws1, {"type": "start_match"})

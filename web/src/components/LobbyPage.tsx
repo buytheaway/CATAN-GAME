@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { RoomState, ServerError, WSClient } from "../wsClient";
 
 export default function LobbyPage({
@@ -19,10 +19,10 @@ export default function LobbyPage({
   const [roomCode, setRoomCode] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(4);
   const mapPresets = room?.map_presets ?? [];
-  const [mapId, setMapId] = useState("");
+  const [pendingMapId, setPendingMapId] = useState(client.pendingMapId);
+  const mapId = pendingMapId ?? room?.map_id ?? "base_standard";
   const [customLabel, setCustomLabel] = useState("Custom map: none");
   const isHost = room ? client.youPid === room.host_pid : false;
-  const lastSentMap = useRef<string | null>(null);
   const mapRules = room?.map_rules;
   const ruleBits: string[] = [];
   if (mapRules?.target_vp !== undefined) ruleBits.push(`Target VP ${mapRules.target_vp}`);
@@ -30,20 +30,12 @@ export default function LobbyPage({
   const ruleText = ruleBits.length ? ` | ${ruleBits.join(" | ")}` : "";
 
   useEffect(() => {
-    const next = room?.map_id || (mapPresets.length ? mapPresets[0].id : "base_standard");
-    if (next && next !== mapId) {
-      setMapId(next);
-    }
-  }, [room?.map_id, mapPresets.length, mapId]);
+    client.onMapPending = setPendingMapId;
+    setPendingMapId(client.pendingMapId);
+    return () => { client.onMapPending = undefined; };
+  }, [client]);
 
-  useEffect(() => {
-    if (!room || !isHost || room.status !== "lobby") return;
-    if (!mapId) return;
-    if (room.map_id === mapId) return;
-    if (lastSentMap.current === mapId) return;
-    lastSentMap.current = mapId;
-    client.setMap(mapId);
-  }, [mapId, room, isHost, client]);
+  useEffect(() => { setCustomLabel("Custom map: none"); }, [room?.room_code]);
 
   const onHost = () => {
     client.setName(name);
@@ -98,13 +90,15 @@ export default function LobbyPage({
           <span>Map preset</span>
           <select
             value={mapId}
-            onChange={(e) => setMapId(e.target.value)}
+            onChange={(e) => client.setMap(e.target.value)}
             disabled={!isHost || room?.status !== "lobby"}
           >
             {mapPresets.length === 0 ? <option value="base_standard">Base Standard</option> : null}
             {mapPresets.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
+            {mapId !== "base_standard" && !mapPresets.some((p) => p.id === mapId)
+              ? <option value={mapId}>{mapId}</option> : null}
           </select>
         </label>
         <label className="field">
@@ -118,6 +112,8 @@ export default function LobbyPage({
               if (!file) return;
               const reader = new FileReader();
               reader.onload = () => {
+                if (client.roomState?.room_code !== room?.room_code
+                    || client.roomState?.status !== "lobby") return;
                 try {
                   const data = JSON.parse(String(reader.result || ""));
                   const name = data?.name || "Custom Map";
@@ -161,7 +157,7 @@ export default function LobbyPage({
                 </li>
               ))}
             </ul>
-            <button onClick={() => client.startMatch()} className="btn primary" disabled={room.host_pid !== client.youPid || room.players.filter((p) => p.name).length < 2}>
+            <button onClick={() => client.startMatch()} className="btn primary" disabled={pendingMapId !== null || room.host_pid !== client.youPid || room.players.filter((p) => p.name).length < 2}>
               Start Match
             </button>
           </div>

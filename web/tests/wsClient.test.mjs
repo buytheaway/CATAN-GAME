@@ -44,6 +44,141 @@ function connectedClient() {
   return { client, socket };
 }
 
+function lobbyState(mapId = "base_standard", revision = 0, roomCode = "ROOM") {
+  return { type: "room_state", room_code: roomCode, map_revision: revision,
+    host_pid: 0, status: "lobby", max_players: 2, map_id: mapId,
+    players: [{ pid: 0, name: "Alice", connected: true }, { pid: 1, name: "Bob", connected: true }] };
+}
+
+function lobbyClient() {
+  const pair = connectedClient();
+  pair.socket.receive(lobbyState());
+  return pair;
+}
+
+test("map A remains pending through older/presence snapshots and confirmation sends no echo", () => {
+  const { client, socket } = lobbyClient();
+  const pending = [];
+  client.onMapPending = id => pending.push(id);
+  client.setMap("base_12vp");
+  socket.receive(lobbyState());
+  assert.equal(client.pendingMapId, "base_12vp");
+  assert.equal(client.roomState.map_id, "base_standard");
+  socket.receive(lobbyState("base_12vp", 1));
+  assert.equal(client.pendingMapId, null);
+  assert.equal(client.roomState.map_id, "base_12vp");
+  assert.deepEqual(pending, ["base_12vp", null]);
+  assert.deepEqual(socket.sent.filter(m => m.type === "set_map"), [{ type: "set_map", map_id: "base_12vp" }]);
+});
+
+test("rapid A to B keeps B visible and Start waits for the final server confirmation", () => {
+  const { client, socket } = lobbyClient();
+  client.setMap("base_12vp");
+  client.setMap("seafarers_gold_haven");
+  client.startMatch();
+  assert.equal(socket.sent.filter(m => m.type === "set_map").length, 1);
+  assert.equal(socket.sent.filter(m => m.type === "start_match").length, 0);
+  socket.receive(lobbyState("base_12vp", 1));
+  assert.equal(client.pendingMapId, "seafarers_gold_haven");
+  assert.equal(socket.sent.at(-1).map_id, "seafarers_gold_haven");
+  socket.receive(lobbyState("base_12vp", 1));
+  assert.equal(client.pendingMapId, "seafarers_gold_haven");
+  socket.receive(lobbyState("seafarers_gold_haven", 2));
+  assert.equal(client.pendingMapId, null);
+  client.startMatch();
+  assert.equal(socket.sent.at(-1).type, "start_match");
+});
+
+test("older map revision after the new one never reaches React or rolls B back to A", () => {
+  const { client, socket } = lobbyClient();
+  const accepted = [];
+  client.onRoomState = state => accepted.push(state.map_id);
+  socket.receive(lobbyState("seafarers_gold_haven", 2));
+  socket.receive(lobbyState("base_12vp", 1));
+  socket.receive(lobbyState());
+  assert.equal(client.roomState.map_id, "seafarers_gold_haven");
+  assert.deepEqual(accepted, ["seafarers_gold_haven"]);
+  assert.equal(socket.sent.filter(m => m.type === "set_map").length, 0);
+});
+
+test("participant accepts the final B and ignores stale A without sending any map selection", () => {
+  const { client, socket } = lobbyClient();
+  client.setName("Bob");
+  socket.receive(lobbyState("base_12vp", 1));
+  client.setMap("base_standard");
+  socket.receive(lobbyState("seafarers_gold_haven", 2));
+  socket.receive(lobbyState("base_12vp", 1));
+  assert.equal(client.youPid, 1);
+  assert.equal(client.roomState.map_id, "seafarers_gold_haven");
+  assert.equal(client.pendingMapId, null);
+  assert.equal(socket.sent.filter(m => m.type === "set_map").length, 0);
+});
+
+test("custom JSON keeps its payload and repeated custom IDs require a new revision", () => {
+  const { client, socket } = lobbyClient();
+  const first = { name: "My map", version: 1, tiles: [{ q: 0, r: 0, terrain: "forest", number: 6 }] };
+  client.setMap(undefined, first);
+  assert.equal(client.pendingMapId, "My map");
+  assert.deepEqual(socket.sent.at(-1), { type: "set_map", map_data: first });
+  socket.receive(lobbyState("My map", 1));
+  const second = { ...first, tiles: [{ q: 0, r: 0, terrain: "gold", number: 8 }] };
+  client.setMap(undefined, second);
+  socket.receive(lobbyState("My map", 1));
+  assert.equal(client.pendingMapId, "My map");
+  assert.deepEqual(socket.sent.at(-1).map_data, second);
+  socket.receive(lobbyState("My map", 2));
+  assert.equal(client.pendingMapId, null);
+});
+
+test("map rejection rolls back or advances the queued selection; unrelated errors do neither", () => {
+  const { client, socket } = lobbyClient();
+  client.setMap("invalid");
+  client.setMap("base_12vp");
+  socket.receive({ type: "error", code: "invalid", message: "Other request failed", detail: {} });
+  assert.equal(socket.sent.at(-1).map_id, "invalid");
+  socket.receive({ type: "error", code: "invalid", message: "Unknown map_id", detail: { request_type: "set_map" } });
+  assert.equal(socket.sent.at(-1).map_id, "base_12vp");
+  assert.equal(client.pendingMapId, "base_12vp");
+  socket.receive(lobbyState("base_12vp", 1));
+  assert.equal(client.pendingMapId, null);
+  client.setMap("invalid");
+  socket.receive({ type: "error", code: "invalid", message: "Unknown map_id", detail: { request_type: "set_map" } });
+  assert.equal(client.pendingMapId, null);
+  assert.equal(client.roomState.map_id, "base_12vp");
+});
+
+test("disconnect drops unconfirmed choices and reconnect displays the authoritative server map", () => {
+  const { client, socket } = lobbyClient();
+  client.setMap("base_12vp");
+  client.setMap("base_standard");
+  window.setTimeout = () => 0;
+  socket.readyState = 3;
+  socket.onclose();
+  assert.equal(client.pendingMapId, null);
+  client.connect("ws://test/ws", "Alice");
+  const replacement = Socket.latest;
+  replacement.open();
+  assert.equal(replacement.sent.at(-1).type, "reconnect");
+  replacement.receive(lobbyState("seafarers_gold_haven", 4));
+  assert.equal(client.roomState.map_id, "seafarers_gold_haven");
+  assert.equal(replacement.sent.filter(m => m.type === "set_map").length, 0);
+});
+
+test("new room resets pending choices and accepts revision zero without inheriting the old map", () => {
+  const { client, socket } = lobbyClient();
+  socket.receive(lobbyState("base_12vp", 7));
+  client.setMap("seafarers_gold_haven");
+  client.setMap("base_20vp");
+  client.host(2);
+  assert.equal(client.pendingMapId, null);
+  socket.receive(lobbyState("base_standard", 0, "NEW"));
+  socket.receive(lobbyState("seafarers_gold_haven", 8));
+  assert.equal(client.roomState.room_code, "NEW");
+  assert.equal(client.roomState.map_revision, 0);
+  assert.equal(client.roomState.map_id, "base_standard");
+  assert.equal(socket.sent.at(-1).type, "create_room");
+});
+
 test("rejected ACK consumes sequence and removes the pending intent", () => {
   const { client, socket } = connectedClient();
   client.sendCmd({ type: "place_settlement", vid: 99999 });

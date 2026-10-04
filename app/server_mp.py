@@ -65,6 +65,7 @@ class Room:
     map_presets: List[Dict[str, Any]] = field(default_factory=list)
     selected_rules_config: Dict[str, Any] = field(default_factory=dict)
     selected_map_data: Optional[Dict[str, Any]] = None
+    map_revision: int = 0
     status: str = "lobby"
     match_id: int = 0
     tick: int = 0
@@ -403,7 +404,10 @@ async def websocket_endpoint(ws: WebSocket):
             val = net_protocol.validate_client_message(data)
             if not val.get("ok"):
                 err = val.get("error", {})
-                await _send(ws, net_protocol.error_message(err.get("code", "invalid"), err.get("message", "invalid"), err.get("detail")))
+                detail = err.get("detail", {})
+                if isinstance(data, dict) and data.get("type") == "set_map":
+                    detail = {**detail, "request_type": "set_map"}
+                await _send(ws, net_protocol.error_message(err.get("code", "invalid"), err.get("message", "invalid"), detail))
                 continue
 
             mtype = data.get("type")
@@ -495,13 +499,13 @@ async def websocket_endpoint(ws: WebSocket):
             if mtype == "set_map":
                 room = manager.rooms.get(conn.room_code or "")
                 if not room:
-                    await _send(ws, net_protocol.error_message("not_found", "Room not found"))
+                    await _send(ws, net_protocol.error_message("not_found", "Room not found", {"request_type": "set_map"}))
                     continue
                 if conn.pid != room.host_pid:
-                    await _send(ws, net_protocol.error_message("forbidden", "Only host can set map"))
+                    await _send(ws, net_protocol.error_message("forbidden", "Only host can set map", {"request_type": "set_map"}))
                     continue
                 if room.status != "lobby":
-                    await _send(ws, net_protocol.error_message("invalid", "Cannot change map after start"))
+                    await _send(ws, net_protocol.error_message("invalid", "Cannot change map after start", {"request_type": "set_map"}))
                     continue
                 map_data = data.get("map_data")
                 map_id = data.get("map_id") or data.get("id")
@@ -509,7 +513,7 @@ async def websocket_endpoint(ws: WebSocket):
                     try:
                         map_loader.validate_map_data(map_data)
                     except Exception as exc:
-                        await _send(ws, net_protocol.error_message("invalid", f"Invalid map_data: {exc}"))
+                        await _send(ws, net_protocol.error_message("invalid", f"Invalid map_data: {exc}", {"request_type": "set_map"}))
                         continue
                     room.selected_map_data = map_data
                     map_name = str(map_data.get("name", "custom"))
@@ -525,17 +529,18 @@ async def websocket_endpoint(ws: WebSocket):
                     room.selected_rules_config = vars(parse_rules_config(rules_raw if isinstance(rules_raw, dict) else {}))
                 else:
                     if not isinstance(map_id, str):
-                        await _send(ws, net_protocol.error_message("invalid", "map_id required"))
+                        await _send(ws, net_protocol.error_message("invalid", "map_id required", {"request_type": "set_map"}))
                         continue
                     meta = get_preset_meta(map_id)
                     if not meta:
-                        await _send(ws, net_protocol.error_message("invalid", "Unknown map_id"))
+                        await _send(ws, net_protocol.error_message("invalid", "Unknown map_id", {"request_type": "set_map"}))
                         continue
                     rules_raw = get_preset_map(map_id).get("rules", {})
                     room.selected_rules_config = vars(parse_rules_config(rules_raw))
                     room.selected_map_id = map_id
                     room.selected_map_meta = dict(meta)
                     room.selected_map_data = None
+                room.map_revision += 1
                 await _send_room_state(room)
                 continue
 

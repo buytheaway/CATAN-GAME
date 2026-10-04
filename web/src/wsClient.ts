@@ -3,6 +3,7 @@ import type { GameState } from "./components/BoardView.types";
 export type RoomState = {
   type: "room_state";
   room_code: string;
+  map_revision: number;
   host_pid: number;
   players: { pid: number; name: string; connected: boolean }[];
   max_players: number;
@@ -76,6 +77,8 @@ export type CmdAck = {
 
 export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck;
 
+type MapSelection = { mapId: string; payload: Record<string, any> };
+
 export function defaultWebSocketUrl(): string {
   return import.meta.env.PROD
     ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`
@@ -109,9 +112,13 @@ export class WSClient {
 
   private pendingCmds = new Map<string, { seq: number; payload: any }>();
   private matchKey: string | null = null;
+  private mapInFlight: { revision: number } | null = null;
+  private queuedMap: MapSelection | null = null;
+  public pendingMapId: string | null = null;
 
   onStatus?: (s: string) => void;
   onRoomState?: (s: RoomState) => void;
+  onMapPending?: (mapId: string | null) => void;
   onMatchState?: (s: MatchState) => void;
   onError?: (e: ServerError) => void;
   onLog?: (msg: string) => void;
@@ -131,6 +138,8 @@ export class WSClient {
   }
 
   host(maxPlayers: number) {
+    this.resetMapSelection();
+    this.roomState = null;
     this.roomCode = null;
     this.reconnectToken = null;
     this.pendingReconnectKey = null;
@@ -150,6 +159,8 @@ export class WSClient {
   }
 
   private sendJoinIntent(roomCode: string) {
+    this.resetMapSelection();
+    if (this.roomState?.room_code !== roomCode) this.roomState = null;
     if (this.roomCode !== roomCode) this.reconnectToken = null;
     this.roomCode = roomCode;
     if (this.reconnectToken) {
@@ -162,6 +173,10 @@ export class WSClient {
   }
 
   startMatch() {
+    if (this.pendingMapId !== null) {
+      this.onLog?.("Wait for map confirmation");
+      return;
+    }
     this.send({ type: "start_match" });
   }
 
@@ -170,12 +185,42 @@ export class WSClient {
   }
 
   setMap(mapId?: string, mapData?: Record<string, any>) {
+    if (!mapId && !mapData) return;
+    if (!this.isOpen() || !this.roomState || this.roomState.room_code !== this.roomCode
+        || this.roomState.status !== "lobby" || this.youPid !== this.roomState.host_pid) return;
     const payload: any = { type: "set_map" };
     if (mapId) payload.map_id = mapId;
     if (mapData) payload.map_data = mapData;
-    this.send(payload);
+    const selection = { mapId: mapData ? mapId || String(mapData.name ?? "custom") : mapId!, payload };
+    this.pendingMapId = selection.mapId;
+    this.onMapPending?.(this.pendingMapId);
+    if (this.mapInFlight) this.queuedMap = selection;
+    else this.sendMapSelection(selection);
   }
 
+  private sendMapSelection(selection: MapSelection) {
+    // Only one request awaits a result; presence broadcasts cannot acknowledge it.
+    this.mapInFlight = { revision: this.roomState!.map_revision + 1 };
+    this.send(selection.payload);
+  }
+
+  private finishMapSelection() {
+    const next = this.queuedMap;
+    this.mapInFlight = null;
+    this.queuedMap = null;
+    if (next && this.roomState?.status === "lobby" && this.isOpen()) {
+      this.sendMapSelection(next);
+    } else {
+      this.resetMapSelection();
+    }
+  }
+
+  private resetMapSelection() {
+    this.mapInFlight = null;
+    this.queuedMap = null;
+    this.pendingMapId = null;
+    this.onMapPending?.(null);
+  }
 
   sendCmd(cmd: Record<string, any>) {
     if (!this.matchId) {
@@ -218,6 +263,7 @@ export class WSClient {
       }
     };
     this.ws.onclose = () => {
+      this.resetMapSelection();
       this.onStatus?.("disconnected");
       this.scheduleReconnect();
     };
@@ -245,10 +291,17 @@ export class WSClient {
       return;
     }
     if (data.type === "room_state") {
+      if (this.roomCode && data.room_code !== this.roomCode) return;
+      if (this.roomState?.room_code === data.room_code
+          && data.map_revision < this.roomState.map_revision) return;
       this.roomState = data;
       this.roomCode = data.room_code;
       const you = data.players.find((p) => p.name === this.name);
       if (you) this.youPid = you.pid;
+      if (data.status !== "lobby") this.resetMapSelection();
+      else if (this.mapInFlight && data.map_revision >= this.mapInFlight.revision) {
+        this.finishMapSelection();
+      }
       this.onRoomState?.(data);
       return;
     }
@@ -284,6 +337,7 @@ export class WSClient {
       return;
     }
     if (data.type === "error") {
+      if (this.mapInFlight && data.detail?.request_type === "set_map") this.finishMapSelection();
       if (this.pendingReconnectKey && (data.code === "forbidden" || data.code === "not_found")) {
         this.reconnectToken = null;
         try {
