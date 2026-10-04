@@ -6,7 +6,9 @@ tags: [catan, web, интерфейс]
 
 [[Web клиент]] · [[Состояние игры]] · [[Стили и визуальные границы]] · [[Design System]]
 
-В текущем приложении четыре крупных React-компонента. Остальные панели — JSX-блоки внутри них. Отдельных компонентов ResourceCard, PlayerList, TradeDialog и MainMenu в web нет.
+Основные UI-границы: App, LobbyPage, GamePage, BoardRenderer, SVG BoardView и экспериментальный Board3D. Scene-компоненты находятся в board3d/. Остальные панели — JSX-блоки внутри крупных компонентов. Отдельных ResourceCard, PlayerList, TradeDialog и MainMenu в web нет.
+
+Board3D Phase 1 verified 2026-10-04: renderer selector и отдельная visual scene добавлены без миграции command/controller logic. 37 web cases, TypeScript/build и Docker/browser checks проходят; детали и ограничения — [[plans/board3d]].
 
 Контракт проверен 2026-10-02: UI-композиция не менялась в Phase 1. MatchState типизирован под персональный server snapshot, чужой player.res опционален, own res сохранена. BoardView Port соответствует текущему JSON `[edge, kind]`, pending_action/pending_pid допускают null. TypeScript проходит; отсутствие чужой руки обеспечивается сервером, а не JSX.
 
@@ -17,7 +19,9 @@ tags: [catan, web, интерфейс]
 | [App](../../web/src/App.tsx) | main.tsx | Нет | client, room, match, status, log, error |
 | [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, mapId, customLabel; lastSentMap в ref |
 | [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error | selectedAction, discard, goldRes, goldQty |
-| [BoardView](../../web/src/components/BoardView.tsx) | GamePage | state, youPid, selectedAction, onSendCmd, onSelectAction | moveFrom |
+| [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | Прежние BoardViewProps, тот же state | mode=2d/3d, default 2d; lazy/failure boundary |
+| [BoardView](../../web/src/components/BoardView.tsx) | BoardRenderer, режим 2D | state, youPid, selectedAction, onSendCmd, onSelectAction | moveFrom |
+| [Board3D](../../web/src/board3d/Board3D.tsx) | BoardRenderer, режим 3D | state geometry/occupancy, без command callbacks | hovered/inspected tile index, reset camera version; read-only render projection |
 
 ## Экраны
 
@@ -52,6 +56,8 @@ BoardView получает геометрию, фигуры, правила и �
 
 selectedAction хранит GamePage, хотя кнопки инструмента находятся в BoardView. Перемещение корабля хранит промежуточный moveFrom внутри BoardView.
 
+Board3D сохраняет IDs и отображает snapshot, без legal/cost/turn checks. Terrain/number meshes, ports и placeholder pieces не отправляют команды. Hover/click только инспектирует tile index; placement/robber/pirate требуют 2D. Sidebar Roll/End Turn остаётся в GamePage и работает с тем же client. При переключении renderer перемонтируется; незавершённый локальный moveFrom SVG сбрасывается, selectedAction в GamePage сохраняется. GameState этим не меняется.
+
 ## Текущее дерево
 
 Названия без угловых скобок — блоки JSX, а не самостоятельные компоненты.
@@ -70,10 +76,19 @@ selectedAction хранит GamePage, хотя кнопки инструмент
 │       ├── Участники
 │       └── Start Match
 └── Если есть match: <GamePage>
-    ├── <BoardView>
-    │   ├── Выбранное действие
-    │   ├── SVG: клетки / фигуры / подсветка / порты
-    │   └── Settlement / Road / City / Ship / Move Ship / Pirate
+    ├── <BoardRenderer>
+    │   ├── 2D / 3D Experimental selector
+    │   ├── 2D: <BoardView>
+    │   │   ├── Выбранное действие
+    │   │   ├── SVG: клетки / фигуры / подсветка / порты
+    │   │   └── Settlement / Road / City / Ship / Move Ship / Pirate
+    │   └── 3D: lazy <Board3D>, Suspense / failure boundary
+    │       ├── Camera toolbar / Reset Camera
+    │       ├── <Canvas> → CameraRig / lights / HexTile3D
+    │       │   ├── TerrainHints / NumberToken3D
+    │       │   ├── Pieces3D: road / settlement / city / ship / robber / pirate
+    │       │   └── Port3D
+    │       └── View-only notice / inspected tile
     └── Sidebar
         ├── Статус / ошибка
         ├── My Resources

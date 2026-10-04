@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { MatchState, RoomState, ServerError, WSClient } from "../wsClient";
-import BoardView from "./BoardView";
+import BoardRenderer from "./BoardRenderer";
 
 const RESOURCES = ["wood", "brick", "sheep", "wheat", "ore"];
 
@@ -62,7 +62,7 @@ export default function GamePage({
   return (
     <div className="game-grid">
       <div className="board-wrap card">
-        <BoardView
+        <BoardRenderer
           state={state}
           youPid={youPid}
           selectedAction={selectedAction}

@@ -7,7 +7,7 @@ updated: 2026-10-04
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/web-ui-redesign]]
 
-Status: Clean stylized tabletop direction accepted by user on 2026-10-04. Exact layout/assets/tokens and implementation specification: not established. UI implementation: not started.
+Status: Clean modern tabletop direction accepted by user on 2026-10-04. Board3D Phase 1 visual foundation implemented and verified 2026-10-04. Surrounding UI redesign and final layout/assets/tokens remain unimplemented/TBD.
 
 ## Reference versus accepted design
 
@@ -37,28 +37,41 @@ Status: Clean stylized tabletop direction accepted by user on 2026-10-04. Exact 
 
 Та же визуальная система и тот же UI вокруг игры. Добавляются sea hexes, несколько островов, ships, pirate, gold field и maritime ports. Fog/unexplored показываются только при фактической поддержке выбранного сценария: сейчас такой модели в engine нет. Поставляемые Seafarers presets имеют один связный land core; несколько островов — направление для будущих custom/generated карт, не описание уже готового сценария. Отдельная fantasy/pirate theme не создаётся.
 
-### Board3D boundary and proposed structure
+### Board3D Phase 1 — implemented visual foundation
 
-Предложение, без реализации: GameState → player-specific snapshot → React state → Board3D. Renderer строит meshes из готовой геометрии и показывает server-produced legal targets. Click/hover сохраняет исходные tile index, vertex ID или edge pair; существующие commands отправляются через callback. Правила и проверки остаются в Python engine/server. Выбранное действие и шаги выбора ship живут в controller над renderer, а не в расчётах правил внутри meshes.
+Python GameState → player-specific snapshot → WSClient/App React state → GamePage → BoardRenderer → Board3D → Three.js scene. **Renderer, not rules engine.** Board3D получает геометрию/occupied data, не получает WSClient или command callbacks и не вычисляет стоимость, legal targets либо игровые решения. model.ts — read-only projection позиций для meshes, без альтернативной модели партии. Hover/click возвращает только исходный tile index в локальную подпись; GameState и network tick не меняются.
+
+BoardRenderer предлагает 2D / 3D Experimental. По умолчанию 2D; SVG BoardView и его gameplay handlers сохранены. В 3D доступны визуальный просмотр и существующие sidebar actions; для placement/robber/pirate требуется вернуться в 2D. Полный interaction остаётся Phase 2.
 
 ```text
 web/src/board3d/
   Board3D.tsx
   HexTile3D.tsx
-  Road3D.tsx
-  Settlement3D.tsx
-  City3D.tsx
-  Ship3D.tsx
-  Robber3D.tsx
-  Pirate3D.tsx
+  TerrainHints.tsx
+  Pieces3D.tsx         # Road/Settlement/City/Ship/Robber/Pirate placeholders
   Port3D.tsx
   NumberToken3D.tsx
+  CameraRig.tsx
   coordinates.ts
+  materials.ts
+  model.ts
+  types.ts
+  board3d.css
 ```
 
-Папка ещё не создана. coordinates.ts переводит существующие 2D centers/vertices в плоскость XZ с визуальной высотой; не пересоздаёт игровой graph. Figure-компоненты получают исходный ID, owner/level и позицию; tile/token — terrain/number/center; port — edge/kind.
+coordinates.ts: server X / state.size → Three X; server Y / state.size → Three Z; visual elevation → Three Y. Centers имеют приоритет, q/r — fallback при отсутствии center. Radius гекса = 1 scene unit. Ориентация совпадает с pointy-top server grid; игровой graph/IDs не пересоздаются. Фигуры используют исходные vertex/edge IDs и цвета PLAYER_COLORS из BoardView.constants.ts. Порт остаётся связанным с исходным edge; небольшой внешний offset label — только оформление. Ошибки auto-port placement не исправлялись.
 
-По package-lock текущие React/React DOM 18.3.1, Vite 5.4.21, TypeScript 5.9.3; three/fiber отсутствуют. Предпочтительный стек React Three Fiber + Three.js совместим с подходом проекта, но major нужно подобрать: официально fiber 8 соответствует React 18, fiber 9 — React 19 ([R3F introduction](https://r3f.docs.pmnd.rs/getting-started/introduction), проверено 2026-10-04). Для текущего React подходит линия fiber 8; это не установка/проверка конкретного набора зависимостей и не разрешение обновлять React. Vite с TSX/ES modules не показывает отдельного архитектурного препятствия; фактическая browser/WebGL/build compatibility потребует прототипа.
+Закреплены @react-three/fiber 8.18.0, Three.js 0.180.0 и dev @types/three 0.180.0. React/React DOM 18.3.1, Vite 5.4.21 и TypeScript 5.9.3 сохранены; версии прежних lockfile packages не изменились. Fiber 8 соответствует React 18 ([официальная compatibility](https://r3f.docs.pmnd.rs/getting-started/introduction), проверено 2026-10-04). OrbitControls берётся из Three.js; drei, внешние 3D assets и font downloads отсутствуют. Board3D загружается отдельным lazy chunk только после выбора 3D.
+
+**Visual language Phase 1:** неглубокие настоящие шестигранные meshes, контрастные верхние площадки/боковины и видимые зазоры. Forest — зелёный + простые деревья; hills — clay + небольшие холмы; pasture — светло-зелёный + sheep hint; fields — светлое золото + wheat; mountains — холодный серый + peaks; desert — песочный + низкие dunes; sea — спокойный голубой + статичные wave marks; gold — более тёмный gold terrain + faceted nuggets. Цвет и силуэт работают вместе. Это проверенная экспериментальная палитра поля, не окончательные токены всего UI.
+
+NumberToken3D — светлый настольный token с CanvasTexture-числом; 6/8 выделены красным. Port3D показывает 3:1 либо 2:1 + название ресурса. Pieces3D содержит простые owner-colored placeholders. Камера — perspective three-quarter top-down, bounds/aspect auto-fit, ограниченный orbit/zoom и Reset Camera; pan отключён. Ambient fill + directional light, ограниченные мягкие shadows; без cinematic окружения, воды/React state animation каждый кадр и postprocessing.
+
+**Verified 2026-10-04:** production Docker в реальном Chrome: Base Standard (два React-клиента) и Seafarers Gold Haven (protocol host + React join), live snapshots, 8 setup placements + Roll для каждой карты, возврат 3D→2D; meshes/terrain/numbers/ports/occupancy сверены со snapshot. Все 19 Base hex инспектированы без cmd/state changes. Zoom/orbit/reset и desktop 1440×1000, 1280×720, 1024×768 проверены без horizontal overflow. City/ship и смещённая 50-hex карта дополнительно проверены через engine-built test snapshots с mocked browser transport, не через полный gameplay.
+
+37 web tests (25 прежних + 12 pure geometry/projection cases), TypeScript, production build и Docker build проходят. В покое frameloop=demand даёт 0 дополнительных кадров; unmount освобождает geometry/texture и WebGL context. Около 180–190 main-pass draw calls на 19 hex, 352 на test 50; это наблюдение на проверенном GPU, не гарантия low-end FPS. Lazy 3D chunk ~874 KB / ~235 KB gzip; Vite size warning сохраняется. Полная партия/mobile/fallback на слабых устройствах не проверены.
+
+**Known existing limitation:** LobbyPage mapId-sync effects могут откатить выбор пресета и отправить set_map после старта. Подтверждено до загрузки 3D chunk; LobbyPage не менялся. Для live Seafarers verification host задавал карту напрямую через существующий protocol, React-клиент входил как participant. Полные действия/пределы — [[plans/board3d]].
 
 Геометрия snapshot уже достаточна. Ограничения server legal для полного rule-free interaction и готовность generator — [[Карты и сценарии#Готовность к Board3D]] и [[Карты и сценарии#Будущий Random Map Generator — предложение, не реализация]].
 
@@ -120,7 +133,7 @@ Status: **Layout / readability reference**, не финальная visual speci
 
 ## Historical AI screen references
 
-Оригиналы следующих шести AI-mockups находятся в `docs/design/references/`; ссылки ведут на существующие файлы. Семь прежних вложений дали шесть уникальных изображений: вложения 5 и 6 полностью одинаковы и представлены одним gameplay-concept; альтернативный gameplay сохранён отдельно. Их видимые детали описаны исторически; актуальное Product Direction выше имеет приоритет.
+Оригиналы следующих шести AI-mockups находятся в `docs/design/references/`; ссылки ведут на существующие файлы. Семь прежних вложений дали шесть уникальных изображений: вложения 5 и 6 полностью одинаковы и представлены одним gameplay-concept; альтернативный gameplay сохранён отдельно. **Fantasy/MMORPG/medieval tavern decorative direction: Rejected / historical.** Их полезные UX observations можно рассматривать отдельно; dark wood, gold frames и cinematic окружение не реализованы. Актуальное clean modern tabletop направление выше имеет приоритет.
 
 ## Gameplay
 

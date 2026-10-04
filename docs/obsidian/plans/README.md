@@ -11,6 +11,7 @@ tags: [catan, планы]
 - [[plans/server-authority-hardening]] — Phase 1 реализована и проверена 2026-10-02; оставшиеся ограничения указаны в плане.
 - [[plans/web-ui-redesign]] — Draft; references получены и разобраны, реализация не начата.
 - [[plans/containerization]] — Production Infrastructure Phase 1 Completed, 2026-10-04; эксплуатационные инструкции — [[Deployment]].
+- [[plans/board3d]] — Board3D Phase 1 Completed, 2026-10-04; чистое tabletop-поле на текущем snapshot, renderer-only; Phase 2 не начат.
 - [[plans/plan-template]] — форма для новой крупной задачи; сначала проверить отсутствие существующего плана.
 
 По завершении план можно сохранить как инженерную историю; актуальное состояние всегда обновляется в Project State. Не записывать переписку и ежедневные логи.

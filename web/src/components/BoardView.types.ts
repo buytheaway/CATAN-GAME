@@ -30,8 +30,10 @@ export interface LegalMoves {
 }
 
 export interface Tile {
+  q?: number;
+  r?: number;
   center?: [number, number];
-  number?: number;
+  number?: number | null;
   terrain: string;
 }
 

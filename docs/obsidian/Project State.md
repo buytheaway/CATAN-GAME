@@ -5,7 +5,7 @@ updated: 2026-10-04
 
 # Project State
 
-Last verified: 2026-10-04 — Docker build/up, два реальных headless Chrome contexts через Nginx, setup/Roll/snapshots/ACK и graceful down; 158 pytest, 25 web cases, TypeScript check и production build. Gameplay не менялся, scenario suite сегодня не повторялась; исторический baseline от 2026-10-03: 348 passed / 160 прежних отказов. Полная партия, нагрузка и отдельные LAN-устройства не проверялись. Подробности — [[Deployment]].
+Last verified: 2026-10-04 — Board3D Phase 1: 37 web tests, TypeScript, production build, Docker build/up и реальный Chrome на Base Standard/Gold Haven; coordinates/IDs/terrain/ports/pieces, toggle, camera/resize и setup→Roll. City/ship и 50 hex — engine-built snapshots с mocked transport. Python runtime не менялся: pytest сегодня повторно для Board3D не запускался; 158 passed относится к предыдущей infrastructure verification этого дня. Scenario suite не повторялась; исторический baseline от 2026-10-03: 348/508. Полная партия/mobile/нагрузка не проверялись. Подробности — [[plans/board3d]] и [[Deployment]].
 
 Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8812`), построение всех 12 карт в памяти, повторяемость seed, topology/ports/snapshot/legal и границы map validation. В рамках этого анализа полный test/build/scenario набор не повторялся, runtime и зависимости не менялись; последующая Docker verification указана выше. Подробности — [[Карты и сценарии]] и [[Design System]].
 
@@ -28,6 +28,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Создание поля из JSON-пресета, начальная расстановка и основной цикл реализованы в движке.
 - Desktop offline имеет бот, строительство, обмены, карты развития и сохранения; у этих возможностей есть ограничения и ошибки.
 - Сервер обрабатывает комнаты, команды и снимки; web показывает lobby и match с интерактивным SVG-полем.
+- BoardRenderer сохраняет default 2D и добавляет lazy 3D Experimental на том же snapshot. Board3D только визуализирует, без gameplay/command logic; placement и robber/pirate остаются в 2D. Scope и проверка — [[plans/board3d]].
 - Production roll принимает только `{type: "roll"}`; две кости генерирует сервер. CATAN_DEBUG_ROLLS больше не открывает публичный debug-путь.
 - Публичный список команд исключает grant_resources. Helper остался в trusted engine для подготовки тестов и проверяет весь payload перед выдачей.
 - Имя не даёт доступ к занятому слоту; reconnect требует существующий токен и отзывает старое соединение.
@@ -36,7 +37,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Reconnect token восстанавливает прежний слот до rematch. Сохранившиеся участники сохраняют token с новым pid; исключённый участник теряет доступ к слоту при новом матче. match_id увеличивается; tick, sequence и deduplication history сбрасываются.
 - В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для будущего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed и точные остатки банка не передаются, колода перемешивается независимо от карты.
 - Pirate использует одно разрешённое событие после 7/завершения discard либо Knight: pending `robber_move` позволяет выбрать land robber или sea pirate при enable_pirate. Успех закрывает pending и допускает максимум одну кражу; повтор без нового события отклоняется общим движком. React/PySide клики согласованы с этим событием.
-- 158 pytest-проверок и 25 web cases проходят (16 transport + 5 BoardView + 4 URL behavior); TypeScript и production build проходят, проверено 2026-10-04. Pytest также запускает WSClient integration с реальным FastAPI при наличии Node с native WebSocket и установленных web dependencies; здесь integration выполнена без skip. Это не подтверждение полной корректности CATAN.
+- 37 web cases проходят (16 transport + 5 BoardView + 4 URL + 12 Board3D projection/geometry); TypeScript/production/Docker build проверены 2026-10-04. 158 pytest passed без skip — предыдущая infrastructure verification этого дня, не повторный запуск после добавления renderer. Это не подтверждение полной корректности CATAN.
 
 ## Partially Implemented
 
@@ -72,7 +73,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 3. Подготовить новый React UI, сохраняя игровое поведение.
 4. Затем постепенно рефакторить архитектуру.
 
-Production Hardening Phase 1 завершена в утверждённом scope. Redesign не начат; clean stylized tabletop и 3D прежде всего для board утверждены как направление 2026-10-04, точные references/layouts/tokens не являются implementation specification. Fantasy/MMORPG-декор исключён. Дизайн/CSS runtime не менялись. Desktop в Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
+Production Hardening Phase 1 завершена в утверждённом scope. Общий UI redesign не начат; Board3D Phase 1 реализует отдельную visual foundation в принятом clean modern tabletop направлении. Fantasy/MMORPG-декор исключён, прежние references остаются historical. Desktop в Hardening Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
 
 ## Map / 3D preparation
 
@@ -84,8 +85,8 @@ Production Hardening Phase 1 завершена в утверждённом scop
 
 ## Next Engineering Tasks
 
-- Следующий шаг: review и checkpoint завершённой Production Infrastructure Phase 1. Commit/tag ещё не созданы автоматически.
-- Визуальный прототип Board3D остаётся отдельной будущей задачей на текущем snapshot; точный interaction contract требует отдельного решения. Прототип не начат.
+- Следующий шаг: review/checkpoint Board3D Phase 1. Предлагаемые commit: feat: add experimental 3d board renderer; tag: board3d-phase-1. Агент не создаёт их автоматически.
+- Board3D Phase 2 потребует отдельной задачи на interaction/controller и достаточный server legal contract. Не начат автоматически.
 - Открытый backlog: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения.
 - Дальнейшие ограничения Phase 1 и результаты — [[plans/server-authority-hardening]].
 - Уточнить gameplay-композицию, состояния и visual tokens актуального clean tabletop направления в [[Design System]].
@@ -94,8 +95,20 @@ Production Hardening Phase 1 завершена в утверждённом scop
 
 ## Production Infrastructure Phase 1
 
-**Completed — 2026-10-04. READY FOR CHECKPOINT.** docker compose up --build запускает backend + web; браузер открывает http://localhost и соединяется через same-origin /ws. Health readiness и штатное завершение проверены.
+**Completed — 2026-10-04. Commit f754457 (Docker).** Пользователь называет checkpoint infrastructure-phase-1; локально такой tag при начале Board3D не найден, агент его не создавал. docker compose up --build запускает backend + web; браузер открывает http://localhost и соединяется через same-origin /ws. Health readiness и штатное завершение проверены.
 
 Runtime diff ограничен GET /health в server_mp.py и общим URL resolver для App/WSClient. Engine, карты, gameplay, BoardView/layout/CSS, serialization и protocol/reconnect semantics не менялись. package-lock синхронизирован с уже существующим package.json для чистого npm ci; версии прежних packages сохранены. Server runtime requirements отделены от desktop/tests и точно закреплены.
 
 Проверено в браузере: Host/Join/Start, все 8 setup placements и Roll, 9 successful ACK, обновления обоим игрокам, загрузка assets, отсутствие page errors и hardcoded backend address в bundle. Containers завершаются с exit 0; тестовый Compose остановлен. Images по docker image ls: backend 215 MB, web 93 MB. Persistence/TLS/auth/scaling не добавлены; npm dev/build advisories остаются вне scope. Полные пределы — [[Deployment]], исполненный план — [[plans/containerization]].
+
+## Board3D Phase 1
+
+**Completed — 2026-10-04. READY FOR CHECKPOINT.** GamePage → BoardRenderer → SVG BoardView или lazy Board3D → R3F scene. Оба получают один snapshot. coordinates.ts нормализует готовые centers/vertices в XZ; visual height независима от gameplay. Исходные tile index/vertex ID/edge pair сохранены; renderer не импортирует WSClient и не вычисляет legal/cost/rules.
+
+Все 8 terrain, number tokens, 3:1/2:1 resource ports, owner-colored road/settlement/city и локальные ship/robber/pirate placeholders отображаются. Camera auto-fit учитывает actual bounds/aspect; orbit/zoom ограничены, pan отключён, Reset Camera доступен. Ambient/directional lighting и неглубокие hex meshes; frameloop=demand. 3D clicks лишь инспектируют hex. Обратное переключение в 2D позволяет продолжать placement и игру.
+
+Зависимости закреплены: fiber 8.18.0, three/@types/three 0.180.0; React/Vite/TypeScript и прежние lock versions сохранены. Python, map JSON, protocol/serialization/reconnect и Docker architecture не менялись. Web runtime diff ограничен board3d/, новым BoardRenderer, подключением в GamePage, описанием q/r/null number и dependencies/tests.
+
+Браузерная проверка: Base Standard — два React-клиента; Gold Haven — live protocol host и React participant, 4 sea/2 gold/9 ports, setup/Roll. Город/корабль и 50 hex проверены отдельно test snapshots, не полным gameplay. GPU resource cleanup и отсутствие idle frames подтверждены; low-end/mobile/full-match не проверены. Lazy chunk ~874 KB / ~235 KB gzip, Vite size warning остаётся.
+
+Обнаружено существующее расхождение вне scope: LobbyPage mapId effects способны откатить выбор пресета и отправить set_map после старта; подтверждено до загрузки Board3D. Для Seafarers host задавал map через обычный protocol; React join не менял карту. LobbyPage сохранён. Plan, verification и Phase 2 границы — [[plans/board3d]], визуальное направление — [[Design System]].

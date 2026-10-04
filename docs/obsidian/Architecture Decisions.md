@@ -49,6 +49,8 @@ Reason: Browser-клиент уже существует; подготовка �
 
 Consequences: Сначала документировать состояния и references, затем отдельная задача на реализацию. Концептуальный дизайн не меняет правила/протокол сам по себе. [[Design System]] не является списком уже реализованных экранов.
 
+2026-10-04, Board3D Phase 1: пользователь отдельно утвердил experimental R3F/Three renderer. BoardRenderer сохраняет default SVG; 3D получает тот же player-specific snapshot, вычисляет только визуальные позиции и не получает command callbacks. Python authority и network contract сохранены. Правила/полный interaction не переносятся в meshes; Phase 2 требует отдельного решения. Доказательства — [[plans/board3d]].
+
 ## ADR-004 — Base, Seafarers and scenario rules
 
 Status: Accepted
