@@ -153,6 +153,13 @@ class RoomManager:
 
 app = FastAPI()
 manager = RoomManager()
+
+
+@app.get("/health")
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
 CMD_ID_LRU = 256
 MULTIPLAYER_COMMANDS = frozenset({
     "place_settlement", "place_road", "upgrade_city", "build_ship", "move_ship",

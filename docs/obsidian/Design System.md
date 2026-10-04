@@ -1,19 +1,19 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-01
+updated: 2026-10-04
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/web-ui-redesign]]
 
-Status: References received and reviewed. Accepted implementation design: not established. UI implementation: not started.
+Status: Clean stylized tabletop direction accepted by user on 2026-10-04. Exact layout/assets/tokens and implementation specification: not established. UI implementation: not started.
 
 ## Reference versus accepted design
 
 **Design mockups are references, not final implementation specifications.**
 
-Перед реализацией конкретного экрана дизайн может быть уточнён. Отличие текущего React UI от reference не означает автоматически, что код ошибочен. Изображения задают визуальное направление, но не gameplay, протокол или обязательный список функций. Принятие пользователем изображения как reference не равно утверждению каждой кнопки, надписи и числа.
+Перед реализацией конкретного экрана дизайн может быть уточнён. Отличие текущего React UI от reference не означает автоматически, что код ошибочен. Изображения служат источником отдельных идей, но не задают gameplay, протокол или обязательный список функций. Принятие пользователем изображения как reference не равно утверждению каждой кнопки, надписи и числа. Актуальное направление ниже имеет приоритет над стилистикой старых AI-макетов.
 
 Текст AI-макетов не является точной спецификацией игровых правил. Gameplay определяется [[Спецификация пользователя]], [[Правила Base Game]], [[Правила Seafarers]] и [[Инварианты движка]]. Ни правила, ни исходники не изменялись при анализе.
 
@@ -21,17 +21,46 @@ Status: References received and reviewed. Accepted implementation design: not es
 
 ## Product Direction
 
-Наблюдаемое направление: **dark premium board-game UI** с атмосферой настольной игры на деревянном столе. Чёрные/угольные панели с тёплыми золотыми рамками отделяют данные от богатой иллюстрированной сцены. Вода, острова, фигурки, компас и карты поддерживают тему исследования и торговли.
+**Актуальное требование пользователя, 2026-10-04: современный чистый clean stylized tabletop.** 3D нужен прежде всего игровому полю. UI вокруг карты функционален, читаем и не перегружает поле. Fantasy/MMORPG-стилистика, массивные золотые рамки, свечи, таверны, RPG portraits и декоративное средневековое окружение исключены.
 
-- Дерево преимущественно находится в фоне/окружении; сами информационные панели тёмные, а не обязательно деревянные.
-- Карта занимает центральную и самую большую область матча; игроки слева, личные ресурсы/карты/события справа. Основные действия собраны снизу.
-- Золото выделяет заголовки, выбранную область, активного игрока и важные кнопки. Зелёный используется для готовности, доступности и Start Match; цвет не имеет одной универсальной семантики на всех макетах.
-- Заголовки выглядят как выразительная serif-типографика; точная font family неизвестна. Иконки и предметные иллюстрации сопровождают текст.
-- Ресурсы и development cards используют карточные паттерны. Ресурс узнаётся по предметной картинке и количеству, не только по цвету.
-- Lobby, Settings и Rules & Help повторяют тёмные панели, золото, декоративные границы, секционные заголовки и CATAN-branding.
-- Модальные окна имеют общий язык, но лист modals — коллаж примеров, а не доказательство размещения нескольких открытых окон одновременно.
+- Board — главный объект; terrain, number tokens, игровые фигуры, ports и legal placement должны читаться сразу.
+- Информация о текущем ходе и действиях заметна без перекрытия клеток. Цвет дополняется формой, иконкой и текстом.
+- Ресурсы и личные карты отделены от публичных данных соперников; их секретность обеспечивает server snapshot.
+- Конкретное размещение player list/resources/events/actions, палитра, типографика, размеры и ассеты ещё не приняты как финальная спецификация.
+- Старые dark/gold AI-макеты сохранены ниже как исторические observations/reference. Их декоративный стиль не является текущей целью.
 
-Это качественное направление. Выбор 2D/3D-рендера, реальные ассеты и уровень декоративной детализации остаются TBD; объёмный рисунок не требует конкретной технологии.
+### Base Game board
+
+Один компактный остров, слегка объёмные hex tiles, clean stylized tabletop. Forest/hills/fields/pasture/mountains различаются по цвету и форме/иконке. Number tokens крупные и читаемые с выбранного ракурса. Roads/settlements/cities — простые игровые фигурки на соответствующих edges/vertices. Реалистичный город на каждом hex не нужен. Море спокойно и не отвлекает; для Base оно может быть визуальным окружением без добавления sea tiles в engine.
+
+### Seafarers board
+
+Та же визуальная система и тот же UI вокруг игры. Добавляются sea hexes, несколько островов, ships, pirate, gold field и maritime ports. Fog/unexplored показываются только при фактической поддержке выбранного сценария: сейчас такой модели в engine нет. Поставляемые Seafarers presets имеют один связный land core; несколько островов — направление для будущих custom/generated карт, не описание уже готового сценария. Отдельная fantasy/pirate theme не создаётся.
+
+### Board3D boundary and proposed structure
+
+Предложение, без реализации: GameState → player-specific snapshot → React state → Board3D. Renderer строит meshes из готовой геометрии и показывает server-produced legal targets. Click/hover сохраняет исходные tile index, vertex ID или edge pair; существующие commands отправляются через callback. Правила и проверки остаются в Python engine/server. Выбранное действие и шаги выбора ship живут в controller над renderer, а не в расчётах правил внутри meshes.
+
+```text
+web/src/board3d/
+  Board3D.tsx
+  HexTile3D.tsx
+  Road3D.tsx
+  Settlement3D.tsx
+  City3D.tsx
+  Ship3D.tsx
+  Robber3D.tsx
+  Pirate3D.tsx
+  Port3D.tsx
+  NumberToken3D.tsx
+  coordinates.ts
+```
+
+Папка ещё не создана. coordinates.ts переводит существующие 2D centers/vertices в плоскость XZ с визуальной высотой; не пересоздаёт игровой graph. Figure-компоненты получают исходный ID, owner/level и позицию; tile/token — terrain/number/center; port — edge/kind.
+
+По package-lock текущие React/React DOM 18.3.1, Vite 5.4.21, TypeScript 5.9.3; three/fiber отсутствуют. Предпочтительный стек React Three Fiber + Three.js совместим с подходом проекта, но major нужно подобрать: официально fiber 8 соответствует React 18, fiber 9 — React 19 ([R3F introduction](https://r3f.docs.pmnd.rs/getting-started/introduction), проверено 2026-10-04). Для текущего React подходит линия fiber 8; это не установка/проверка конкретного набора зависимостей и не разрешение обновлять React. Vite с TSX/ES modules не показывает отдельного архитектурного препятствия; фактическая browser/WebGL/build compatibility потребует прототипа.
+
+Геометрия snapshot уже достаточна. Ограничения server legal для полного rule-free interaction и готовность generator — [[Карты и сценарии#Готовность к Board3D]] и [[Карты и сценарии#Будущий Random Map Generator — предложение, не реализация]].
 
 ## Screens
 
@@ -55,6 +84,8 @@ Status: References received and reviewed. Accepted implementation design: not es
 
 ## Visual Tokens
 
+Ниже — наблюдения **исторических AI-макетов**, не токены актуального clean tabletop направления. Золотые рамки и декоративное окружение не переносить в новый UI; окончательные токены остаются TBD.
+
 | Группа | Наблюдение | Неутверждённые значения |
 | --- | --- | --- |
 | Colors | Тёмные поверхности, золото/янтарь, светлый текст, цветные ресурсы и маркеры игроков | HEX, палитра состояний, контраст — TBD |
@@ -71,7 +102,25 @@ Status: References received and reviewed. Accepted implementation design: not es
 
 # Design References
 
-Оригиналы находятся в `docs/design/references/`; файлы ниже доступны через относительные ссылки от этой заметки. Семь вложений дали шесть уникальных изображений: вложения 5 и 6 полностью одинаковы и представлены одним файлом gameplay-concept. Второй уникальный gameplay сохранён отдельно, без изменения оригинала.
+### Layout / readability reference — 2D gameplay
+
+Reference: скриншот, приложенный пользователем к задаче анализа карт 2026-10-04. Изображение просмотрено в сообщении; оригинальный файл среди доступных файлов вложений не найден. Ожидаемый путь `docs/design/references/board-layout-reference-2d.png` пока **не существует**; ссылка/embed не добавлены и PNG не создавался из уменьшенного отображения.
+
+Status: **Layout / readability reference**, не финальная visual specification. Исходное вложение сообщено как 2357×1237; отображение в сообщении уменьшено до 2048×1075.
+
+**Экран / состояние.** Gameplay: Your Turn, построенные roads/settlements/cities, robber, dice, personal hand/action controls. Журнал содержит события броска и перемещения разбойника. Точный шаг текущего turn по статичному изображению не устанавливается.
+
+**Видимые UI-блоки.** Крупный остров в центре на спокойном синем море; цветные terrain hexes с символами; большие светлые number tokens с выделением сильных чисел; фигурки яркого цвета; ports вокруг острова с ratio/resource. Справа event log/chat и набор карточек. Внизу personal hand, trade/build/end-turn controls, Your Turn/timer и карточка игрока. Слева utility icons и ranked/profile banner.
+
+**Key ideas пользователя.** Board primary focus; мгновенно различимые hex/terrain; большие numbers; читаемые roads/settlements/cities; ports непосредственно на поле; очевидный legal placement; функциональный UI вокруг board. Скриншот не показывает выбранное строительство/legal markers, поэтому их точный стиль — требование пользователя, а не наблюдение.
+
+**UX-интерпретация.** Контрастные tokens отделяют number от terrain; цвет/форма различают фигуры; ports читаются возле связанного участка берега; журнал вынесен за board; personal hand/actions собраны в нижней зоне. Поле сохраняет больше пространства, чем вспомогательные блоки.
+
+**Concept / TBD.** Точные панели/ширины, ranked/profile, chat, timer, изображения карт, рисованные порты и literal palette не приняты как обязательные функции/стиль. Актуальный дизайн — clean stylized tabletop с 3D board, а не pixel-perfect копия этого 2D reference.
+
+## Historical AI screen references
+
+Оригиналы следующих шести AI-mockups находятся в `docs/design/references/`; ссылки ведут на существующие файлы. Семь прежних вложений дали шесть уникальных изображений: вложения 5 и 6 полностью одинаковы и представлены одним gameplay-concept; альтернативный gameplay сохранён отдельно. Их видимые детали описаны исторически; актуальное Product Direction выше имеет приоритет.
 
 ## Gameplay
 
@@ -204,6 +253,8 @@ Status: Reviewed reference; gameplay copy unverified.
 
 ## Shared UX patterns and open decisions
 
+Следующий список фиксирует наблюдения старых AI-references. Полезные группировки/UX-идеи можно рассматривать отдельно; gold/frame/dark-wood styling не является требованием нового дизайна.
+
 1. **Active turn:** gold-frame + текст Your turn; альтернативный gameplay повторяет подсказку снизу. Активность нельзя обозначать исключительно цветом.
 2. **Primary / secondary:** золото для важного действия, тёмная поверхность для вспомогательного; зелёный Start Match — отдельный видимый вариант. Универсальная семантика и destructive-вариант TBD.
 3. **Card selection:** gold-outline на выбранном scenario/development/menu; ресурс содержит glyph и count. Реальные focus/hover-состояния TBD.
@@ -212,4 +263,4 @@ Status: Reviewed reference; gameplay copy unverified.
 6. **Consistency across screens:** повтор тёмного/золотого и предметных иконок; lobby richly illustrated, settings плотнее, rules более информационный. Единообразие не требует одинаковой плотности всех экранов.
 7. **Accessibility / responsive:** изображения не подтверждают contrast ratio, screen reader, tab order, reduced motion, разные масштабы и mobile. Всё требует отдельного решения/проверки.
 
-Разбор завершён как reference-analysis. Выбор одного gameplay-варианта и токенов, одобрение конкретных экранов и реализация — следующие отдельные задачи. Не делать pixel-perfect перенос и не выводить новый gameplay из текста/чисел макета.
+Reference-analysis сохранён; новое clean tabletop направление принято качественно. Точные layouts/tokens/assets и реализация остаются отдельными задачами. Не делать pixel-perfect перенос и не выводить новый gameplay из текста/чисел макета.

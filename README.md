@@ -1,5 +1,19 @@
 # CATAN-GAME (Singleplayer Desktop Prototype)
 
+Web + server with Docker (Linux containers):
+
+```sh
+docker compose up --build
+```
+
+Open http://localhost. Nginx serves the production web build and proxies /ws to
+one FastAPI worker. Only the web port is published (80 by default; override
+CATAN_WEB_PORT). Stop with `docker compose down`.
+
+Rooms/games remain in memory and are lost when the backend restarts.
+See [Deployment](docs/obsidian/Deployment.md) for local development, ports,
+configuration, verification and limits.
+
 How to run:
 - Offline singleplayer (UI v6): double click `RUN_UI_V6.bat`
 - Multiplayer: start `RUN_SERVER.bat`, then on each client run `RUN_CLIENT.bat` and use Multiplayer -> Host/Join
@@ -62,7 +76,7 @@ LAN Web (browser client):
 - Optional env override: `CATAN_HOST=0.0.0.0 CATAN_PORT=8000 python -m app.server_mp`
 - Web client dev server:
   - `cd web`
-  - `npm install`
+  - `npm ci`
   - `npm run dev -- --host 0.0.0.0 --port 5173`
 - One-command helper:
   - `powershell -ExecutionPolicy Bypass -File tools/run_lan.ps1`

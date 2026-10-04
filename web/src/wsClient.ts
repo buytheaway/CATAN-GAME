@@ -76,7 +76,11 @@ export type CmdAck = {
 
 export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck;
 
-const DEFAULT_WS_URL = import.meta.env?.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+export function defaultWebSocketUrl(): string {
+  return import.meta.env.PROD
+    ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`
+    : import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+}
 
 function genId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -121,7 +125,7 @@ export class WSClient {
   }
 
   connect(url: string, name: string) {
-    this.url = url || DEFAULT_WS_URL;
+    this.url = url || defaultWebSocketUrl();
     this.name = name;
     this.openSocket();
   }

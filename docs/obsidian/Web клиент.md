@@ -12,6 +12,8 @@ tags: [catan, web]
 
 App создаёт один WSClient через useMemo и хранит `room`, `match`, `status`, `error`, `log`. В useEffect назначает сетевые callbacks. Наличие match определяет экран: LobbyPage или GamePage. React Router в текущем приложении не используется.
 
+Deployment compatibility, 2026-10-04: App и WSClient.connect fallback используют defaultWebSocketUrl из wsClient.ts. Production выбирает ws/wss по protocol страницы, сохраняет её host/port и добавляет /ws. Development использует VITE_WS_URL либо ws://127.0.0.1:8000/ws. UI/layout и transport semantics не менялись; Docker Nginx proxy и local commands — [[Deployment]]. Проверены 25 web cases, включая четыре URL cases, и реальная партия до первого Roll в двух браузерных контекстах.
+
 ## WSClient
 
 [wsClient.ts](../../web/src/wsClient.ts) — обычный TypeScript-класс, не React-компонент.

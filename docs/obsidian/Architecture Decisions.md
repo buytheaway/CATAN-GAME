@@ -1,6 +1,6 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 # Architecture Decisions
@@ -8,6 +8,16 @@ updated: 2026-10-03
 [[00 Главная]] · [[Project State]] · [[Documentation Policy]]
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
+
+## ADR-008 — Same-origin Docker deployment, one backend worker
+
+Status: Accepted; implemented and verified 2026-10-04 as Production Infrastructure Phase 1.
+
+Decision: Два Compose-сервиса: Nginx с production React build и FastAPI/Uvicorn с общим Python engine. Browser использует один origin; exact /ws и /health проксируются backend. Наружу опубликован только web. Backend запускается с workers=1, без reload; оба runtime containers работают non-root.
+
+Reason: Пользователь запросил production-like запуск одной командой. RoomManager/GameState являются process-local, поэтому несколько workers/replicas разделили бы пользователей одной комнаты между независимыми состояниями.
+
+Consequences: Backend readiness проверяется HTTP healthcheck до запуска web. Production WS URL выводится из страницы; local Vite сохраняет VITE_WS_URL. Base images закреплены digest, server dependencies — точными версиями, frontend использует npm ci. Restart теряет комнаты/партии/tokens; контейнеризация не вводит persistence или account auth. TLS и горизонтальное масштабирование требуют отдельной задачи. Инструкции и доказательства — [[Deployment]] и [[plans/containerization]].
 
 ## ADR-001 — Server-authoritative game state
 

@@ -1,0 +1,30 @@
+# Allow only inputs needed by the two production images.
+# In particular: no .git, .env*, credentials, docs, tests, IDE files,
+# virtualenvs, node_modules, desktop/legacy code or local build artifacts.
+**
+!requirements-server.txt
+!deploy/
+!deploy/*.Dockerfile
+!deploy/nginx.conf
+!app/
+!app/__init__.py
+!app/server_mp.py
+!app/net_protocol.py
+!app/resource_path.py
+!app/engine/
+!app/engine/*.py
+!app/assets/
+!app/assets/maps/
+!app/assets/maps/*.json
+!web/
+!web/package.json
+!web/package-lock.json
+!web/index.html
+!web/vite.config.ts
+!web/tsconfig*.json
+!web/postcss.config.cjs
+!web/src/
+!web/src/**
+**/__pycache__/
+**/*.pyc
+**/.env*

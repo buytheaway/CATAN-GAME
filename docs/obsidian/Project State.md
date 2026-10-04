@@ -1,21 +1,25 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 
 # Project State
 
-Last verified: 2026-10-03 — финальная проверка Phase 1: 158 pytest, 21 web case, TypeScript check, production build и все 508 сценарных запусков. VP active/final и connected-only rematch проверены через реальный FastAPI/WebSocket. Scenario baseline сохранён: 348 passed / 160 прежних отказов, совпадают все failure details. Полная ручная партия, browser DOM e2e и нагрузочная проверка не проводились.
+Last verified: 2026-10-04 — Docker build/up, два реальных headless Chrome contexts через Nginx, setup/Roll/snapshots/ACK и graceful down; 158 pytest, 25 web cases, TypeScript check и production build. Gameplay не менялся, scenario suite сегодня не повторялась; исторический baseline от 2026-10-03: 348 passed / 160 прежних отказов. Полная партия, нагрузка и отдельные LAN-устройства не проверялись. Подробности — [[Deployment]].
+
+Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8812`), построение всех 12 карт в памяти, повторяемость seed, topology/ports/snapshot/legal и границы map validation. В рамках этого анализа полный test/build/scenario набор не повторялся, runtime и зависимости не менялись; последующая Docker verification указана выше. Подробности — [[Карты и сценарии]] и [[Design System]].
 
 [[00 Главная]] · [[Architecture Decisions]] · [[Результаты аудита]]
 
 ## Phase 1 Status
 
-**Completed — 2026-10-03. READY FOR CHECKPOINT.** Утверждённые решения VP visibility/rematch закреплены тестами; открытых подтверждённых P0 и новых blocker-level regressions в проверенном scope нет. Это завершение Production Hardening Phase 1, не всей реализации правил CATAN. Прежние 160 сценарных отказов и отдельные P1 остаются за пределами этапа.
+**Completed — 2026-10-03. Checkpoint: `3cd8812`, tag `hardening-phase-1`.** Утверждённые решения VP visibility/rematch закреплены тестами; открытых подтверждённых P0 и новых blocker-level regressions в проверенном scope нет. Это завершение Production Hardening Phase 1, не всей реализации правил CATAN. Прежние 160 сценарных отказов и отдельные P1 остаются за пределами этапа.
 
 ## Current Architecture
 
 Общий Python-движок обслуживает локальный PySide-клиент и FastAPI WebSocket-сервер. React/TypeScript получает снимки партии и отправляет намерения. Комнаты живут в памяти процесса. Qt и browser имеют отдельные представления состояния. Multiplayer теперь использует отдельный player-specific snapshot; trusted/offline to_dict сохранён.
+
+Docker production-like: Browser → Nginx (React dist, /ws, /health) → один FastAPI worker → тот же engine. Только web port опубликован; оба containers non-root, без host mounts. Локальный Python + Vite workflow сохранён. Инструкции — [[Deployment]].
 
 Карта архитектуры уже существует: [[Карта файлов]], [[Точки входа]], [[Сценарий сетевой партии]]. Новый дублирующий Architecture.md не нужен.
 
@@ -32,7 +36,7 @@ Last verified: 2026-10-03 — финальная проверка Phase 1: 158 p
 - Reconnect token восстанавливает прежний слот до rematch. Сохранившиеся участники сохраняют token с новым pid; исключённый участник теряет доступ к слоту при новом матче. match_id увеличивается; tick, sequence и deduplication history сбрасываются.
 - В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для будущего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed и точные остатки банка не передаются, колода перемешивается независимо от карты.
 - Pirate использует одно разрешённое событие после 7/завершения discard либо Knight: pending `robber_move` позволяет выбрать land robber или sea pirate при enable_pirate. Успех закрывает pending и допускает максимум одну кражу; повтор без нового события отклоняется общим движком. React/PySide клики согласованы с этим событием.
-- 158 pytest-проверок и 21 web case проходят (16 transport + 5 BoardView); TypeScript и production build проходят. Pytest также запускает WSClient integration с реальным FastAPI при наличии Node с native WebSocket и установленных web dependencies; здесь integration выполнена без skip. Это не подтверждение полной корректности CATAN.
+- 158 pytest-проверок и 25 web cases проходят (16 transport + 5 BoardView + 4 URL behavior); TypeScript и production build проходят, проверено 2026-10-04. Pytest также запускает WSClient integration с реальным FastAPI при наличии Node с native WebSocket и установленных web dependencies; здесь integration выполнена без skip. Это не подтверждение полной корректности CATAN.
 
 ## Partially Implemented
 
@@ -68,12 +72,30 @@ Last verified: 2026-10-03 — финальная проверка Phase 1: 158 p
 3. Подготовить новый React UI, сохраняя игровое поведение.
 4. Затем постепенно рефакторить архитектуру.
 
-Production Hardening Phase 1 завершена в утверждённом scope. Redesign не начат; его references и tokens не утверждены как implementation specification. Дизайн и CSS на этом этапе не менялись; desktop получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие изменения сравнивать через `git diff hardening-phase-1..HEAD`.
+Production Hardening Phase 1 завершена в утверждённом scope. Redesign не начат; clean stylized tabletop и 3D прежде всего для board утверждены как направление 2026-10-04, точные references/layouts/tokens не являются implementation specification. Fantasy/MMORPG-декор исключён. Дизайн/CSS runtime не менялись. Desktop в Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
+
+## Map / 3D preparation
+
+- Есть JSON loader, materialization/shuffle и graph builder, но нет генерации topology и map editor.
+- Все 12 пресетов имеют одинаковые 19 координат; Seafarers заменяет часть позиций на sea, готового архипелага нет.
+- Snapshot достаточен для визуального Board3D. Полный rule-free interaction потребует более точного server legal: affordability/limits/free-build, move_ship targets и robber/pirate targets.
+- Auto ports используют внешнюю границу всей сетки; у Seafarers часть портов недоступна с land. Map validator не доказывает игровую пригодность custom JSON. Подтверждённые детали — [[Карты и сценарии]]; исправления в этой задаче не выполнялись.
+- Актуальный 2D reference просмотрен как layout/readability reference; оригинального файла не найдено, несуществующая PNG-ссылка не добавлена.
 
 ## Next Engineering Tasks
 
-- Следующий рекомендуемый этап: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения. Не начат автоматически.
+- Следующий шаг: review и checkpoint завершённой Production Infrastructure Phase 1. Commit/tag ещё не созданы автоматически.
+- Визуальный прототип Board3D остаётся отдельной будущей задачей на текущем snapshot; точный interaction contract требует отдельного решения. Прототип не начат.
+- Открытый backlog: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения.
 - Дальнейшие ограничения Phase 1 и результаты — [[plans/server-authority-hardening]].
-- Уточнить design references: выбрать gameplay-композицию, согласовать состояния и visual tokens в [[Design System]].
+- Уточнить gameplay-композицию, состояния и visual tokens актуального clean tabletop направления в [[Design System]].
 - Подготовить и согласовать [[plans/web-ui-redesign|план React redesign]]; не переносить макеты в код автоматически.
 - Сохранить разграничение: зелёный pytest/build не заменяет полный набор сценариев и проверку правил.
+
+## Production Infrastructure Phase 1
+
+**Completed — 2026-10-04. READY FOR CHECKPOINT.** docker compose up --build запускает backend + web; браузер открывает http://localhost и соединяется через same-origin /ws. Health readiness и штатное завершение проверены.
+
+Runtime diff ограничен GET /health в server_mp.py и общим URL resolver для App/WSClient. Engine, карты, gameplay, BoardView/layout/CSS, serialization и protocol/reconnect semantics не менялись. package-lock синхронизирован с уже существующим package.json для чистого npm ci; версии прежних packages сохранены. Server runtime requirements отделены от desktop/tests и точно закреплены.
+
+Проверено в браузере: Host/Join/Start, все 8 setup placements и Roll, 9 successful ACK, обновления обоим игрокам, загрузка assets, отсутствие page errors и hardcoded backend address в bundle. Containers завершаются с exit 0; тестовый Compose остановлен. Images по docker image ls: backend 215 MB, web 93 MB. Persistence/TLS/auth/scaling не добавлены; npm dev/build advisories остаются вне scope. Полные пределы — [[Deployment]], исполненный план — [[plans/containerization]].

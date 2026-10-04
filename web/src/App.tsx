@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { WSClient, MatchState, RoomState, ServerError } from "./wsClient";
+import { defaultWebSocketUrl, WSClient, MatchState, RoomState, ServerError } from "./wsClient";
 import LobbyPage from "./components/LobbyPage";
 import GamePage from "./components/GamePage";
 
-const WS_DEFAULT = import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+const WS_DEFAULT = defaultWebSocketUrl();
 
 export default function App() {
   const client = useMemo(() => new WSClient(), []);
