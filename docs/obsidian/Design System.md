@@ -5,9 +5,26 @@ updated: 2026-10-05
 
 # Design System
 
-[[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/web-ui-redesign]]
+[[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
-Status: Clean modern tabletop direction accepted by user on 2026-10-04; Board3D Phase 3 visual polish implemented and verified 2026-10-05. Surrounding UI redesign and final layout/assets/tokens remain unimplemented/TBD.
+Status: Clean modern tabletop accepted 2026-10-04. Board3D Phase 3, Game UI Redesign Phase 1 and narrow Board3D Polish 1.1 implemented/verified 2026-10-05. Current match composition is implemented below; lobby/menu/trade/dev/settings/mobile and final cross-screen tokens remain future work. Older phase descriptions and AI images are historical.
+
+## Polish 1.1 visual evidence
+
+Implemented renderer polish, verified 2026-10-05 in Chrome 154 headless through Docker production frontend. Composition/HUD unchanged. Actual tile surface gets subtle emissive feedback; no flat second hex. Static per-tile variations distinguish repeated forest/fields/pasture/hills/mountains/desert/gold; sea stays quiet. Slightly deeper/bevelled pieces retain original centers and TILE_TOP. Ports use small dark placards and docks attached to snapshot edges; auto-port placement errors are intentionally preserved. Full horizontal orbit with constrained vertical tilt, zoom and reset. Decorative terrain does not intercept legal targets.
+
+These are screenshots of implemented prepared snapshots, including an artificial offset 50-hex engine fixture, not new map presets or final design concepts. Base/Gold live two-client gameplay was verified separately. 76 web tests/TS/build/Docker passed; frameloop=demand gave 0 extra idle frames for Base/Gold/50 and unmount released geometry/textures/context. Mobile/low-end FPS/full-match remain unverified. Detailed scope and evidence limits: [[plans/board3d#Game UI / Board3D Polish 1.1]].
+
+| Evidence | What it shows |
+| --- | --- |
+| [base-default.png](../design/references/game-ui-polish-1-1/base-default.png) | Base, 1920×1080: terrain, pieces, docks, board framing |
+| [base-hover.png](../design/references/game-ui-polish-1-1/base-hover.png) | Subtle actual surface feedback; no extra hex |
+| [base-rotated-180.png](../design/references/game-ui-polish-1-1/base-rotated-180.png) | Opposite camera side, rear piece details |
+| [base-build-targets.png](../design/references/game-ui-polish-1-1/base-build-targets.png) | Thin road targets, hidden enlarged hit surfaces |
+| [base-1280.png](../design/references/game-ui-polish-1-1/base-1280.png) | Base at 1280×720; ports/HUD contained |
+| [seafarers.png](../design/references/game-ui-polish-1-1/seafarers.png) | Gold Haven: sea, gold, ship, pirate, ports |
+| [seafarers-move-ship.png](../design/references/game-ui-polish-1-1/seafarers-move-ship.png) | Selected ship source and move targets |
+| [50-default.png](../design/references/game-ui-polish-1-1/50-default.png) | Offset 50-hex fixture default auto-fit |
 
 ## Reference versus accepted design
 
@@ -26,7 +43,7 @@ Status: Clean modern tabletop direction accepted by user on 2026-10-04; Board3D 
 - Board — главный объект; terrain, number tokens, игровые фигуры, ports и legal placement должны читаться сразу.
 - Информация о текущем ходе и действиях заметна без перекрытия клеток. Цвет дополняется формой, иконкой и текстом.
 - Ресурсы и личные карты отделены от публичных данных соперников; их секретность обеспечивает server snapshot.
-- Конкретное размещение player list/resources/events/actions, палитра, типографика, размеры и ассеты ещё не приняты как финальная спецификация.
+- Для match Phase 1 пользователь принял направление: компактные игроки сверху, resource hand слева снизу, action dock справа снизу, secondary drawers и dark unified board stage. Реализованные размеры/цвета — текущие match styles, не окончательные cross-screen tokens.
 - Старые dark/gold AI-макеты сохранены ниже как исторические observations/reference. Их декоративный стиль не является текущей целью.
 
 ### Base Game board
@@ -118,13 +135,45 @@ These are inspected screenshots of the implemented renderer, not design concepts
 
 Геометрия snapshot уже достаточна. Ограничения server legal для полного rule-free interaction и готовность generator — [[Карты и сценарии#Готовность к Board3D]] и [[Карты и сценарии#Будущий Random Map Generator — предложение, не реализация]].
 
+## Game UI Redesign Phase 1 — implemented composition
+
+Verified 2026-10-05. Primary reference is the user-attached screenshot together with explicit hierarchy/layout requirements. The screenshot itself still shows the old blue/cream dashboard; its literal card layout is rejected in favor of the user's stated fullscreen tabletop composition. No missing reference asset was invented. [Before dashboard layout](../design/references/game-ui-redesign-phase1/before-dashboard-layout.png) is an actual inspected pre-change Chrome capture, not a new concept.
+
+- Board first: full-width dark navy stage between compact HUD rows; no right dashboard column/card around Canvas, no giant in-match title. Stage heights: 872/1080, 712/900, 546/720 (80.7/79.1/75.8%); Canvas reserves 52px for prompt/view controls. Island uses existing actual-footprint auto-fit; no hardcoded preset or coordinate changes.
+- Top: name, numbered ownership/color marker, public VP/resource_count/dev_count, text Turn indicator; compact room/goal and info/log buttons. Opponent res/dev cards/hidden VP are not derived or displayed. Six long names at 1280 are truncated with full title; current turn remains readable.
+- Bottom-left: five resource cards with native SVG glyph/name/count, including zeros; only own res. Bottom-right: Roll/Build/Trade/Dev Card/End, contextual legal build palette, ship move, robber/pirate and cancel. Trade/dev remain disabled with an accessible explanation because forms are not implemented in this phase.
+- Context prompt comes from snapshot/controller (setup, roll, build, ship source/destination, movement/victims, pending choices). Raw phase/tick/pending/map description/connection flags are in Game info. Failed commands and lost connection retain readable feedback.
+- Log/info are nonmodal overlay drawers, initially closed; close button/Escape restore focus. Log still receives the existing App transport/error log, not a newly invented engine event feed. Mandatory discard/gold overlays preserve fields/payloads, trap Tab and cannot be dismissed with Escape. Victim chooser is a compact nonmodal drawer so renderer switching remains available.
+- View: compact 2D/3D, default 3D with existing lazy/error fallback; unobtrusive Reset button with camera help. SVG remains interactive. Legal targets are still gated by the unchanged controller/tool/required setup step. Smaller translucent Three rings/rails/outlines brighten on hover; selected ship source keeps amber brackets. Original hit areas remain intact.
+- Ports: compact dark face/resource-colored rim and label; visual center pulled toward the existing anchor. Snapshot edge/kind, engine placement and topology are unchanged. Terrain/piece art, camera directions, lighting/resource lifecycle/controller are preserved.
+
+### Phase 1 visual evidence
+
+Actual Chrome 154 / ANGLE / NVIDIA RTX 5050 screenshots; inspected visually. Main/build/Seafarers screenshots use existing engine-built prepared snapshots and mocked browser transport to show useful states consistently. Setup screenshot is a real two-client room. Evidence does not certify a full naturally played match.
+
+| State | Screenshot |
+| --- | --- |
+| Base 1920×1080 | [base-1920](../design/references/game-ui-redesign-phase1/base-1920.png) |
+| Base 1440×900 | [base-1440](../design/references/game-ui-redesign-phase1/base-1440.png) |
+| Base 1280×720 | [base-1280](../design/references/game-ui-redesign-phase1/base-1280.png) |
+| Real room setup | [base-setup](../design/references/game-ui-redesign-phase1/base-setup.png) |
+| City build mode | [base-build](../design/references/game-ui-redesign-phase1/base-build.png) |
+| Gold Haven sea/gold/ships/pirate | [seafarers](../design/references/game-ui-redesign-phase1/seafarers.png) |
+| Selected ship destination flow | [seafarers-move-ship](../design/references/game-ui-redesign-phase1/seafarers-move-ship.png) |
+| Log drawer | [log-open](../design/references/game-ui-redesign-phase1/log-open.png) |
+| Technical information drawer | [game-info](../design/references/game-ui-redesign-phase1/game-info.png) |
+| Retained SVG renderer | [base-2d](../design/references/game-ui-redesign-phase1/base-2d.png) |
+| Gold choice / discard | [gold-choice](../design/references/game-ui-redesign-phase1/gold-choice.png), [discard-choice](../design/references/game-ui-redesign-phase1/discard-choice.png) |
+
+73 web tests, TypeScript, production build and Docker frontend build pass. Real two-client Base setup/Roll/road/robber and Gold Haven setup/Roll/ship/pirate agree on public state; both renderers also tested with real-engine fixture execution for all build tools, ship move/cancel, victims, free roads and rejection without permanent optimistic pieces. Drawer/keyboard/focus, renderer switch, zoom/reset, no-scroll/visible controls at all three target sizes passed. Idle remains demand-driven; unmount frees geometries/textures/context. Lazy Three chunk ~881 KB / 237 KB gzip retains Vite size warning. Backend, protocol, shared interaction, maps, terrain/piece models, dependencies and Docker architecture unchanged. Full-match/mobile/low-end/a11y certification is outside verification. Existing mountain/tree decoration can occlude a road midpoint; another visible point/orbit works, and this interaction issue was not fixed here. Details — [[plans/game-ui-redesign]].
+
 ## Screens
 
 | Экран | Reference | Текущая реализация web |
 | --- | --- | --- |
 | Main Menu | Левая часть lobby-concept | Отдельного нет |
 | Multiplayer Lobby | lobby-concept | LobbyPage с более простым набором функций |
-| Match | gameplay-concept и gameplay-concept-alt | GamePage + BoardRenderer (SVG BoardView / Board3D), общий interaction |
+| Match | User Phase 1 reference + explicit composition requirements; older AI images historical | Fullscreen GamePage, GameTopBar/ResourceHand, dock/drawers + BoardRenderer, unchanged shared interaction |
 | Rules / Help | rules-help-concept | Отдельного нет |
 | Settings | settings-concept | Отдельного нет |
 | Map Editor | Только пункт меню на lobby-concept; экран не показан | Есть загрузка JSON, редактора нет |
@@ -134,7 +183,7 @@ These are inspected screenshots of the implemented renderer, not design concepts
 
 ## In-game UI
 
-Наблюдаемые блоки: player list, active turn, personal resources, development cards, build/trade/dev actions, robber interaction, discard, achievements, notifications/recent events, dice и end-turn. Gold-choice и отдельное состояние движения пирата не показаны; их дизайн TBD.
+Текущие реализованные match blocks описаны выше. Исторические AI-макеты дополнительно показывают development cards, trade, achievements/recent events и другие состояния; это не список готовых web-функций. Trade/dev формы, достижения и результаты не входят в Phase 1. Gold/discard/pirate показаны через реальный snapshot/controller с компактными overlays/controls.
 
 Публичные данные игроков и личная рука визуально разделены. Это полезная UX-интерпретация, но секретность должна обеспечиваться серверным snapshot, а не расположением панели. Существующие данные — [[Состояние игры]].
 

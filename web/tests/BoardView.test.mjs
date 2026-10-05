@@ -18,10 +18,10 @@ const compiled = await build({
   external: ["react", "react/jsx-runtime"],
 });
 let clicks = [];
-const tracedRuntime = Object.fromEntries(["jsx", "jsxs"].map(name => [name, (type, props, key) => {
+const tracedRuntime = { ...jsxRuntime, ...Object.fromEntries(["jsx", "jsxs"].map(name => [name, (type, props, key) => {
   if (type === "polygon" && props.onClick) clicks.push(props.onClick);
   return jsxRuntime[name](type, props, key);
-}]));
+}])) };
 const loaded = { exports: {} };
 new Script(`(function(require, module, exports) { ${compiled.outputFiles[0].text}\n})`)
   .runInThisContext()(name => name === "react/jsx-runtime" ? tracedRuntime : require(name), loaded, loaded.exports);
@@ -69,12 +69,12 @@ test("current robber and pirate tiles do not send a move", () => {
   assert.deepEqual(sent, []);
 });
 
-test("completed event disables pirate and map clicks send no commands", () => {
+test("completed event hides pirate and map clicks send no commands", () => {
   const { click, sent, html } = render({ pending_action: null, pending_pid: null });
   click(1);
   click(3);
   assert.deepEqual(sent, []);
-  assert.match(html, /<button[^>]*disabled=""[^>]*>Pirate<\/button>/);
+  assert.doesNotMatch(html, />Pirate<\/span>/);
 });
 
 test("another player's pending event does not authorize local map clicks", () => {
@@ -89,5 +89,5 @@ test("scenario without pirate allows robber only", () => {
   click(3);
   click(1);
   assert.deepEqual(sent, [{ type: "move_robber", tile: 1 }]);
-  assert.doesNotMatch(html, />Pirate<\/button>/);
+  assert.doesNotMatch(html, />Pirate<\/span>/);
 });

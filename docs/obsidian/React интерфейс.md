@@ -6,9 +6,11 @@ tags: [catan, web, интерфейс]
 
 [[Web клиент]] · [[Состояние игры]] · [[Стили и визуальные границы]] · [[Design System]]
 
-Основные UI-границы: App, LobbyPage, GamePage, BoardRenderer, SVG BoardView и экспериментальный Board3D. Scene-компоненты находятся в board3d/. Остальные панели — JSX-блоки внутри крупных компонентов. Отдельных ResourceCard, PlayerList, TradeDialog и MainMenu в web нет.
+Основные UI-границы: App, LobbyPage, fullscreen GamePage, GameTopBar/ContextPrompt/ResourceHand/GameOverlay в game/, BoardControls в dock, BoardRenderer, SVG BoardView и Board3D. Scene-компоненты находятся в board3d/. Action dock/player strip — JSX-блоки, не отдельные classes. TradeDialog, MainMenu и development-card формы в web отсутствуют.
 
-Board3D Phase 2 verified 2026-10-05: общий controller перенесён из SVG в GamePage, оба renderer используют персональные server targets. 57 web cases, TypeScript/build, Docker и Chrome проверки проходят; детали и ограничения — [[plans/board3d]].
+Game UI Redesign Phase 1 verified 2026-10-05: 73 web tests, TypeScript, production/Docker build и Chrome. Default 3D; 2D сохранён. Новая композиция/HUD отделена от прежнего controller/network/gameplay. Scope, screenshots и limits — [[plans/game-ui-redesign]] и [[Design System#Game UI Redesign Phase 1 — implemented composition]].
+
+Историческая проверка Board3D Phase 2 2026-10-05: общий controller перенесён из SVG в GamePage, оба renderer используют персональные server targets. 57 web cases, TypeScript/build, Docker и Chrome проверки проходят; детали и ограничения — [[plans/board3d]].
 
 Контракт проверен 2026-10-02: UI-композиция не менялась в Phase 1. MatchState типизирован под персональный server snapshot, чужой player.res опционален, own res сохранена. BoardView Port соответствует текущему JSON `[edge, kind]`, pending_action/pending_pid допускают null. TypeScript проходит; отсутствие чужой руки обеспечивается сервером, а не JSX.
 
@@ -18,11 +20,11 @@ Board3D Phase 2 verified 2026-10-05: общий controller перенесён и
 | --- | --- | --- | --- |
 | [App](../../web/src/App.tsx) | main.tsx | Нет | client, room, match, status, log, error |
 | [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, pendingMapId, customLabel; отображаемый mapId = pending или room.map_id |
-| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error | useBoardInteraction: action, shipSource, victim, waiting; discard, goldRes, goldQty |
-| [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | state + interaction | mode=2d/3d, default 2d; lazy/failure boundary |
-| [BoardControls](../../web/src/board/BoardControls.tsx) | BoardRenderer, оба режима | state + interaction | Общие tools/status/victim chooser; собственного selection нет |
+| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error | Прежний useBoardInteraction; discard/gold fields, новый drawer=log/info/null |
+| [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | state + interaction | mode=2d/3d, default 3d; lazy/failure boundary |
+| [BoardControls](../../web/src/board/BoardControls.tsx) | GamePage action dock, оба режима | state + interaction | Только buildOpen/focus; tools/victim chooser вызывают прежние callbacks, собственного игрового selection нет |
 | [BoardView](../../web/src/components/BoardView.tsx) | BoardRenderer, режим 2D | state + interaction | SVG presentation, selection берётся из controller |
-| [Board3D](../../web/src/board3d/Board3D.tsx) | BoardRenderer, режим 3D | state geometry/occupancy + interaction | hovered/inspected tile index, reset camera; InteractionOverlay3D хранит только hover |
+| [Board3D](../../web/src/board3d/Board3D.tsx) | BoardRenderer, режим 3D | state geometry/occupancy + interaction | hovered tile index, reset camera; debug inspection footer удалён; InteractionOverlay3D хранит только hover |
 
 ## Экраны
 
@@ -36,19 +38,19 @@ App показывает LobbyPage до первого match и GamePage пос�
 | Connection | LobbyPage | URL, имя, код, число мест; Host/Join |
 | Карта комнаты | LobbyPage | room.map_presets/id/meta/rules и map_revision, isHost, client.pendingMapId; setMap из onChange/FileReader |
 | Участники лобби | LobbyPage | room.players, host_pid, connected |
-| Статус матча | GamePage | Код комнаты, tick, turn, phase, pending_action, status, rules_config |
-| Ресурсы | GamePage | state.players[youPid].res; res-chip по каждому ресурсу |
+| Turn/prompt и Game info | GameTopBar/ContextPrompt/GameOverlay | turn, snapshot/controller; raw tick/phase/pending/status/map/rules скрыты в закрытом info drawer |
+| Ресурсы | ResourceHand | find(player.pid=youPid).res; пять glyph/name/count cards, отсутствующее значение = 0 |
 | Roll / End Turn | GamePage | canRoll/canEnd; отправляют roll/end_turn |
 | Gold Choice | GamePage | pending_gold[youPid], goldRes, goldQty; choose_gold |
 | Discard | GamePage | discard_required[youPid], res, введённый discard; discard-команда |
-| Игроки матча | GamePage | state.players: pid, name, vp |
+| Игроки матча | GameTopBar | public pid/name/vp/resource_count/dev_count/turn, PLAYER_COLORS; без чтения чужой руки |
 | Ошибки | LobbyPage и GamePage | error.message |
-| Журнал | GamePage | log из App; сетевые ошибки и сообщения клиента |
-| Trade | UI отсутствует | Порты на поле не являются формой обмена |
+| Журнал | GameOverlay | log из App, закрыт по умолчанию; сетевые ошибки/сообщения клиента сохранены, engine event feed не добавлен |
+| Trade / Dev | Формы отсутствуют | Dock controls disabled с объяснением; новые команды/формы не добавлены |
 | Строительство и перемещения | BoardControls + оба renderer | interaction.action/targets/selection; server legal, исходные vertex/edge/tile IDs |
 | Выбор жертвы | BoardControls | selection.victim.victims из personal legal, публичные player names; move_robber/move_pirate с victim |
 
-Roll доступен в свой ход основной фазы до броска и без pending-action. End Turn зависит от своего хода, rolled и отсутствия pending-action. GamePage рассчитывает эти условия.
+Roll доступен в свой ход основной фазы до броска и без pending-action. End Turn зависит от своего хода, rolled и отсутствия pending-action. presentation.turnActions сохраняет эти прежние условия; проверки правил остаются на сервере.
 
 ## Выбор карты в lobby
 
@@ -70,51 +72,53 @@ BoardView получает геометрию, фигуры, правила и �
 
 [useBoardInteraction](../../web/src/board/useBoardInteraction.ts) хранит selection в GamePage. [BoardControls](../../web/src/board/BoardControls.tsx) рисует прежние tools и небольшую панель victims. При нескольких victims click сначала открывает выбор без команды; при одной жертве её pid передаётся явно, при нуле поле victim опускается. Список берётся с сервера, клиент не вычисляет кражу или ownership rules.
 
-BoardView рисует SVG markers; [InteractionOverlay3D](../../web/src/board3d/InteractionOverlay3D.tsx) — vertex rings/edge prisms, HexTile3D — tile outline. Hover усиливает подсветку, выбранный ship source/victim tile выделен янтарным. Оба renderer вызывают одинаковые callbacks. Three не импортирует SVG internals; общие PLAYER_COLORS/edgeId находятся в board/constants.ts. Coordinate mapping Phase 1 сохранён.
+BoardView рисует SVG markers; [InteractionOverlay3D](../../web/src/board3d/InteractionOverlay3D.tsx) — vertex rings/тонкие edge rails с невидимыми увеличенными hit surfaces. После Polish 1.1 HexTile3D подсвечивает настоящую плитку через pooled emissive material: второго tile outline mesh нет. Hover светлее, выбранный ship source/victim tile выделен янтарным. Terrain decoration исключён из raycasting, чтобы не перехватывать legal clicks. Оба renderer вызывают одинаковые callbacks. Three не импортирует SVG internals; общие PLAYER_COLORS/edgeId находятся в board/constants.ts. Coordinate mapping Phase 1 сохранён.
 
-Путь: click → shared callback → GamePage.sendCmd → WSClient → server._apply_cmd → неизменный engine.apply_cmd → _snapshot_state с personal legal → App.setMatch → GamePage → оба renderer. Waiting блокирует повторные board clicks до ответа. Фигуры не создаются optimistic. Error снимает ожидание/source/victim и показывает существующий feedback; snapshot заново проверяет доступность selection. Новый room+match сбрасывает selection. При 2D↔3D сохраняются tool, ship source и victim choice; GameState и tick не меняются. Sidebar Roll/End/discard/gold сохранён.
+Путь: click → shared callback → GamePage.sendCmd → WSClient → server._apply_cmd → неизменный engine.apply_cmd → _snapshot_state с personal legal → App.setMatch → GamePage → оба renderer. Waiting блокирует повторные board clicks до ответа. Фигуры не создаются optimistic. Error снимает ожидание/source/victim и показывает существующий feedback; snapshot заново проверяет доступность selection. Новый room+match сбрасывает selection. При 2D↔3D сохраняются tool, ship source и victim choice; GameState и tick не меняются. Payloads/условия Roll/End/discard/gold сохранены; их представление перенесено в dock/choice overlays.
 
 Проверено в Chrome 154 через production Docker: Base два клиента, 8 setup commands через 3D → Roll → road → End (tick 11); Gold Haven выбран через lobby, 3D setup, pirate после 7, ship и move ship [6,9]→[9,12], End; 2 хода/tick 15. Public state и pieces совпадают у клиентов, build mode/обычный turn/setup переживают переключение, 1440×1000/1280×720/1024×768 без horizontal overflow. Отдельные engine-built fixtures с mocked browser transport проверили SVG и 3D settlement/city/road/ship, move source/cancel/destination с переключением, robber/pirate с выбором второго из двух victims, free roads до Roll и rejected stale command без phantom piece. SVG fixture setup завершён всеми 8 кликами. Fixtures не означают естественное достижение этих состояний в короткой партии. Полная партия/mobile не проверялись.
 
+## Композиция Phase 1
+
+GamePage подключает один useBoardInteraction и передаёт один state/interaction в selector/renderers и BoardControls. HUD/presentation helpers только читают snapshot: нет стоимости/новых IDs/локальной GameState. GameSnapshot нормализует пересечённый TypeScript players array для итерации, добавляет уже существующие runtime game_over/last_roll в локальный UI тип; WS shape/семантика не меняются.
+
+Build palette показывает только инструменты с существующими personal legal targets, не рассчитывает affordability. Turn/pending смена закрывает локальную palette; выбор инструмента/Cancel вызывает прежний controller. Setup автоматически следует setup_need. ContextPrompt описывает controller step, включая source/destination/victim/waiting, а не создаёт новую state machine. Game info и log — закрытые nonmodal drawers; Escape/close возвращают focus. Victim chooser тоже nonmodal, переключение renderer сохраняет выбор; discard/gold — mandatory modal с focus trap и прежними полями/payloads.
+
+Реальные два клиента через Docker: Base setup/Roll/road/robber tick 21, Gold setup/Roll/ship/pirate tick 28; public snapshots совпали. Engine-built fixtures отдельно прошли оба renderer для четырёх build tools, move ship/cancel/destination, multiple victims, free roads и rejected commands без phantom pieces. Отдельно проверены drawer toggle/Escape/focus, selector/reset, choice focus trap и шесть длинных имён. 1920×1080/1440×900/1280×720 без page scroll/перекрытия HUD. Полная партия/mobile/low-end/a11y certification не проверялись. Существующий нюанс terrain decoration/road midpoint occlusion не исправлялся.
+
 ## Текущее дерево
 
-Названия без угловых скобок — блоки JSX, а не самостоятельные компоненты.
+Названия без угловых скобок — JSX-блоки, не самостоятельные компоненты.
 
 ```text
 <App>
-├── Заголовок CATAN LAN Web
-├── Если нет match: <LobbyPage>
-│   ├── Connection
-│   │   ├── URL / имя / код / число мест
-│   │   ├── Пресет / загрузка JSON
-│   │   ├── Host / Join
-│   │   └── Статус / ошибка
-│   └── Room
-│       ├── Код / карта / правила
-│       ├── Участники
-│       └── Start Match
-└── Если есть match: <GamePage>
-    ├── <BoardRenderer>
-    │   ├── 2D / 3D Experimental selector
-    │   ├── 2D: <BoardView> → SVG клетки / фигуры / targets / порты
-    │   ├── 3D: lazy <Board3D>, Suspense / failure boundary
-    │   │   ├── Camera toolbar / Reset Camera
-    │   │   ├── <Canvas> → CameraRig / lights / HexTile3D
-    │   │   │   ├── TerrainHints / NumberToken3D
-    │   │   │   ├── Pieces3D: road / settlement / city / ship / robber / pirate
-    │   │   │   ├── Port3D
-    │   │   │   └── InteractionOverlay3D: vertex / edge targets
-    │   │   └── Interaction hint / inspected tile
-    │   └── <BoardControls>
-    │       ├── Settlement / Road / City / Ship / Move Ship / Robber / Pirate
-    │       ├── Waiting / target hint / Cancel move
-    │       └── Choose player, если несколько victims
-    └── Sidebar
-        ├── Статус / ошибка
-        ├── My Resources
-        ├── Roll / End Turn
-        ├── Gold Choice, если требуется
-        ├── Discard Required, если требуется
-        ├── Players
-        └── Log
+├── Если нет match: CATAN LAN Web + <LobbyPage> (без redesign)
+│   ├── Connection / Host / Join / preset / custom JSON
+│   └── Room / players / Start Match
+└── Если есть match: <GamePage> → .game-shell
+    ├── <GameTopBar>
+    │   ├── Compact brand / room
+    │   ├── Players strip: name / color / public VP & counts / Turn
+    │   └── Goal / Game info / Event log buttons
+    ├── Board stage
+    │   ├── <ContextPrompt>
+    │   ├── <BoardRenderer> + compact 2D/3D selector
+    │   │   ├── 2D: <BoardView> → прежний SVG / targets / callbacks
+    │   │   └── 3D default: lazy <Board3D>, Suspense / failure boundary
+    │   │       ├── Compact Reset Camera
+    │   │       └── <Canvas> / CameraRig / lights / VisualResources
+    │   │           ├── HexTile3D → TerrainHints / NumberToken3D
+    │   │           ├── Pieces3D / Port3D
+    │   │           └── InteractionOverlay3D → targets / ghosts
+    │   └── Error / disconnected feedback
+    ├── Bottom HUD
+    │   ├── <ResourceHand> → five own resource cards
+    │   └── Action dock
+    │       ├── Roll / disabled Trade & Dev / End Turn (ordinary turn)
+    │       └── <BoardControls>
+    │           ├── Setup cue / Build palette / Move Ship
+    │           ├── Robber / Pirate / Cancel (contextual)
+    │           └── <GameOverlay> victim chooser, when needed
+    ├── <GameOverlay> Game info or Event log, when opened
+    └── <GameOverlay> Gold Choice / Discard, when required
 ```

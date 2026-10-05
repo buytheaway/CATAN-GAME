@@ -1,5 +1,5 @@
 import type { Tile } from "../components/BoardView.types";
-import type { BoardBounds, BoardRenderModel, Point3D } from "./types";
+import type { BoardBounds, BoardRenderModel, Point3D, RenderPort } from "./types";
 
 export const TILE_TOP = 0.26;
 
@@ -49,13 +49,20 @@ export function boardBounds(points: Point3D[], margin = 1): BoardBounds {
   };
 }
 
+/** Pull the visual badge closer to its existing edge; game topology/IDs remain untouched. */
+export function portLabelPosition(port: Pick<RenderPort, "position" | "anchor">): Point3D {
+  return [port.anchor[0] + (port.position[0] - port.anchor[0]) * 0.66, port.position[1],
+    port.anchor[2] + (port.position[2] - port.anchor[2]) * 0.66];
+}
+
 /** Visual footprint includes tile rims and port labels, without empty bounding-box corners. */
 export function cameraFootprint(model: Pick<BoardRenderModel, "tiles" | "ports">): Point3D[] {
   const outline = model.tiles.flatMap(t => Array.from({ length: 6 }, (_, i): Point3D =>
     [t.position[0] + Math.sin(i * Math.PI / 3), 0, t.position[2] + Math.cos(i * Math.PI / 3)]));
   model.ports.forEach(p => {
-    for (const x of [-0.48, 0.48]) for (const z of [-0.48, 0.48])
-      outline.push([p.position[0] + x, 0, p.position[2] + z]);
+    const position = portLabelPosition(p);
+    for (const x of [-0.4, 0.4]) for (const z of [-0.4, 0.4])
+      outline.push([position[0] + x, 0, position[2] + z]);
   });
   return outline.flatMap(([x, , z]) => [[x, 0, z], [x, 0.95, z]] as Point3D[]);
 }

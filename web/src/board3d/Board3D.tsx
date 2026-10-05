@@ -12,6 +12,7 @@ import InteractionOverlay3D from "./InteractionOverlay3D";
 import { VisualResources } from "./VisualResources";
 import { VISUAL } from "./materials";
 import { cameraFootprint } from "./coordinates";
+import GameIcon from "../game/GameIcon";
 
 function BoardLight({ bounds }: { bounds: BoardBounds }) {
   const light = useRef<DirectionalLight>(null);
@@ -34,15 +35,11 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
 export default function Board3D({ state, interaction }: { state: BoardSnapshot; interaction: BoardInteraction }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
-  const [inspectedTile, setInspectedTile] = useState<number | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
   const hover = useCallback((tileIndex: number | null) => setHoveredTile(tileIndex), []);
   const inspect = useCallback((tileIndex: number) => {
-    setInspectedTile(tileIndex);
     interaction.onTileClick(tileIndex);
   }, [interaction.onTileClick]);
-  const visibleTile = hoveredTile ?? inspectedTile;
-  const tile = visibleTile != null ? state.tiles[visibleTile] : null;
   const { bounds } = model;
   const footprint = JSON.stringify(cameraFootprint(model));
 
@@ -50,8 +47,10 @@ export default function Board3D({ state, interaction }: { state: BoardSnapshot; 
     <div className="board3d" data-renderer="3d" data-tile-count={model.tiles.length}
       data-selectable={hoveredTile != null && interaction.targets.tiles.includes(hoveredTile)}>
       <div className="board3d-toolbar">
-        <span>Drag to orbit · Scroll to zoom</span>
-        <button type="button" className="btn" onClick={() => setResetVersion(v => v + 1)}>Reset Camera</button>
+        <button type="button" className="game-button" aria-label="Reset Camera"
+          title="Reset camera · Drag the board to orbit; scroll to zoom" onClick={() => setResetVersion(v => v + 1)}>
+          <GameIcon name="reset" /> Reset
+        </button>
       </div>
       <div className="board3d-canvas" role="img" aria-label="Experimental 3D game board">
         <Canvas
@@ -86,10 +85,6 @@ export default function Board3D({ state, interaction }: { state: BoardSnapshot; 
           <InteractionOverlay3D state={state} interaction={interaction} />
           </VisualResources>
         </Canvas>
-      </div>
-      <div className="board3d-footer">
-        <span>Click highlighted targets to play. Drag to orbit.</span>
-        <span aria-live="polite">{tile ? `Tile ${visibleTile} · ${tile.terrain}${tile.number != null ? ` · ${tile.number}` : ""}` : "Hover or click a hex to inspect it."}</span>
       </div>
     </div>
   );

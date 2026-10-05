@@ -1,6 +1,5 @@
 import { memo } from "react";
-import { TILE_TOP } from "./coordinates";
-import { targetColor, terrainStyle } from "./materials";
+import { tileFeedback, terrainStyle } from "./materials";
 import NumberToken3D from "./NumberToken3D";
 import TerrainHints from "./TerrainHints";
 import { useVisualResources } from "./VisualResources";
@@ -17,12 +16,9 @@ export default memo(function HexTile3D({ tile, hovered, legal, selected, onHover
     onPointerOver={e => { e.stopPropagation(); onHover(tile.tileIndex); }}
     onPointerOut={() => onHover(null)}
     onClick={e => { e.stopPropagation(); if (e.delta < 5) onInspect(tile.tileIndex); }}>
-    <mesh geometry={pool.geometry("hex")} material={[pool.standard(style.color), pool.standard(style.side)]}
+    <mesh geometry={pool.geometry("hex")} material={[pool.standard(style.color, false, tileFeedback(hovered, legal, selected)), pool.standard(style.side)]}
       receiveShadow castShadow userData={{ tileIndex: tile.tileIndex }} />
-    {(hovered || legal || selected) && <mesh position={[0, TILE_TOP + 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]}
-      geometry={pool.ring(selected ? 0.85 : 0.9, 0.935, 6)}
-      material={pool.flat(targetColor(hovered, selected), hovered || selected ? 0.95 : 0.58)} />}
-    <TerrainHints terrain={tile.terrain} />
+    <TerrainHints terrain={tile.terrain} tileIndex={tile.tileIndex} />
     {tile.number != null && <NumberToken3D number={tile.number} />}
   </group>;
 });

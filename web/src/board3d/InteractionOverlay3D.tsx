@@ -35,10 +35,10 @@ export default function InteractionOverlay3D({ state, interaction }: {
       return <group key={key} position={position} userData={{ targetType: "vertex", vertexId: vid }}
         onPointerOver={e => { e.stopPropagation(); setHover(key); }} onPointerOut={() => setHover(null)}
         onClick={e => { e.stopPropagation(); if (e.delta < 5) interaction.onVertexClick(vid); }}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={pool.ring(0.18, hovered ? 0.3 : 0.26)}
-          material={pool.flat(targetColor(hovered), hovered ? 0.95 : 0.8)} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={pool.ring(0.12, hovered ? 0.23 : 0.17)}
+          material={pool.flat(targetColor(hovered), hovered ? 0.85 : 0.35)} />
         <mesh rotation={[-Math.PI / 2, 0, 0]} scale={[0.29, 0.29, 1]}
-          geometry={pool.geometry("disc")} material={pool.flat(targetColor(hovered), 0.1)} />
+          geometry={pool.geometry("disc")} material={pool.flat(targetColor(hovered), 0)} />
       </group>;
     })}
     {edges.map(edge => {
@@ -56,10 +56,10 @@ export default function InteractionOverlay3D({ state, interaction }: {
         onPointerOver={e => { e.stopPropagation(); setHover(key); }} onPointerOut={() => setHover(null)}
         onClick={e => { e.stopPropagation(); if (e.delta < 5) interaction.onEdgeClick(edge); }}>
         <mesh scale={[placement.length * 0.85, 0.055, 0.28]}
-          geometry={pool.geometry("box")} material={pool.flat(targetColor(hovered, selected), 0.12)} />
+          geometry={pool.geometry("box")} material={pool.flat(targetColor(hovered, selected), 0)} />
         {[-1, 1].map(side => <mesh key={side} position={[0, 0.025, side * 0.12]}
-          scale={[placement.length * 0.82, 0.025, selected ? 0.035 : 0.022]}
-          geometry={pool.geometry("box")} material={pool.flat(targetColor(hovered, selected), hovered || selected ? 1 : 0.7)} />)}
+          scale={[placement.length * 0.82, 0.025, selected ? 0.035 : hovered ? 0.025 : 0.015]}
+          geometry={pool.geometry("box")} material={pool.flat(targetColor(hovered, selected), hovered || selected ? 1 : 0.38)} />)}
         {selected && [-1, 1].map(end => <mesh key={end} position={[end * placement.length * 0.41, 0.025, 0]}
           scale={[0.035, 0.025, 0.27]} geometry={pool.geometry("box")} material={pool.flat(targetColor(false, true))} />)}
       </group>;

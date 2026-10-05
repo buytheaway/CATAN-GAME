@@ -26,6 +26,28 @@ export function targetColor(hovered: boolean, selected = false) {
   return selected ? VISUAL.selected : hovered ? VISUAL.hover : VISUAL.legal;
 }
 
+const TILE_FEEDBACK = {
+  selected: { color: VISUAL.selected, intensity: 0.22 },
+  hovered: { color: VISUAL.hover, intensity: 0.12 },
+  legal: { color: VISUAL.legal, intensity: 0.045 },
+} as const;
+
+/** Illuminate the existing surface, without a second hex or shared-material mutation. */
+export function tileFeedback(hovered: boolean, legal: boolean, selected: boolean) {
+  return selected ? TILE_FEEDBACK.selected : hovered ? TILE_FEEDBACK.hovered : legal ? TILE_FEEDBACK.legal : undefined;
+}
+
+/** Stable visual variety only. No game seed, randomness, IDs or snapshot changes. */
+export function terrainVariation(tileIndex: number) {
+  const phase = (Math.imul(tileIndex + 1, 2654435761) >>> 0) / 0xffffffff;
+  return {
+    rotation: (phase - 0.5) * 0.32,
+    scale: 0.94 + phase * 0.12,
+    offset: (phase - 0.5) * 0.06,
+    height: 0.88 + ((tileIndex * 7 + 3) % 11) / 10 * 0.24,
+  };
+}
+
 export function terrainStyle(terrain: string): { color: string; side: string; hint: string } {
   return TERRAIN_STYLES[terrain as keyof typeof TERRAIN_STYLES]
     ?? { color: "#b5bec5", side: "#7c8791", hint: "none" };

@@ -2,7 +2,6 @@ import { Component, lazy, Suspense, useState } from "react";
 import type { ReactNode } from "react";
 import BoardView from "./BoardView";
 import type { BoardViewProps } from "./BoardView.types";
-import BoardControls from "../board/BoardControls";
 import "../board3d/board3d.css";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
@@ -18,12 +17,13 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
 }
 
 export default function BoardRenderer(props: BoardViewProps) {
-  const [mode, setMode] = useState<"2d" | "3d">("2d");
+  const [mode, setMode] = useState<"2d" | "3d">("3d");
   return (
     <div className="board-renderer">
       <div className="board-renderer-selector" role="group" aria-label="Board renderer">
-        <button type="button" className="btn" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}>2D</button>
-        <button type="button" className="btn" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}>3D Experimental</button>
+        <span>View</span>
+        <button type="button" className="game-button" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}>2D</button>
+        <button type="button" className="game-button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}>3D</button>
       </div>
       {mode === "2d" ? <BoardView {...props} /> : (
         <Board3DErrorBoundary>
@@ -32,7 +32,6 @@ export default function BoardRenderer(props: BoardViewProps) {
           </Suspense>
         </Board3DErrorBoundary>
       )}
-      <BoardControls state={props.state} interaction={props.interaction} />
     </div>
   );
 }

@@ -13,7 +13,8 @@ const compiled = await build({
   bundle: true, write: false, platform: "node", format: "esm",
 });
 const { toScenePosition, tilePosition, edgePlacement, boardBounds, cameraFrame, cameraFootprint, TILE_TOP,
-  createRenderModel, terrainStyle, playerColor, portAppearance, buildPreview, targetColor, createVisualResources } = await import(
+  createRenderModel, terrainStyle, playerColor, portAppearance, buildPreview, targetColor, tileFeedback,
+  terrainVariation, createVisualResources } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 
 function snapshot(overrides = {}) {
@@ -218,6 +219,47 @@ test("selected feedback has its own persistent accent instead of becoming hover 
   assert.notEqual(targetColor(false), targetColor(true));
   assert.notEqual(targetColor(true), targetColor(false, true));
   assert.equal(targetColor(true, true), targetColor(false, true));
+});
+
+test("tile feedback preserves terrain color and cannot illuminate another tile sharing the pool", async () => {
+  const pool = createVisualResources(); pool.retain();
+  const color = terrainStyle("forest").color;
+  const neutral = pool.standard(color);
+  const hover = pool.standard(color, false, tileFeedback(true, false, false));
+  const selected = pool.standard(color, false, tileFeedback(false, false, true));
+  assert.equal(neutral.emissiveIntensity, 0);
+  assert.equal(hover.color.getHexString(), neutral.color.getHexString());
+  assert.ok(hover.emissiveIntensity > 0);
+  assert.ok(selected.emissiveIntensity > hover.emissiveIntensity);
+  assert.equal(tileFeedback(true, true, true), tileFeedback(false, false, true));
+  assert.equal(tileFeedback(false, false, false), undefined);
+  assert.equal(pool.standard(color, false, tileFeedback(true, false, false)), hover);
+  assert.equal(pool.standard(color), neutral);
+  let disposed = 0;
+  hover.addEventListener("dispose", () => disposed++);
+  pool.release(); await Promise.resolve();
+  assert.equal(disposed, 1);
+});
+
+test("terrain variation is deterministic, modest and varied across a 50-tile board", () => {
+  const variations = Array.from({ length: 50 }, (_, i) => terrainVariation(i));
+  assert.deepEqual(variations, Array.from({ length: 50 }, (_, i) => terrainVariation(i)));
+  assert.equal(new Set(variations.map(v => v.rotation)).size, 50);
+  for (const v of variations) {
+    assert.ok(Math.abs(v.rotation) <= 0.16 && Math.abs(v.offset) <= 0.03);
+    assert.ok(v.scale >= 0.94 && v.scale <= 1.06);
+    assert.ok(v.height >= 0.88 && v.height <= 1.12);
+  }
+});
+
+test("port placards remain small finite shared geometry with a visible bevel", async () => {
+  const pool = createVisualResources(); pool.retain();
+  const geo = pool.geometry("port"); geo.computeBoundingBox();
+  assert.equal(pool.geometry("port"), geo);
+  assert.ok(geo.boundingBox.max.x < 0.33 && geo.boundingBox.max.z < 0.25);
+  assert.ok(geo.boundingBox.max.y > 0.055 && geo.boundingBox.max.y < 0.08);
+  assert.ok(Array.from(geo.attributes.position.array).every(Number.isFinite));
+  pool.release(); await Promise.resolve();
 });
 
 test("camera fits actual tile rims and port labels on asymmetric 50-hex and narrow layouts", () => {

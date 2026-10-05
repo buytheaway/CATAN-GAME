@@ -24,8 +24,6 @@ export default function CameraRig({ bounds, footprint, resetVersion }: {
     controls.enableDamping = false;
     controls.minPolarAngle = Math.PI * 0.12;
     controls.maxPolarAngle = Math.PI * 0.29;
-    controls.minAzimuthAngle = -Math.PI / 4;
-    controls.maxAzimuthAngle = Math.PI / 4;
     const requestFrame = () => invalidate();
     controls.addEventListener("change", requestFrame);
     return () => {

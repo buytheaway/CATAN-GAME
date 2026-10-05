@@ -28,9 +28,14 @@ const factories = {
   hex: () => {
     const points = Array.from({ length: 6 }, (_, i): [number, number] =>
       [Math.sin(i * Math.PI / 3) * 0.94, Math.cos(i * Math.PI / 3) * 0.94]);
-    const geo = extrude(points, 0.18, 0.025);
+    const geo = extrude(points, 0.19, 0.03);
     geo.rotateX(-Math.PI / 2);
-    geo.translate(0, 0.055, 0); // Top stays exactly at TILE_TOP (0.26).
+    geo.translate(0, 0.04, 0); // Top stays exactly at TILE_TOP (0.26).
+    return geo;
+  },
+  port: () => {
+    const geo = extrude([[-0.31, -0.23], [0.31, -0.23], [0.31, 0.23], [-0.31, 0.23]], 0.055, 0.01);
+    geo.rotateX(-Math.PI / 2);
     return geo;
   },
   road: () => {
@@ -78,10 +83,11 @@ export function createVisualResources() {
       if (!geometries.has(key)) geometries.set(key, new RingGeometry(inner, outer, segments));
       return geometries.get(key)!;
     },
-    standard(color: string, ghost = false) {
-      const key = `standard:${color}:${ghost}`;
+    standard(color: string, ghost = false, glow?: { color: string; intensity: number }) {
+      const key = `standard:${color}:${ghost}:${glow?.color ?? "none"}:${glow?.intensity ?? 0}`;
       if (!materials.has(key)) materials.set(key, new MeshStandardMaterial({
         color, roughness: 0.78, transparent: ghost, opacity: ghost ? 0.46 : 1, depthWrite: !ghost,
+        emissive: glow?.color ?? "#000000", emissiveIntensity: glow?.intensity ?? 0,
       }));
       return materials.get(key)!;
     },

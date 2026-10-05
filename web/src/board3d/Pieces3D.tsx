@@ -28,6 +28,7 @@ export function Settlement3D({ building, ghost = false }: { building: RenderBuil
   return <group position={building.position} userData={{ vertexId: building.vertexId, owner: building.owner, level: 1, preview: ghost }}>
     <PieceMesh kind="house" color={playerColor(building.owner)} ghost={ghost} />
     <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[0, 0.1, 0.15]} scale={[0.06, 0.1, 0.012]} />
+    <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0, 0.13, -0.15]} scale={[0.07, 0.07, 0.012]} />
   </group>;
 }
 
@@ -39,6 +40,7 @@ export function City3D({ building, ghost = false }: { building: RenderBuilding; 
     <PieceMesh kind="box" color={color} ghost={ghost} position={[0.14, 0.45, -0.13]} scale={[0.31, 0.06, 0.3]} />
     <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0.14, 0.3, 0.001]} scale={[0.12, 0.09, 0.012]} />
     <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[-0.1, 0.1, 0.23]} scale={[0.075, 0.11, 0.012]} />
+    <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0.14, 0.3, -0.261]} scale={[0.12, 0.09, 0.012]} />
   </group>;
 }
 
@@ -57,7 +59,7 @@ export function Robber3D({ position, tileIndex }: { position: Point3D; tileIndex
     <PieceMesh kind="cylinder" color={VISUAL.robber} position={[0, 0.035, 0]} scale={[0.18, 0.07, 0.18]} />
     <PieceMesh kind="cone" color={VISUAL.robber} position={[0, 0.22, 0]} scale={[0.14, 0.35, 0.14]} />
     <PieceMesh kind="sphere" color={VISUAL.robber} position={[0, 0.42, 0]} scale={[0.115, 0.115, 0.115]} />
-    <PieceMesh kind="cylinder" color={VISUAL.tokenSide} position={[0, 0.33, 0]} scale={[0.065, 0.03, 0.065]} />
+    <PieceMesh kind="cylinder" color={VISUAL.tokenSide} position={[0, 0.33, 0]} scale={[0.09, 0.03, 0.09]} />
   </group>;
 }
 
@@ -69,5 +71,7 @@ export function Pirate3D({ position, tileIndex }: { position: Point3D; tileIndex
     <PieceMesh kind="box" color={VISUAL.pirate} position={[0.015, 0.36, 0]} scale={[0.3, 0.18, 0.04]} />
     <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, 0.025]} scale={[0.03, 0.11, 0.01]} />
     <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, 0.026]} scale={[0.1, 0.03, 0.01]} />
+    <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, -0.025]} scale={[0.03, 0.11, 0.01]} />
+    <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, -0.026]} scale={[0.1, 0.03, 0.01]} />
   </group>;
 }

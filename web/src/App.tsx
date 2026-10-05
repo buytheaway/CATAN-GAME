@@ -31,8 +31,8 @@ export default function App() {
   }, [client]);
 
   return (
-    <div className="app">
-      <h2>CATAN LAN Web</h2>
+    <div className={match ? "app app--match" : "app"}>
+      {!match && <h2>CATAN LAN Web</h2>}
       {match ? (
         <GamePage
           client={client}

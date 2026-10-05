@@ -5,7 +5,9 @@ updated: 2026-10-05
 
 # Project State
 
-Last verified: 2026-10-05 — Board3D Phase 3: 65/65 web tests, TypeScript, production build, Docker build/up и Chrome visual smoke прошли. Два реальных React-клиента: Base Standard — полная 3D setup, Roll, road, robber и 13 ходов (tick 37); Gold Haven — setup, Roll, ship, pirate и 5 ходов (tick 20). Публичные snapshots совпали, SVG/3D switching и desktop resize работают. Engine-built fixtures отдельно проверили оба renderer: settlement/city/road/ship, move ship, victims, free roads, отказ без phantom pieces; четыре новых ghost previews не отправляют commands. Проверены 19/50 hex, idle и cleanup. Python/engine/controller/protocol/maps/dependencies не изменены; pytest не повторялся (186/186 — результат Phase 2), scenario baseline 348/508 исторический. Полная партия/mobile/low-end/нагрузка не сертифицированы. Evidence и пределы — [[Design System]] и [[plans/board3d]].
+Last verified: 2026-10-05 — Board3D Polish 1.1: 76/76 web tests, TypeScript, production build, Docker frontend build/up и Chrome 154 headless прошли. Hover использует emissive настоящей плитки; azimuth свободный 360°, tilt/zoom/reset сохранены. Terrain имеет стабильные небольшие вариации, порты — compact dock/placard; декоративные meshes больше не перехватывают legal hits. Base/Gold/50-hex fixture: framing, отсутствие page scroll, 0 дополнительных idle frames, cleanup при 2D switch. Два live React-клиента: Base — setup/Roll/road/robber, 4 хода/tick 18; Gold — setup/Roll/ship/pirate, 17 ходов/tick 50. Move ship и multiple victims дополнительно проверены engine-built fixtures в обоих renderer. Python/protocol/maps/controller/HUD/dependencies не менялись; pytest/scenarios не повторялись. Evidence/limits — [[plans/board3d#Game UI / Board3D Polish 1.1]] и [[Design System#Polish 1.1 visual evidence]]. Полная партия/mobile/low-end FPS не сертифицированы.
+
+Предыдущая UI verification, 2026-10-05: Game UI Redesign Phase 1 — 73/73 web tests (65 прежних + 8 UI cases), TypeScript, production/Docker build. Fullscreen match shell, compact HUD/hand/dock, закрытые drawers и default 3D; SVG сохранён. Desktop 1920×1080, 1440×900, 1280×720, шесть длинных имён, drawer/Escape/focus и modal focus trap проверены. Исторические Python результаты: 186 pytest и 348/508 scenarios. Подробнее — [[plans/game-ui-redesign]].
 
 Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8812`), построение всех 12 карт в памяти, повторяемость seed, topology/ports/snapshot/legal и границы map validation. В рамках этого анализа полный test/build/scenario набор не повторялся, runtime и зависимости не менялись; последующая Docker verification указана выше. Подробности — [[Карты и сценарии]] и [[Design System]].
 
@@ -29,7 +31,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Desktop offline имеет бот, строительство, обмены, карты развития и сохранения; у этих возможностей есть ограничения и ошибки.
 - Сервер обрабатывает комнаты, команды и снимки; web показывает lobby и match с интерактивным SVG-полем.
 - Lobby map selection: Room authoritative; map_revision растёт при успешном set_map. WSClient отбрасывает меньшую revision в той же комнате, сохраняет последний pending выбор и держит один запрос в ожидании плюс последний queued выбор. Start ждёт подтверждения; disconnect/смена комнаты сбрасывают pending, reconnect получает актуальную карту сервера.
-- BoardRenderer сохраняет default 2D и lazy 3D Experimental на том же snapshot. Оба renderer используют общий controller GamePage и personal server legal; setup/build/movement/victim choice доступны в обоих, gameplay rules остаются в Python. Scope и проверка — [[plans/board3d]].
+- BoardRenderer теперь default 3D, компактный 2D/3D selector и прежний SVG/error fallback. Оба renderer получают один snapshot и общий controller GamePage с personal server legal. GamePage размещает BoardControls в нижнем dock; оформление отделено в game/. Gameplay остаётся в Python. Scope — [[plans/board3d]] и [[plans/game-ui-redesign]].
 - Production roll принимает только `{type: "roll"}`; две кости генерирует сервер. CATAN_DEBUG_ROLLS больше не открывает публичный debug-путь.
 - Публичный список команд исключает grant_resources. Helper остался в trusted engine для подготовки тестов и проверяет весь payload перед выдачей.
 - Имя не даёт доступ к занятому слоту; reconnect требует существующий токен и отзывает старое соединение.
@@ -38,7 +40,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Reconnect token восстанавливает прежний слот до rematch. Сохранившиеся участники сохраняют token с новым pid; исключённый участник теряет доступ к слоту при новом матче. match_id увеличивается; tick, sequence и deduplication history сбрасываются.
 - В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для будущего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed и точные остатки банка не передаются, колода перемешивается независимо от карты.
 - Pirate использует одно разрешённое событие после 7/завершения discard либо Knight: pending `robber_move` позволяет выбрать land robber или sea pirate при enable_pirate. Успех закрывает pending и допускает максимум одну кражу; повтор без нового события отклоняется общим движком. React/PySide клики согласованы с этим событием.
-- 65 web cases проходят (24 transport + 3 LobbyPage + 5 BoardView + 4 URL + 12 Board3D projection/geometry + 8 visual/preview/cleanup + 9 shared interaction). TypeScript/production/Docker build и Chrome проверены 2026-10-05 для Phase 3. 186 pytest без skip — историческая проверка Phase 2; Python в Phase 3 не менялся.
+- 73 web cases проходят (24 transport + 3 LobbyPage + 5 BoardView + 4 URL + 20 Board3D projection/visual/resource cases + 9 shared interaction + 8 Game UI). TypeScript/production/Docker build и Chrome проверены 2026-10-05 для Game UI Phase 1. 186 pytest — историческая проверка Phase 2; Python не менялся.
 
 ## Partially Implemented
 
@@ -75,7 +77,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 3. Подготовить новый React UI, сохраняя игровое поведение.
 4. Затем постепенно рефакторить архитектуру.
 
-Production Hardening Phase 1 завершена в утверждённом scope. Общий UI redesign не начат; Board3D Phase 1 реализует отдельную visual foundation в принятом clean modern tabletop направлении. Fantasy/MMORPG-декор исключён, прежние references остаются historical. Desktop в Hardening Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
+Production Hardening Phase 1 завершена в утверждённом scope. Game UI Redesign Phase 1 пересобрала match composition; lobby/menu/trade/dev/settings остаются будущими задачами. Board3D Phase 1 реализовала отдельную visual foundation в принятом clean modern tabletop направлении. Fantasy/MMORPG-декор исключён, прежние references остаются historical. Desktop в Hardening Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
 
 ## Map / 3D preparation
 
@@ -87,12 +89,12 @@ Production Hardening Phase 1 завершена в утверждённом scop
 
 ## Next Engineering Tasks
 
-- Следующий шаг: review/checkpoint Board3D Phase 3. База текущего diff — чистый commit bcaf9d3 (Phase 2); предложены commit `feat: polish 3d board visuals` и tag `board3d-phase-3`. Commit/tag не создаются автоматически.
-- Дальнейшие accessibility/low-end/mobile/animation polish и gameplay P1 требуют отдельных задач; общий UI redesign не начат.
+- Следующий шаг: ручная визуальная приёмка/checkpoint Polish 1.1; proposal `fix: polish board interaction visuals`, tag `game-ui-polish-1-1`. В этой checkout tag game-ui-phase-1 отсутствует; прежний UI Phase 1 diff остаётся незакоммиченным поверх a1cbd7e. Размер polish считается отдельно от состояния на начало задачи. Агент не создавал commits/tags; следующий этап не начат.
+- Дальнейшие UI phases, accessibility/low-end/mobile и gameplay P1 требуют отдельных задач. Подтверждённый существующий нюанс Three: terrain decoration иногда перекрывает midpoint road target; видимая часть того же target кликается. Geometry/raycast architecture здесь не исправлялись.
 - Открытый backlog: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения.
 - Дальнейшие ограничения Phase 1 и результаты — [[plans/server-authority-hardening]].
 - Уточнить gameplay-композицию, состояния и visual tokens актуального clean tabletop направления в [[Design System]].
-- Подготовить и согласовать [[plans/web-ui-redesign|план React redesign]]; не переносить макеты в код автоматически.
+- Продолжать UI только по отдельной задаче; актуальная композиция и границы — [[plans/game-ui-redesign]]. Старый [[plans/web-ui-redesign|план React redesign]] остаётся историческим.
 - Сохранить разграничение: зелёный pytest/build не заменяет полный набор сценариев и проверку правил.
 
 ## Production Infrastructure Phase 1
@@ -132,3 +134,9 @@ Runtime diff ограничен GET /health в server_mp.py и общим URL re
 Единый bevel и palette, различимые terrain silhouettes, крупные contrast tokens/ports, новые стилизованные road/house/city/ship/pawn/pirate pieces. Legal/hover/selected используют outline/ring/rails; translucent ghost строится только из server targets и не отправляет команд. Камера подгоняется по реальному контуру, не сбрасывается на обычном snapshot; navy canvas и нейтральный свет заменили большую светлую подложку. Координаты/IDs, default 2D и dependency versions сохранены.
 
 65 web tests, TypeScript, production/Docker build и Chrome проверки прошли. 19/50 hex дают 0 idle frames, общую hex geometry и cleanup до 0 geometry/texture после 2D. Восемь screenshot evidence, Base/Gold live flow и контролируемые previews/movement описаны в [[Design System]] и [[plans/board3d]]. Нет подтверждённых новых blocker regressions; полная accessibility/mobile/low-end/нагрузка не проверена. Lazy chunk 881.25 KB / 237.40 KB gzip, прежний Vite warning остаётся. Предложены commit `feat: polish 3d board visuals` и tag `board3d-phase-3`; не созданы автоматически.
+
+## Game UI Redesign Phase 1 — Game Screen Composition
+
+**Completed — 2026-10-05. READY FOR CHECKPOINT.** Тёмный match-only shell: игроки/turn/публичные VP и counts сверху, central board, own resource hand слева снизу, contextual actions справа. Game info и log закрыты по умолчанию. Trade/dev формы не добавлены; их controls явно unavailable. Setup/build/ship/robber/pirate/victim/discard/gold используют прежние snapshot/controller/commands. Минимальные legal markers сохраняют hit areas; ports визуально меньше/темнее/ближе, IDs и engine placement не меняются. Dependency и Docker architecture без изменений.
+
+Сцена занимает 80.7%, 79.1%, 75.8% высоты проверенных desktop viewports соответственно; сам Canvas — 75.9%, 73.3%, 68.6%. Это измерение layout, не обещание занимаемой островом площади или процента визуального внимания. Chrome screenshots и результаты/limits — [[Design System#Game UI Redesign Phase 1 — implemented composition]] и [[plans/game-ui-redesign]]. Docker остаётся запущен на http://localhost; перезапускался только web container, backend room state не сбрасывался.
