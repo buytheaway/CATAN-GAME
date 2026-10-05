@@ -3,15 +3,17 @@ import type { MatchState, RoomState, ServerError, WSClient } from "../wsClient";
 import BoardRenderer from "./BoardRenderer";
 import BoardControls from "../board/BoardControls";
 import { useBoardInteraction } from "../board/useBoardInteraction";
-import { ContextPrompt, GameTopBar, ResourceHand } from "../game/GameHUD";
+import { BankSummary, ContextPrompt, GameTopBar, ResourceHand } from "../game/GameHUD";
 import GameOverlay from "../game/GameOverlay";
 import GameIcon from "../game/GameIcon";
 import { RESOURCES, turnActions, type GameSnapshot } from "../game/presentation";
-import TradePanel, { IncomingTrades } from "../game/TradePanel";
+import TradePanel, { IncomingTrades, TradeOffers } from "../game/TradePanel";
 import DevelopmentPanel, { DevelopmentHand } from "../game/DevelopmentCards";
 import Endgame from "../game/Endgame";
-import { addressedOffers, type DevType } from "../game/actions";
+import { addHandResource, addressedOffers, buyDevReason, phaseReason, type DevType, type Resource, type TradeDraft } from "../game/actions";
 import { useGameCommand } from "../game/useGameCommand";
+import ActionButton from "../game/ActionButton";
+import DiceHUD, { useDicePresentation } from "../game/DiceHUD";
 import "../game/game.css";
 
 export default function GamePage({ client, match, room, status, log, error, onBackToLobby }: {
@@ -33,20 +35,26 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const [discard, setDiscard] = useState<Record<string, number>>({});
   const [goldRes, setGoldRes] = useState<string>(RESOURCES[0]);
   const [goldQty, setGoldQty] = useState(1);
-  const [drawer, setDrawer] = useState<"log" | "info" | "trade" | "dev" | null>(null);
+  const [drawer, setDrawer] = useState<"log" | "info" | "dev" | null>(null);
+  const [tradeDraft, setTradeDraft] = useState<TradeDraft | null>(null);
   const [selectedDev, setSelectedDev] = useState<DevType | null>(null);
   const [dismissedOffers, setDismissedOffers] = useState<number[]>([]);
   const closeDrawer = useCallback(() => setDrawer(null), []);
+  const closeTrade = useCallback(() => setTradeDraft(null), []);
   const matchKey = `${match.room_code}:${match.match_id}`;
   const request = useGameCommand(client, matchKey);
+  const dice = useDicePresentation(matchKey, state.dice, state.roll_count);
   const interaction = useBoardInteraction(state, youPid, matchKey, error,
     cmd => client.sendCmd(cmd));
   const freeRoads = state.free_roads?.[String(youPid)] ?? 0;
   const previousFree = useRef(0);
   useEffect(() => {
-    setDrawer(null); setSelectedDev(null); setDismissedOffers([]); previousFree.current = 0;
+    setDrawer(null); setTradeDraft(null); setSelectedDev(null); setDismissedOffers([]); previousFree.current = 0;
   }, [matchKey]);
   useEffect(() => { if (state.pending_action || state.game_over) setDrawer(null); }, [state.pending_action, state.game_over]);
+  useEffect(() => {
+    if (state.pending_action || state.game_over || state.turn !== youPid) setTradeDraft(null);
+  }, [state.pending_action, state.game_over, state.turn, youPid]);
   useEffect(() => {
     // Let the shared controller reconcile the board ACK before changing tools.
     if (interaction.selection.waiting) return;
@@ -58,9 +66,18 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const ordinaryActions = state.phase === "main" && pending === "none" && !state.game_over;
   const mandatoryChoice = needGold || needDiscard || !!interaction.selection.victim;
   const incoming = addressedOffers(state, youPid).filter(o => !dismissedOffers.includes(o.offer_id));
-  const blocked = request.waiting || status !== "connected";
+  const blocked = request.waiting || interaction.selection.waiting || status !== "connected";
+  const purchaseReason = buyDevReason(state, youPid);
+  const tradeDisabled = blocked || !!phaseReason(state, youPid);
+  const tradeTargets = room ? room.players.filter(p => p.name && p.connected) : state.players;
+  const ownOffers = (state.trade_offers ?? []).filter(o => o.from_pid === youPid && o.status === "active");
+  const handTrade = (resource: Resource) => {
+    if (tradeDisabled || !res[resource]) return;
+    setDrawer(null); interaction.onSelectAction(null);
+    setTradeDraft(current => addHandResource(current, resource, res));
+  };
   const openDev = (type: DevType | null) => {
-    setSelectedDev(type); interaction.onSelectAction(null); setDrawer("dev");
+    setSelectedDev(type); setTradeDraft(null); interaction.onSelectAction(null); setDrawer("dev");
   };
 
   return <main className="game-shell">
@@ -70,38 +87,45 @@ export default function GamePage({ client, match, room, status, log, error, onBa
     <section className="board-stage" aria-label="Game board">
       <ContextPrompt state={state} pid={youPid} interaction={interaction} />
       <div className="board-command-surface" style={{ height: "100%", pointerEvents: blocked ? "none" : undefined }}
-        aria-busy={request.waiting}><BoardRenderer state={state} interaction={interaction} /></div>
+        aria-busy={request.waiting}><BoardRenderer state={state} interaction={interaction} diceRoll={dice.roll} /></div>
       {error && <div className="game-error error" role="alert">{error.message}</div>}
       {status !== "connected" && <div className="connection-notice" role="status">Connection: {status}</div>}
     </section>
     <footer className="game-bottom-hud">
-      <div className="personal-hands"><ResourceHand resources={res} />
+      <div className="personal-hands">
+        {tradeDraft && !mandatoryChoice && !state.game_over && <TradePanel state={state} pid={youPid}
+          draft={tradeDraft} onChange={setTradeDraft} targets={tradeTargets} submit={request.submit}
+          waiting={blocked} error={error} onClose={closeTrade} />}
+        {!tradeDraft && !drawer && !mandatoryChoice && !state.pending_action && !state.game_over && ownOffers.length > 0 &&
+          <div className="own-offer-summary" aria-label="Your open offers"><TradeOffers state={{ ...state, trade_offers: ownOffers }}
+            pid={youPid} waiting={blocked} submit={request.submit} /></div>}
+        <ResourceHand resources={res} onResource={handTrade} disabled={tradeDisabled} />
         <DevelopmentHand state={state} pid={youPid} onCard={openDev} /></div>
       <section className="action-dock" aria-label="Actions">
         <div className="hud-caption">{state.phase === "setup" ? "Starting placements" : "Your actions"}
-          {state.last_roll != null && <span className="last-roll"><GameIcon name="roll" /> Last roll {state.last_roll}</span>}
         </div>
+        <div className="dock-row"><DiceHUD faces={dice.faces} roll={dice.roll} total={state.last_roll} />
         <div className="dock-buttons">
-          {ordinaryActions && <button className="game-button primary-action" disabled={!canRoll || blocked}
-            onClick={() => client.sendCmd({ type: "roll" })}><GameIcon name="roll" /><span>Roll</span></button>}
-          {!state.game_over && <BoardControls state={state} interaction={{ ...interaction,
+          {ordinaryActions && <button className="game-button dock-action primary-action" disabled={!canRoll || blocked}
+            onClick={() => request.submit({ type: "roll" })}><GameIcon name="roll" /><span>Roll</span></button>}
+          {!state.game_over && <BoardControls state={state} resources={res} interaction={{ ...interaction,
+            onSelectAction: action => { setTradeDraft(null); setDrawer(null); interaction.onSelectAction(action); },
             selection: { ...interaction.selection, waiting: interaction.selection.waiting || blocked } }} />}
           {ordinaryActions && <>
-            <button className="game-button" disabled={blocked} aria-label="Trade" aria-haspopup="dialog"
-              onClick={() => { interaction.onSelectAction(null); setDrawer("trade"); }}>
-              <GameIcon name="trade" /><span>Trade</span></button>
-            <button className="game-button" disabled={blocked} aria-haspopup="dialog" onClick={() => openDev(null)}>
-              <GameIcon name="dev" /><span>Dev Card</span></button>
-            <button className="game-button end-action" disabled={!canEnd || blocked}
-              onClick={() => client.sendCmd({ type: "end_turn" })}><GameIcon name="end" /><span>End Turn</span></button>
+            <ActionButton action="dev" label="Dev Card" resources={res} disabled={blocked || !!purchaseReason}
+              reason={purchaseReason} onClick={() => request.submit({ type: "buy_dev" })} />
+            <button className="game-button dock-action end-action" disabled={!canEnd || blocked}
+              onClick={() => request.submit({ type: "end_turn" })}><GameIcon name="end" /><span>End Turn</span></button>
           </>}
+        </div>
         </div>
       </section>
     </footer>
 
     {(drawer === "log" || drawer === "info") && !mandatoryChoice && !state.game_over && <GameOverlay key={drawer} id={`game-${drawer}`}
       title={drawer === "log" ? "Event log" : "Game info"} onClose={closeDrawer}>
-      {drawer === "log" ? <pre className="game-log">{log.length ? log.join("\n") : "No events yet."}</pre> : <>
+      {drawer === "log" ? <><pre className="game-log">{log.length ? log.join("\n") : "No events yet."}</pre>
+        <BankSummary available={state.bank_available} /></> : <>
         <div className="info-map"><strong>{mapMeta.name || mapId || "Current map"}</strong>
           {mapMeta.description && <p>{mapMeta.description}</p>}</div>
         <dl className="game-info-list">
@@ -118,8 +142,6 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       </>}
     </GameOverlay>}
 
-    {drawer === "trade" && !mandatoryChoice && !state.game_over && <TradePanel key={matchKey} state={state} pid={youPid}
-      submit={request.submit} waiting={blocked} error={error} onClose={closeDrawer} />}
     {drawer === "dev" && !mandatoryChoice && !state.game_over && <DevelopmentPanel key={`${matchKey}:${selectedDev ?? "all"}`}
       state={state} pid={youPid} selected={selectedDev} submit={request.submit} waiting={blocked} error={error}
       onClose={closeDrawer} onBoardPlay={closeDrawer} />}

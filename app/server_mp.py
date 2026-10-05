@@ -67,6 +67,8 @@ class Room:
     match_id: int = 0
     tick: int = 0
     seed: int = 0
+    dice: Optional[tuple[int, int]] = None
+    roll_count: int = 0
     game: Optional[GameState] = None
     last_activity_ts: float = field(default_factory=lambda: time.time())
 
@@ -171,6 +173,8 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
     state = to_player_dict(game, pid)
     state["you_pid"] = pid
     state["legal"] = _legal_moves(game, pid)
+    state["dice"] = list(room.dice) if room.dice is not None else None
+    state["roll_count"] = room.roll_count
     return state
 
 
@@ -291,6 +295,8 @@ def _start_match(room: Room) -> None:
     room.seed = seed
     room.match_id += 1
     room.tick = 0
+    room.dice = None
+    room.roll_count = 0
     for pid, slot in enumerate(room.players):
         slot.pid = pid
         slot.last_seq_applied = 0
@@ -312,21 +318,27 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     if ctype == "discard" and not isinstance(cmd.get("discards"), dict):
         return net_protocol.error_message("invalid", "discards must be object")
 
+    dice = None
     if ctype == "roll":
         if set(cmd) != {"type"}:
             return net_protocol.error_message("invalid", "Send only the roll intention")
-        cmd = {"type": "roll", "roll": _roll_dice()}
+        dice = _roll_dice()
+        cmd = {"type": "roll", "roll": sum(dice)}
 
     try:
         apply_cmd(g, pid, cmd)
     except RuleError as exc:
         return net_protocol.error_message(exc.code, exc.message, exc.details)
+    if dice is not None:
+        # Public presentation metadata is committed only with an accepted roll.
+        room.dice = dice
+        room.roll_count += 1
     return None
 
 
-def _roll_dice() -> int:
+def _roll_dice() -> tuple[int, int]:
     """Tests may inject this function; no WebSocket debug fields enable it."""
-    return secrets.randbelow(6) + secrets.randbelow(6) + 2
+    return secrets.randbelow(6) + 1, secrets.randbelow(6) + 1
 
 
 async def _start_and_notify(room: Room) -> None:

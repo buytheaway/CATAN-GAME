@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
-const compiled = await build({ stdin: { contents: 'export * from "./actions"; export {contextPrompt} from "./presentation";',
+const compiled = await build({ stdin: { contents: 'export * from "./actions"; export * from "./costs"; export {contextPrompt} from "./presentation";',
   resolveDir: fileURLToPath(new URL("../src/game/", import.meta.url)), loader: "ts" }, bundle: true, write: false, platform: "node", format: "esm" });
 const ui = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 function state(overrides = {}) {
@@ -20,6 +20,40 @@ test("displayed maritime ratio uses only owned port endpoints, best resource rat
   assert.equal(ui.maritimeRate(s, 0, "wood"), 2);assert.equal(ui.maritimeRate(s, 0, "ore"), 3);
   assert.equal(ui.maritimeRate(s, 1, "ore"), 2);assert.equal(ui.maritimeRate(s, 1, "wood"), 4);
   assert.equal(JSON.stringify(s), before);
+});
+
+test("hand clicks create a local trade draft, cap Give at actual own counts and preserve the snapshot", () => {
+  const hand = Object.freeze({ wood: 2, brick: 1 });
+  const first = ui.addHandResource(null, "wood", hand);
+  assert.deepEqual(first, { give: { wood: 1 }, want: {}, target: "everyone" });
+  const second = ui.addHandResource(first, "wood", hand);
+  assert.deepEqual(ui.addHandResource(second, "wood", hand).give, { wood: 2 });
+  const both = ui.addHandResource({ ...second, target: "1", want: { ore: 2 } }, "brick", hand);
+  assert.deepEqual(both, { give: { wood: 2, brick: 1 }, want: { ore: 2 }, target: "1" });
+  assert.deepEqual(ui.changeResource(both.give, "brick", -1), { wood: 2 });
+  assert.deepEqual(ui.changeResource({}, "ore", -1), {});
+  assert.deepEqual(first.give, { wood: 1 }); assert.deepEqual(hand, { wood: 2, brick: 1 });
+});
+
+test("bank draft accepts exact 4/3/2 ratios and multi-card batches but rejects malformed combinations", () => {
+  for (const [rate, ports] of [[4, []], [3, [[[12, 13], "3:1"]]], [2, [[[12, 13], "2:1:wood"]]]]) {
+    const s = state({ ports }); s.players[0].res.wood = 12;
+    const draft = { target: "bank", give: { wood: rate * 2 }, want: { ore: 2 } };
+    assert.equal(ui.bankDraftReason(s, 0, draft), null);
+    assert.deepEqual(ui.bankDraftCommand(draft), { type: "trade_bank", give: "wood", get: "ore", get_qty: 2 });
+    for (const change of [{ give: {} }, { want: {} }, { give: { wood: rate + 1 } }, { want: { wood: 2 } },
+      { give: { wood: rate, sheep: 1 } }, { want: { ore: 1, sheep: 1 } }])
+      assert.ok(ui.bankDraftReason(s, 0, { ...draft, ...change }));
+    s.players[0].res.wood = 0; assert.ok(ui.bankDraftReason(s, 0, draft));
+  }
+});
+
+test("central preview uses complete quantities and never uses opponents' resources or hides missing costs", () => {
+  assert.deepEqual(ui.costPreview("city", { wheat: 2, ore: 2 }), [
+    { resource: "wheat", quantity: 2, available: true }, { resource: "ore", quantity: 3, available: false }]);
+  assert.deepEqual(ui.costPreview("road", {}, true), []);
+  assert.deepEqual(ui.ACTION_COSTS.ship, { wood: 1, sheep: 1 });
+  assert.deepEqual(ui.ACTION_COSTS.dev, { sheep: 1, wheat: 1, ore: 1 });
 });
 test("bank form gates turn/roll/pending, same resource, own hand and public availability", () => {
   assert.equal(ui.bankTradeReason(state(), 0, "wood", "ore"), null);

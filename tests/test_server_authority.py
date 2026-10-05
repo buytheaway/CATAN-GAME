@@ -144,7 +144,7 @@ def test_lobby_map_errors_do_not_advance_revision_and_new_room_resets(live_serve
 ])
 def test_ws_cannot_choose_dice_even_with_legacy_debug_enabled(live_server, monkeypatch, extra):
     monkeypatch.setenv("CATAN_DEBUG_ROLLS", "1")
-    monkeypatch.setattr(server, "_roll_dice", lambda: 8)
+    monkeypatch.setattr(server, "_roll_dice", lambda: (3, 5))
 
     async def run():
         async with websockets.connect(live_server) as a, websockets.connect(live_server) as b:
@@ -155,11 +155,18 @@ def test_ws_cannot_choose_dice_even_with_legacy_debug_enabled(live_server, monke
             await _recv_error(a, "invalid")
             ack = await _recv_cmd_ack(a, cid)
             assert ack["applied"] is False and room.game == before and room.tick == 0
+            assert room.dice is None and room.roll_count == 0
             cid = await _send_cmd(a, room.match_id, 2, {"type": "roll"})
             ma, mb = await _recv_type(a, "match_state"), await _recv_type(b, "match_state")
             assert ma["state"]["last_roll"] == mb["state"]["last_roll"] == 8
+            assert ma["state"]["dice"] == mb["state"]["dice"] == [3, 5]
+            assert ma["state"]["roll_count"] == mb["state"]["roll_count"] == 1
             assert room.game.roll_history == [8]
             assert (await _recv_cmd_ack(a, cid))["applied"] is True
+            accepted = deepcopy(room.game)
+            await _send_cmd(a, room.match_id, 2, {"type": "roll"}, cmd_id=cid)
+            assert (await _recv_cmd_ack(a, cid))["duplicate"] is True
+            assert room.game == accepted and room.dice == (3, 5) and room.roll_count == 1
     asyncio.run(run())
 
 

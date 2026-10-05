@@ -129,7 +129,7 @@ def test_rejected_end_turn_does_not_expire_unused_credit(game):
 def test_server_commands_and_personal_snapshots_expire_credit(game, monkeypatch):
     room = server.Room("ROADS", 2, 0, [server.PlayerSlot(pid=i) for i in range(2)],
                        status="in_match", game=game)
-    monkeypatch.setattr(server, "_roll_dice", lambda: 2)
+    monkeypatch.setattr(server, "_roll_dice", lambda: (1, 1))
     assert server._apply_cmd(room, 0, {"type": "play_dev", "card": "road_building"}) is None
     state = server._snapshot_state(game, room, 0)
     assert state["free_roads"] == {"0": 2} and state["legal"]["road_free"]

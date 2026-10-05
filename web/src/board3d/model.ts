@@ -36,7 +36,15 @@ export function createRenderModel(state: BoardSnapshot): BoardRenderModel {
     const length = Math.hypot(dx, dz) || 1;
     // Label offset is visual only; dock stays attached to the supplied port edge.
     const position: Point3D = [anchor[0] + dx / length * 0.72, TILE_TOP, anchor[2] + dz / length * 0.72];
-    return [{ edge, kind, anchor, position, rotation }];
+    return [{ edge, kind, anchor, position, rotation, endpoints: [vertices[a], vertices[b]] as [Point3D, Point3D] }];
+  });
+  const coast = state.edges.flatMap(edge => {
+    const adjacent = state.edge_adj_hexes?.[edgeId(edge)] ?? [];
+    const land = adjacent.some(i => state.tiles[i]?.terrain !== "sea");
+    const water = adjacent.length === 1 || adjacent.some(i => state.tiles[i]?.terrain === "sea");
+    if (!land || !water || !vertices[edge[0]] || !vertices[edge[1]]) return [];
+    const placement = edgePlacement(vertices[edge[0]], vertices[edge[1]]);
+    return [{ edge, ...placement, position: [placement.position[0], TILE_TOP - .02, placement.position[2]] as Point3D }];
   });
   const robberIds = state.robbers?.length ? state.robbers : [state.robber_tile];
   const robbers = robberIds.flatMap(tileIndex => tiles[tileIndex]
@@ -44,7 +52,7 @@ export function createRenderModel(state: BoardSnapshot): BoardRenderModel {
   const pirate = state.pirate_tile != null && tiles[state.pirate_tile]
     ? { tileIndex: state.pirate_tile, position: tiles[state.pirate_tile].position } : null;
   return {
-    tiles, roads, ships, buildings, ports, robbers, pirate,
+    tiles, roads, ships, buildings, ports, coast, robbers, pirate,
     bounds: boardBounds([...tiles.map(t => t.position), ...Object.values(vertices), ...ports.map(p => p.position)]),
   };
 }

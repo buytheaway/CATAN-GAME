@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import BoardView from "./BoardView";
 import type { BoardViewProps } from "./BoardView.types";
 import "../board3d/board3d.css";
+import type { DiceRollVisual } from "../game/dice";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
 
@@ -16,7 +17,7 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-export default function BoardRenderer(props: BoardViewProps) {
+export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null }) {
   const [mode, setMode] = useState<"2d" | "3d">("3d");
   return (
     <div className="board-renderer">
@@ -28,7 +29,7 @@ export default function BoardRenderer(props: BoardViewProps) {
       {mode === "2d" ? <BoardView {...props} /> : (
         <Board3DErrorBoundary>
           <Suspense fallback={<div className="board3d-fallback" role="status">Loading 3D board…</div>}>
-            <Board3D state={props.state} interaction={props.interaction} />
+            <Board3D state={props.state} interaction={props.interaction} diceRoll={props.diceRoll} />
           </Suspense>
         </Board3DErrorBoundary>
       )}

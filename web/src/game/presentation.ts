@@ -20,11 +20,11 @@ export function turnActions(state: GameSnapshot, pid: number) {
 export function buildTools(interaction: BoardInteraction) {
   const legal = interaction.legal;
   return [
-    { id: "settlement", label: "Settlement", count: legal?.settlements.length ?? 0 },
     { id: "road", label: "Road", count: legal?.roads.length ?? 0 },
+    { id: "settlement", label: "Settlement", count: legal?.settlements.length ?? 0 },
     { id: "city", label: "City", count: legal?.cities.length ?? 0 },
     { id: "ship", label: "Ship", count: legal?.ships.length ?? 0 },
-  ].filter(tool => tool.count > 0);
+  ];
 }
 
 /** Friendly wording from the snapshot/controller; no costs, legality or state-machine transitions. */

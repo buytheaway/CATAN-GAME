@@ -16,6 +16,11 @@ function extrude(points: [number, number][], depth: number, bevel: number) {
 
 const factories = {
   box: () => new BoxGeometry(1, 1, 1),
+  die: () => {
+    const geometry = extrude([[-.37, -.37], [.37, -.37], [.37, .37], [-.37, .37]], .74, .055);
+    geometry.translate(0, 0, -.37);
+    return geometry;
+  },
   plane: () => new PlaneGeometry(1, 1),
   disc: () => new CircleGeometry(1, 24),
   sphere: () => new SphereGeometry(1, 12, 8),

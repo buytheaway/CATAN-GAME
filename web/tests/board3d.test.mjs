@@ -12,7 +12,7 @@ const compiled = await build({
   },
   bundle: true, write: false, platform: "node", format: "esm",
 });
-const { toScenePosition, tilePosition, edgePlacement, boardBounds, cameraFrame, cameraFootprint, TILE_TOP,
+const { toScenePosition, tilePosition, edgePlacement, boardBounds, cameraFrame, cameraFootprint, portConnectors, portLabelPosition, TILE_TOP,
   createRenderModel, terrainStyle, playerColor, portAppearance, buildPreview, targetColor, tileFeedback,
   terrainVariation, createVisualResources } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
@@ -163,6 +163,31 @@ test("rendering projection accepts frozen state, never mutates it and evaluates 
   assert.deepEqual(otherTurn, first);
   assert.equal("legal" in first, false);
   assert.equal("players" in first, false);
+});
+
+test("each port has two connectors to the exact original endpoints, including reversed ID order", () => {
+  const source = freeze(snapshot());
+  const model = createRenderModel(source);
+  for (const port of model.ports) {
+    const branches = portConnectors(port);
+    assert.equal(branches.length, 2);
+    assert.deepEqual(branches.map(b => b.vertexId), port.edge);
+    for (const [i, branch] of branches.entries()) {
+      assert.deepEqual(branch.start, toScenePosition(source.vertices[port.edge[i]], source.size, TILE_TOP));
+      assert.deepEqual(branch.end, portLabelPosition(port));
+      assert.deepEqual(branch.position, edgePlacement(branch.start, branch.end).position);
+      assert.ok(Number.isFinite(branch.rotation) && branch.length > 0);
+    }
+  }
+  assert.deepEqual(source.ports[0][0], [42, 7]);
+});
+
+test("shoreline uses supplied edge adjacency and never changes tile/edge IDs", () => {
+  const s = freeze(snapshot({ edge_adj_hexes: { "7,42": [0, 2], "7,81": [0, 1] } }));
+  const model = createRenderModel(s);
+  assert.deepEqual(model.coast.map(c => c.edge), [[42, 7]]);
+  assert.deepEqual(model.coast[0].position.slice(0, 1), edgePlacement([1, 0, 1], [1, 0, 0]).position.slice(0, 1));
+  assert.deepEqual(createRenderModel({ ...s, edge_adj_hexes: undefined }).coast, []);
 });
 
 test("missing optional ports/ships and stale piece coordinates do not invent new IDs", () => {

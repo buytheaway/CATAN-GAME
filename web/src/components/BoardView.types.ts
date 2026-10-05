@@ -50,6 +50,7 @@ export interface RulesConfig {
   robber_count?: number;
   enable_gold?: boolean;
   enable_seafarers?: boolean;
+  max_ships?: number;
   enable_move_ship?: boolean;
   enable_pirate?: boolean;
 }

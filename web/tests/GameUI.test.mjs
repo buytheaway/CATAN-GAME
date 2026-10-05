@@ -16,6 +16,9 @@ const compiled = await build({
     export * from "./game/GameHUD"; export * from "./game/presentation";
     export {default as TradePanel,TradeOffers} from "./game/TradePanel";
     export {default as DevelopmentPanel,DevelopmentHand} from "./game/DevelopmentCards";
+    export {default as ActionButton} from "./game/ActionButton";
+    export {default as BoardControls} from "./board/BoardControls";
+    export {default as DiceHUD} from "./game/DiceHUD";
     export {default as Endgame} from "./game/Endgame";
     export {createBoardInteraction,emptySelection} from "./board/interaction";`,
     resolveDir: fileURLToPath(new URL("../src/", import.meta.url)), loader: "tsx" },
@@ -56,7 +59,8 @@ function render(Component, props) {
 }
 function renderGame(state = snapshot()) {
   const sent = [];
-  return { ...render(GamePage, { client: { youPid: 0, sendCmd: cmd => sent.push(cmd) },
+  return { ...render(GamePage, { client: { youPid: 0, isOpen: () => true,
+    sendCmd: cmd => { sent.push(cmd); return `command-${sent.length}`; } },
     match: { room_code: "ROOM", match_id: 4, tick: 7, state }, room: null, status: "connected",
     log: ["PRIVATE_LOG_SENTINEL"], error: null }), sent };
 }
@@ -121,10 +125,11 @@ test("setup and ship prompts describe the next controller step without exposing 
   assert.equal(contextPrompt(state, 0, interaction).title, "Choose its destination");
 });
 
-test("build palette uses existing personal legal lists, hides unavailable tools and invents no legality", () => {
+test("direct build tools retain zero counts from personal legal lists without inventing targets", () => {
   const legal = Object.freeze({ settlements: [7], roads: [], cities: [8], ships: [] });
-  assert.deepEqual(buildTools({ legal }).map(t => t.id), ["settlement", "city"]);
-  assert.deepEqual(buildTools({ legal: null }), []);
+  assert.deepEqual(buildTools({ legal }).map(t => [t.id, t.count]),
+    [["road", 0], ["settlement", 1], ["city", 1], ["ship", 0]]);
+  assert.ok(buildTools({ legal: null }).every(t => t.count === 0));
   assert.deepEqual(legal.roads, []);
 });
 
@@ -140,15 +145,22 @@ test("drawer exposes a named close control and delegates dismissal; mandatory ch
   assert.equal(modal.button("Close Gold Choice"), undefined);
 });
 
-test("Trade/Dev open supported features and game-over displays no active command controls", () => {
-  const view = renderGame();
-  for (const name of ["Trade", "Dev Card"]) {
-    assert.equal(view.button(name).disabled, false);
-    assert.equal(view.button(name)["aria-haspopup"], "dialog");
-  }
+test("dock purchase sends one buy intent, with no optimistic card, Build menu or Trade button", () => {
+  const state = snapshot({ rolled: true });
+  const before = JSON.stringify(state);
+  const view = renderGame(state);
+  assert.equal(view.button("Trade"), undefined);
+  assert.equal(view.button("Build"), undefined);
+  assert.equal(view.button("Dev Card").disabled, false);
+  assert.equal(view.button("Dev Card")["aria-haspopup"], undefined);
+  view.button("Dev Card").onClick(); view.button("Dev Card").onClick();
+  assert.deepEqual(view.sent, [{ type: "buy_dev" }]);
+  assert.equal(JSON.stringify(state), before);
+  assert.equal(renderGame(snapshot()).button("Dev Card").disabled, true);
   const finished = renderGame(snapshot({ game_over: true }));
   assert.match(finished.html, /Match complete/);
-  for (const name of ["Roll", "Build", "End Turn"]) assert.equal(finished.button(name), undefined);
+  for (const name of ["Roll", "Road", "Settlement", "City", "Dev Card", "End Turn"])
+    assert.equal(finished.button(name), undefined);
 });
 
 test("development hand/details use only self cards and passive VP never has a Play action", () => {
@@ -168,8 +180,8 @@ test("development hand/details use only self cards and passive VP never has a Pl
   state.players[0].dev_cards[1].new = false;
   panel = render(DevelopmentPanel, { ...props, selected: "knight" });
   panel.button("Play Knight").onClick();
-  panel.button("Buy Dev Card").onClick();
-  assert.deepEqual(sent, [{ type: "play_dev", card: "knight" }, { type: "buy_dev" }]);
+  assert.equal(panel.button("Buy Dev Card"), undefined);
+  assert.deepEqual(sent, [{ type: "play_dev", card: "knight" }]);
 });
 
 test("bank and player offer buttons keep the existing payloads and rejection message", () => {
@@ -178,7 +190,8 @@ test("bank and player offer buttons keep the existing payloads and rejection mes
   state.players[0].res.wood = 4;
   const sent = [];
   const props = { state, pid: 0, waiting: false, submit: cmd => sent.push(cmd) };
-  const panel = render(TradePanel, { ...props, onClose() {}, error: { message: "Bank has not enough resources" } });
+  const panel = render(TradePanel, { ...props, draft: { give: { wood: 4 }, want: { ore: 1 }, target: "bank" },
+    onChange() {}, targets: [], onClose() {}, error: { message: "Bank has not enough resources" } });
   assert.match(panel.html, /Bank has not enough resources/);
   panel.button("Trade with bank").onClick();
   assert.deepEqual(sent.pop(), { type: "trade_bank", give: "wood", get: "ore", get_qty: 1 });
@@ -189,6 +202,101 @@ test("bank and player offer buttons keep the existing payloads and rejection mes
   assert.deepEqual(sent.pop(), { type: "trade_offer_decline", offer_id: 17 });
   const creator = render(TradeOffers, props);creator.button("Cancel offer").onClick();
   assert.deepEqual(sent.pop(), { type: "trade_offer_cancel", offer_id: 17 });
+});
+
+test("Ship exists only when server rules enable ships; setup shows only its required action", () => {
+  for (const rules of [{}, { enable_seafarers: false }, { enable_seafarers: true, max_ships: 0 }]) {
+    const view = renderGame(snapshot({ rolled: true, rules_config: rules,
+      legal: { ...snapshot().legal, ships: [[1, 2]], settlements: [7] } }));
+    assert.equal(view.button("Ship"), undefined);
+    assert.ok(view.button("Road")); assert.ok(view.button("Settlement")); assert.ok(view.button("City"));
+    assert.equal(view.button("Road").disabled, true);
+    assert.equal(view.button("Settlement").disabled, false);
+  }
+  const sea = renderGame(snapshot({ rolled: true, rules_config: { enable_seafarers: true, max_ships: 15 },
+    legal: { ...snapshot().legal, ships: [[1, 2]] } }));
+  assert.equal(sea.button("Ship").disabled, false);
+  for (const need of ["settlement", "road"]) {
+    const view = renderGame(snapshot({ phase: "setup", setup_need: need,
+      legal: { ...snapshot().legal, settlements: [7], roads: [[1, 2]], ships: [[1, 2]] } }));
+    assert.ok(view.button(need === "settlement" ? "Settlement" : "Road"));
+    for (const label of [need === "settlement" ? "Road" : "Settlement", "City", "Ship", "Dev Card", "End Turn"])
+      assert.equal(view.button(label), undefined);
+  }
+});
+
+test("cost preview exposes exact quantities and missing resources even for keyboard focus on disabled actions", () => {
+  const { ActionButton } = loaded.exports;
+  const view = render(ActionButton, { action: "city", label: "City", icon: "city", resources: { wheat: 2, ore: 2 },
+    disabled: true, onClick() {} });
+  assert.match(view.html, /tabindex="0"/);
+  assert.match(view.html, /role="tooltip"/);
+  assert.match(view.html, /data-available="true" aria-label="wheat ×2: owned"/);
+  assert.match(view.html, /data-available="false" aria-label="ore ×3: missing"/);
+  assert.match(view.html, /×3/);
+  assert.equal(view.button("City").disabled, true);
+  const free = render(ActionButton, { action: "road", label: "Road", icon: "road", resources: {}, free: true, onClick() {} });
+  assert.match(free.html, /Free placement/);
+  assert.doesNotMatch(free.html, /data-resource=/);
+});
+
+test("resource hand delegates repeated card clicks without mutating snapshot resources", () => {
+  const resources = Object.freeze({ wood: 2, brick: 0 });
+  const clicked = [];
+  const view = render(ResourceHand, { resources, onResource: r => clicked.push(r) });
+  view.button("Give wood (2 owned)").onClick(); view.button("Give wood (2 owned)").onClick();
+  assert.deepEqual(clicked, ["wood", "wood"]);
+  assert.equal(view.button("Give brick (0 owned)").disabled, true);
+  assert.deepEqual(resources, { wood: 2, brick: 0 });
+});
+
+test("Trade Tray adds and removes Give/Want cards and preserves targeted multi-resource terms", () => {
+  const { TradePanel } = loaded.exports;
+  const state = snapshot({ rolled: true });
+  let changed; const sent = [];
+  const draft = Object.freeze({ give: { wood: 2, sheep: 1 }, want: { ore: 1, wheat: 1 }, target: "1" });
+  const view = render(TradePanel, { state, pid: 0, draft, targets: [{ pid: 1, name: "Bob" }],
+    onChange: value => changed = value, waiting: false, error: null, submit: cmd => sent.push(cmd), onClose() {} });
+  assert.match(view.html, /aria-modal="false"/);
+  assert.doesNotMatch(view.html, /type="number"/);
+  view.button("Want ore").onClick(); assert.deepEqual(changed.want, { ore: 2, wheat: 1 });
+  view.button("Remove wanted wheat").onClick(); assert.deepEqual(changed.want, { ore: 1 });
+  view.button("Remove give wood").onClick(); assert.deepEqual(changed.give, { wood: 1, sheep: 1 });
+  view.button("Send offer").onClick();
+  assert.deepEqual(sent, [{ type: "trade_offer_create", give: { wood: 2, sheep: 1 }, get: { wheat: 1, ore: 1 }, to_pid: 1 }]);
+  assert.deepEqual(draft.give, { wood: 2, sheep: 1 });
+});
+
+test("bank tray renders actual owned-port ratios and disables incomplete or unavailable exchanges", () => {
+  const { TradePanel } = loaded.exports;
+  for (const [ratio, ports] of [[4, []], [3, [[[12, 13], "3:1"]]], [2, [[[12, 13], "2:1:wood"]]]]) {
+    const state = snapshot({ rolled: true, occupied_v: { "12": [0, 1] }, ports, bank_available: { ore: true } });
+    state.players[0].res.wood = ratio;
+    const props = { state, pid: 0, targets: [], onChange() {}, waiting: false, error: null, submit() {}, onClose() {} };
+    const draft = { give: { wood: ratio }, want: { ore: 1 }, target: "bank" };
+    const view = render(TradePanel, { ...props, draft });
+    assert.match(view.html, new RegExp(`aria-label="Trade ratio ${ratio}:1"`));
+    assert.equal(view.button("Trade with bank").disabled, false);
+    assert.equal(render(TradePanel, { ...props, draft: { ...draft, give: { wood: ratio - 1 } } }).button("Trade with bank").disabled, true);
+    state.bank_available.ore = false;
+    assert.equal(render(TradePanel, { ...props, draft }).button("Trade with bank").disabled, true);
+  }
+});
+
+test("Dice HUD renders exact server faces and never invents a pair from a legacy sum", () => {
+  const { DiceHUD } = loaded.exports;
+  const exact = render(DiceHUD, { faces: [4, 5], total: 9, roll: null });
+  assert.match(exact.html, /data-face="4"/); assert.match(exact.html, /data-face="5"/);
+  assert.equal((exact.html.match(/class="die-pip"/g) || []).length, 9);
+  const legacy = render(DiceHUD, { faces: null, total: 9, roll: null });
+  assert.doesNotMatch(legacy.html, /data-face="[1-6]"/);
+  assert.match(legacy.html, /faces unavailable/);
+});
+
+test("secondary bank view renders public availability without inventing exact amounts", () => {
+  const { html } = render(loaded.exports.BankSummary, { available: { wood: true, brick: false, sheep: true, wheat: true, ore: true } });
+  assert.match(html, /aria-label="wood: available"/); assert.match(html, /aria-label="brick: unavailable"/);
+  assert.doesNotMatch(html, /<b>19|data-count=/);
 });
 
 test("results use server winner/final scores and delegate rematch/exit without creating a match", () => {

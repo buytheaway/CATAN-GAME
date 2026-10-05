@@ -1,8 +1,49 @@
 import type { RoomState, TradeOffer } from "../wsClient";
 import { RESOURCES, type GameSnapshot } from "./presentation";
+import { ACTION_COSTS } from "./costs";
+import type { GameState } from "../components/BoardView.types";
 
 export type Resource = typeof RESOURCES[number];
 export type ResourceCounts = Partial<Record<Resource, number>>;
+export type TradeDraft = { give: ResourceCounts; want: ResourceCounts; target: string };
+
+export function shipsEnabled(state: Pick<GameState, "rules_config">) {
+  return state.rules_config?.enable_seafarers === true && (state.rules_config.max_ships ?? 15) > 0;
+}
+
+export function changeResource(counts: ResourceCounts, resource: Resource, delta: number, max = Number.MAX_SAFE_INTEGER): ResourceCounts {
+  const next = { ...counts, [resource]: Math.max(0, Math.min(max, (counts[resource] ?? 0) + delta)) };
+  if (!next[resource]) delete next[resource];
+  return next;
+}
+
+export function addHandResource(draft: TradeDraft | null, resource: Resource, hand: Record<string, number>): TradeDraft {
+  const current = draft ?? { give: {}, want: {}, target: "everyone" };
+  return { ...current, give: changeResource(current.give, resource, 1, hand[resource] ?? 0) };
+}
+
+/** The existing bank command exchanges one resource type on each side, in integer batches. */
+export function bankDraftReason(state: GameSnapshot, pid: number, draft: TradeDraft): string | null {
+  const phase = phaseReason(state, pid);
+  if (phase) return phase;
+  if (!validCounts(draft.give) || !validCounts(draft.want)) return "Choose whole card quantities.";
+  const give = RESOURCES.filter(r => (draft.give[r] ?? 0) > 0);
+  const want = RESOURCES.filter(r => (draft.want[r] ?? 0) > 0);
+  if (give.length !== 1 || want.length !== 1) return "Bank: choose one resource type on each side.";
+  const reason = bankTradeReason(state, pid, give[0], want[0]);
+  if (reason) return reason;
+  const quantity = draft.want[want[0]]!;
+  const required = maritimeRate(state, pid, give[0]) * quantity;
+  if (draft.give[give[0]] !== required) return `Give ${required} ${give[0]} for ${quantity} ${want[0]}.`;
+  if ((personalPlayer(state, pid)?.res?.[give[0]] ?? 0) < required) return "You do not have enough cards to give.";
+  return null;
+}
+
+export function bankDraftCommand(draft: TradeDraft) {
+  const give = RESOURCES.find(r => (draft.give[r] ?? 0) > 0);
+  const get = RESOURCES.find(r => (draft.want[r] ?? 0) > 0);
+  return { type: "trade_bank", give, get, get_qty: get ? draft.want[get] : 0 };
+}
 export const DEV_CARDS = {
   knight: { name: "Knight", icon: "robber", description: "Move the robber or pirate and choose a victim on the board." },
   road_building: { name: "Road Building", icon: "road", description: "Place two free roads using the highlighted board targets." },
@@ -106,7 +147,8 @@ export function buyDevReason(state: GameSnapshot, pid: number) {
   const reason = phaseReason(state, pid);
   if (reason) return reason;
   const res = personalPlayer(state, pid)?.res;
-  return ["ore", "sheep", "wheat"].every(r => (res?.[r] ?? 0) >= 1) ? null : "Requires 1 Ore, 1 Sheep and 1 Wheat.";
+  return Object.entries(ACTION_COSTS.dev).every(([r, quantity]) => (res?.[r] ?? 0) >= quantity)
+    ? null : "Requires 1 Ore, 1 Sheep and 1 Wheat.";
 }
 export function plentyReason(state: GameSnapshot, pid: number, counts: ResourceCounts) {
   const reason = devPlayReason(state, pid, "year_of_plenty");

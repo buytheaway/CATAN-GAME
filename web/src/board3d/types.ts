@@ -3,7 +3,7 @@ import type { EdgeTuple, GameState } from "../components/BoardView.types";
 export type Point3D = [number, number, number];
 export type BoardSnapshot = Pick<GameState,
   "tiles" | "size" | "vertices" | "edges" | "ports" | "occupied_v" |
-  "occupied_e" | "occupied_ships" | "robber_tile" | "robbers" | "pirate_tile"
+  "occupied_e" | "occupied_ships" | "robber_tile" | "robbers" | "pirate_tile" | "edge_adj_hexes"
 >;
 
 export interface BoardBounds {
@@ -45,6 +45,7 @@ export interface RenderPort {
   position: Point3D;
   rotation: number;
   kind: string;
+  endpoints: [Point3D, Point3D];
 }
 
 // Derived mesh data only: no turn, resources, legal moves or commands.
@@ -54,6 +55,7 @@ export interface BoardRenderModel {
   ships: RenderEdge[];
   buildings: RenderBuilding[];
   ports: RenderPort[];
+  coast: { edge: EdgeTuple; position: Point3D; length: number; rotation: number }[];
   robbers: { tileIndex: number; position: Point3D }[];
   pirate: { tileIndex: number; position: Point3D } | null;
   bounds: BoardBounds;

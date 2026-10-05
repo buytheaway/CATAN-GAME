@@ -55,16 +55,33 @@ export function portLabelPosition(port: Pick<RenderPort, "position" | "anchor">)
     port.anchor[2] + (port.position[2] - port.anchor[2]) * 0.66];
 }
 
+/** Both branches use the original port edge endpoints, with no nearest-vertex inference. */
+export function portConnectors(port: RenderPort) {
+  const label = portLabelPosition(port);
+  return port.endpoints.map((endpoint, i) => ({ vertexId: port.edge[i],
+    ...edgePlacement(endpoint, label), start: endpoint, end: label }));
+}
+
 /** Visual footprint includes tile rims and port labels, without empty bounding-box corners. */
 export function cameraFootprint(model: Pick<BoardRenderModel, "tiles" | "ports">): Point3D[] {
-  const outline = model.tiles.flatMap(t => Array.from({ length: 6 }, (_, i): Point3D =>
-    [t.position[0] + Math.sin(i * Math.PI / 3), 0, t.position[2] + Math.cos(i * Math.PI / 3)]));
+  const outline = model.tiles.flatMap(t => {
+    const rim = Array.from({ length: 6 }, (_, i): Point3D =>
+      [t.position[0] + Math.sin(i * Math.PI / 3), TILE_TOP, t.position[2] + Math.cos(i * Math.PI / 3)]);
+    // Tall details live inside the hex, not at every empty perimeter corner.
+    const height = ({ forest: 1.15, mountains: 1.18, hills: .68, pasture: .6,
+      fields: .7, desert: .47, gold: .8 } as Record<string, number>)[t.terrain];
+    const detail = height == null ? [] : [-.58, .58].map((x): Point3D =>
+      [t.position[0] + x, height, t.position[2] - .65]);
+    return [...rim, ...detail];
+  });
   model.ports.forEach(p => {
     const position = portLabelPosition(p);
-    for (const x of [-0.4, 0.4]) for (const z of [-0.4, 0.4])
-      outline.push([position[0] + x, 0, position[2] + z]);
+    const rotation = p.rotation - Math.round(p.rotation / Math.PI) * Math.PI;
+    for (const x of [-.35, .35]) for (const z of [-.27, .27])
+      outline.push([position[0] + x * Math.cos(rotation) + z * Math.sin(rotation), .4,
+        position[2] - x * Math.sin(rotation) + z * Math.cos(rotation)]);
   });
-  return outline.flatMap(([x, , z]) => [[x, 0, z], [x, 0.95, z]] as Point3D[]);
+  return outline;
 }
 
 export function cameraFrame(bounds: Pick<BoardBounds, "center" | "width" | "depth">, aspect: number, fov = 38,
@@ -94,7 +111,7 @@ export function cameraFrame(bounds: Pick<BoardBounds, "center" | "width" | "dept
       dot(point, forward) + Math.abs(dot(point, right)) / Math.tan(horizontal),
       dot(point, forward) + Math.abs(dot(point, up)) / Math.tan(vertical));
   }
-  distance *= 1.08;
+  distance *= 1.035;
   const target: Point3D = [bounds.center[0], TILE_TOP, bounds.center[2]];
   return {
     target, distance,

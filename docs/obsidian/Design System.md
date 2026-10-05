@@ -7,7 +7,39 @@ updated: 2026-10-05
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
-Status: Clean modern tabletop accepted 2026-10-04. Board3D Phase 3, Game UI Phase 1, Polish 1.1 and Game UI Phase 2 implemented/verified 2026-10-05. Match trade/dev/results are now implemented below; lobby/menu/settings/mobile and final cross-screen tokens remain future work. Older phase descriptions and AI images are historical.
+Status: Clean modern tabletop accepted 2026-10-04. Game UX 2.1 implemented/verified 2026-10-05 after Board3D Phase 3, Game UI Phase 1, Polish 1.1 and Phase 2. The newest attached mockup is the primary UX/composition reference for this step. Match uses direct actions, resource-hand trading, real dice and richer procedural terrain. Lobby/menu/settings/mobile and final cross-screen tokens remain future work. Older phase descriptions and AI images are historical.
+
+## Game UX 2.1 — implemented direct tabletop UX
+
+Verified 2026-10-05, based on `dcadcab`. The supplied mockup informs hierarchy, hand/dock placement, visible dice, richer board and compact secondary log/bank information. Its exact art, decorative ocean environment, chat, settings, avatars/bots and visible bank counts are concepts rather than accepted implemented features. The original image is available in the conversation; no nonexistent repository image is linked. Earlier Colonist references are UX references only. The implementation stays dark modern tabletop with native SVG marks/basic Three geometry, no commercial assets or new dependencies.
+
+- Base dock: Roll, Road, Settlement, City, Dev Card, End Turn. Seafarers adds Ship only if server rules enable ships and max_ships > 0. Setup retains only the required Settlement/Road. Build dropdown and dock Trade button are removed. Contextual movement/victim/cancel controls still use the shared controller.
+- Cost strips appear on hover/focus, including keyboard focus on disabled actions. One presentation mapping supplies quantities; missing resources use reduced opacity. Free road/setup previews say Free placement. Server legal/executor remains authoritative.
+- Dev Card in dock buys with one existing buy_dev intent; owned dev mini-cards open Play/inspect. No optimistic card; new/one-play/passive VP remain unchanged.
+- Click a resource hand card to add Give and open a nonmodal tray above the hand. Repeated clicks increment up to own count; clicking selected Give decrements. Five shared resource cards build Want, with independent removal. Targets are Everyone, connected players or Bank. Draft copies never subtract actual hand. Bank ratio comes from owned port endpoints; exact 4/3/2:1 batches and invalid-combination feedback use the same tray. Incoming/own offers remain compact cards with existing accept/reject/cancel lifecycle.
+- Two ivory pip dice stay in the dock. Only server dice=[a,b] supplies faces; a legacy sum cannot supply a guessed pair. A new roll_count drives a finite 950ms procedural 3D bounce/rotation, ending at known orientations; reduced motion skips it. Final pair remains after End Turn and resets on rematch. Scene returns to demand-rendered idle.
+- Each port has two visible branches/posts to the exact existing edge vertices. Placards stay compact; auto-port placement defects are not altered. Static coastline uses supplied edge adjacency, not new topology. Forest clusters, wheat rows, sheep/grass, clay mounds, low-poly peaks, dunes/stones, gold nuggets and quiet sea waves are denser; number tokens remain clear. Small piece plinth/roof/deck/band details preserve IDs/ownership/placement.
+- Canvas uses the available board stage; camera fits actual tile/decor/port footprint. Base land grew about 17.1%, 17.3%, 19.1% in width at 1920×1080, 1440×900, 1280×720 (height 17.4%, 17.6%, 19.4%). Both maps fit without permanent HUD occlusion or port/piece clipping. Comparison uses the same Base preset/topology with separately generated terrain, not pixel-identical board art.
+- Event log stays a closed right drawer; its collapsible Bank availability shows public available/empty, not invented quantities. Engine event feed/chat is still absent; real transport messages remain the log source.
+
+108 web tests, 203 pytest, TypeScript, production/Docker builds and 17 Chrome 154 E2E cases pass. Real nginx/WebSocket commands exercise bank/player trade, direct paid roads/settlement/city, buy/private play, all dev restrictions, privacy, rematch/reconnect and Gold Haven ship/move/pirate. Prepared states are test fixtures; ordinary setup uses unprepared state. Idle adds zero frames after dice; low-end FPS, mobile, 50-tile live scene and a full naturally played match were not re-certified in this step. Existing lazy Three chunk warning remains (887.59 KB / 239.17 KB gzip).
+
+These are actual Chrome screenshots and measurement evidence, not generated art or additional mockups:
+
+| Evidence | What it shows |
+| --- | --- |
+| [before-base-1280.png](../design/references/game-ux-2-1/before-base-1280.png) | Before changes, previous production Base framing |
+| [base-1920.png](../design/references/game-ux-2-1/base-1920.png) · [base-1440.png](../design/references/game-ux-2-1/base-1440.png) · [base-1280.png](../design/references/game-ux-2-1/base-1280.png) | Larger board, direct Base dock, real paid pieces, port branches |
+| [city-cost.png](../design/references/game-ux-2-1/city-cost.png) | Exact City quantities on hover |
+| [resource-trade-tray.png](../design/references/game-ux-2-1/resource-trade-tray.png) | Nonmodal hand-driven Give/Want, selected counts/removal |
+| [bank-tray-3.png](../design/references/game-ux-2-1/bank-tray-3.png) | Same tray with actual owned 3:1 port ratio |
+| [incoming-trade.png](../design/references/game-ux-2-1/incoming-trade.png) | Targeted offer on the other client |
+| [dice-rolling.png](../design/references/game-ux-2-1/dice-rolling.png) · [dice-reduced-motion.png](../design/references/game-ux-2-1/dice-reduced-motion.png) | Confirmed 4+5 visualized in 3D / immediately in HUD |
+| [gold-haven-1920.png](../design/references/game-ux-2-1/gold-haven-1920.png) · [gold-haven-1440.png](../design/references/game-ux-2-1/gold-haven-1440.png) · [gold-haven-1280.png](../design/references/game-ux-2-1/gold-haven-1280.png) | Real Seafarers preset: sea/gold, Ship/move and pirate |
+| [log-bank-drawer.png](../design/references/game-ux-2-1/log-bank-drawer.png) | Secondary availability without hidden bank counts |
+| [metrics.json](../design/references/game-ux-2-1/metrics.json) | Before/after framing, actual Three calls/triangles, clipping/HUD checks |
+
+Flow and boundaries — [[React интерфейс#Game UX 2.1 — direct actions, hand trade and dice]], implementation/verification limits — [[plans/game-ui-redesign#Game UX 2.1 — Direct Actions / Trade Hand / Dice / Board Readability]]. Phase 2 modal/Build descriptions below are historical.
 
 ## Game UI Phase 2 — implemented actions and results
 

@@ -6,13 +6,23 @@ import HexTile3D from "./HexTile3D";
 import Port3D from "./Port3D";
 import { City3D, Pirate3D, Road3D, Robber3D, Settlement3D, Ship3D } from "./Pieces3D";
 import { createRenderModel } from "./model";
-import type { BoardBounds, BoardSnapshot } from "./types";
+import type { BoardBounds, BoardRenderModel, BoardSnapshot } from "./types";
 import type { BoardInteraction } from "../board/interaction";
 import InteractionOverlay3D from "./InteractionOverlay3D";
-import { VisualResources } from "./VisualResources";
+import { VisualResources, useVisualResources } from "./VisualResources";
 import { VISUAL } from "./materials";
 import { cameraFootprint } from "./coordinates";
 import GameIcon from "../game/GameIcon";
+import DiceRoll3D from "./DiceRoll3D";
+import type { DiceRollVisual } from "../game/dice";
+
+const ignoreRaycast = () => undefined;
+function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
+  const pool = useVisualResources();
+  return <>{coast.map(c => <mesh key={c.edge.join(",")} position={c.position} rotation={[0, c.rotation, 0]}
+    scale={[c.length, .05, .12]} receiveShadow raycast={ignoreRaycast} userData={{ coastEdge: c.edge }}
+    geometry={pool.geometry("box")} material={pool.standard(VISUAL.sandShade)} />)}</>;
+}
 
 function BoardLight({ bounds }: { bounds: BoardBounds }) {
   const light = useRef<DirectionalLight>(null);
@@ -32,7 +42,9 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
     shadow-camera-far={reach * 4} shadow-bias={-0.0005} shadow-normalBias={0.025} />;
 }
 
-export default function Board3D({ state, interaction }: { state: BoardSnapshot; interaction: BoardInteraction }) {
+export default function Board3D({ state, interaction, diceRoll }: {
+  state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
+}) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
@@ -71,9 +83,11 @@ export default function Board3D({ state, interaction }: { state: BoardSnapshot; 
             <shadowMaterial transparent opacity={0.22} />
           </mesh>
           <VisualResources>
+          {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
             onHover={hover} onInspect={inspect} />)}
+          <Coastline coast={model.coast} />
           {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} />)}
           {model.ships.map(ship => <Ship3D key={ship.edge.join(",")} ship={ship} />)}
           {model.buildings.map(building => building.level === 1

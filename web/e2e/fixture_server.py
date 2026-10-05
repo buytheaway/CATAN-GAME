@@ -29,15 +29,21 @@ def initialize(room):
                 first = not any(owner == pid for owner, _ in g.occupied_v.values())
                 preferred = [v for edge, kind in g.ports for v in edge if v in choices and desired and desired in kind]
                 inland = [v for v in choices if v not in port_vertices]
-                choices = preferred if first and desired and preferred else inland or choices
+                coastal = [v for v in choices if any(v in edge and g.pirate_tile not in adjacent and any(g.tiles[i].terrain == "sea" for i in adjacent)
+                                                     for edge, adjacent in g.edge_adj_hexes.items())]
+                choices = coastal if mode == "gold" and first and coastal else preferred if first and desired and preferred else inland or choices
             rules.apply_cmd(g, pid, {"type": "place_settlement", "vid": choices[0], "setup": True})
         else:
-            rules.apply_cmd(g, pid, {"type": "place_road", "eid": legal["roads"][0], "setup": True})
+            roads = legal["roads"]
+            if mode == "gold" and pid == 0:
+                land_roads = [edge for edge in roads if not rules._edge_has_sea(g, tuple(edge))]
+                roads = land_roads or roads
+            rules.apply_cmd(g, pid, {"type": "place_road", "eid": roads[0], "setup": True})
     # Controlled funded hands, with the normal total of 19 per resource preserved.
     for p in g.players:
         p.res = {r: 5 for r in rules.RESOURCES}
     g.bank = {r: 19 - sum(p.res[r] for p in g.players) for r in rules.RESOURCES}
-    g.rolled = mode not in ("knight", "road")
+    g.rolled = mode not in ("knight", "road", "dice")
     g.players[0].dev_cards = [{"type": c, "new": False} for c in
                               ("knight", "road_building", "year_of_plenty", "monopoly", "victory_point")]
     g.players[0].vp += 1
@@ -69,13 +75,21 @@ def initialize(room):
 
 def verify_rejection(room, pid, cmd):
     before = deepcopy(room.game)
-    error = original_apply(room, pid, cmd)
+    dice_before = (room.dice, room.roll_count)
+    roller = server._roll_dice
+    if room.players[0].name.startswith("fixture-dice "):
+        server._roll_dice = lambda: (4, 5)
+    try:
+        error = original_apply(room, pid, cmd)
+    finally:
+        server._roll_dice = roller
     if error:
         assert room.game == before, "Rejected command mutated GameState"
+        assert (room.dice, room.roll_count) == dice_before, "Rejected command changed dice presentation"
     return error
 
 
 server._start_match = initialize
 server._apply_cmd = verify_rejection
-server._roll_dice = lambda: 2  # Deterministic test progression only; production uses secrets.
+server._roll_dice = lambda: (1, 1)  # Deterministic test progression only; production uses secrets.
 app = server.app

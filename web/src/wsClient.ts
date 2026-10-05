@@ -42,6 +42,9 @@ export type MatchState = {
       dev_cards?: { type: string; new: boolean }[];
     }[];
     rolled: boolean;
+    dice?: [number, number] | null;
+    roll_count?: number;
+    last_roll?: number | null;
     discard_required: Record<string, number>;
     pending_gold: Record<string, number>;
     map_id?: string;

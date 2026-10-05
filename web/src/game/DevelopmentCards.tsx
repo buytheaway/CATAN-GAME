@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ServerError } from "../wsClient";
 import { RESOURCES, type GameSnapshot } from "./presentation";
-import { buyDevReason, countResources, DEV_CARDS, devHand, devPlayReason, plentyCommand, plentyReason,
+import { countResources, DEV_CARDS, devHand, devPlayReason, plentyCommand, plentyReason,
   type DevType, type Resource, type ResourceCounts } from "./actions";
 import { ActionFeedback, ResourcePicker, type ActionSubmit } from "./TradePanel";
 import GameOverlay from "./GameOverlay";
@@ -21,7 +21,7 @@ export function DevelopmentHand({ state, pid, onCard }: {
         <GameIcon name={c.icon} /><span>{c.name}</span><b>{c.count}</b>
         <span className="sr-only">{c.fresh} bought this turn</span>
       </button>;
-    }) : <button className="dev-empty" onClick={() => onCard(null)}>No cards · Buy</button>}</div>
+    }) : <span className="dev-empty">No cards yet</span>}</div>
   </section>;
 }
 
@@ -33,7 +33,6 @@ export default function DevelopmentPanel({ state, pid, selected, submit, waiting
   const [card, setCard] = useState<DevType | null>(selected);
   const [resources, setResources] = useState<ResourceCounts>({});
   const [monopoly, setMonopoly] = useState<Resource>("wood");
-  const purchaseReason = buyDevReason(state, pid);
   const info = card ? DEV_CARDS[card] : null;
   const playReason = card === "year_of_plenty" ? plentyReason(state, pid, resources)
     : card ? devPlayReason(state, pid, card) : "Select a card.";
@@ -46,12 +45,6 @@ export default function DevelopmentPanel({ state, pid, selected, submit, waiting
   };
   return <GameOverlay id="development-panel" title="Development cards" modal onClose={onClose}>
     <ActionFeedback error={error} waiting={waiting} />
-    <div className="dev-purchase"><strong>Buy a development card</strong>
-      <p className="dev-cost"><GameIcon name="ore" />1 Ore <GameIcon name="sheep" />1 Sheep <GameIcon name="wheat" />1 Wheat</p>
-      {purchaseReason && <p>{purchaseReason}</p>}
-      <button className="game-button primary-action" disabled={waiting || !!purchaseReason}
-        onClick={() => submit({ type: "buy_dev" })}>Buy Dev Card</button>
-    </div>
     <div className="dev-card-list" aria-label="Own card types">{hand.map(c => <button className="game-button dev-card-choice"
       key={c.type} aria-pressed={card === c.type} disabled={waiting} onClick={() => setCard(c.type)}>
       <GameIcon name={c.icon} /><span>{c.name}<small>{c.count} held · {c.fresh} new</small></span>

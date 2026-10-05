@@ -1,0 +1,1710 @@
+﻿{
+    "date":  "2026-10-05T18:20:48.692Z",
+    "chrome":  "154.0.8037.93",
+    "baseCommit":  "dcadcab",
+    "browserCases":  17,
+    "passedCases":  17,
+    "commands":  59,
+    "framing":  [
+                    {
+                        "viewport":  [
+                                         1920,
+                                         1080
+                                     ],
+                        "beforeLand":  {
+                                           "width":  666.7299216947349,
+                                           "height":  526.0147492108152
+                                       },
+                        "afterLand":  {
+                                          "left":  592.3476119199157,
+                                          "right":  1373.2631561341345,
+                                          "top":  262.56625279384514,
+                                          "bottom":  880.1779111964044,
+                                          "width":  780.9155442142188,
+                                          "height":  617.6116584025592
+                                      },
+                        "widthIncreasePercent":  17.13,
+                        "heightIncreasePercent":  17.41
+                    },
+                    {
+                        "viewport":  [
+                                         1440,
+                                         900
+                                     ],
+                        "beforeLand":  {
+                                           "width":  536.6362784372257,
+                                           "height":  423.3777249745586
+                                       },
+                        "afterLand":  {
+                                          "left":  423.55956096245455,
+                                          "right":  1053.2166889550003,
+                                          "top":  222.4295461716139,
+                                          "bottom":  720.4137211898936,
+                                          "width":  629.6571279925458,
+                                          "height":  497.98417501827976
+                                      },
+                        "widthIncreasePercent":  17.33,
+                        "heightIncreasePercent":  17.62
+                    },
+                    {
+                        "viewport":  [
+                                         1280,
+                                         720
+                                     ],
+                        "beforeLand":  {
+                                           "width":  401.66412355755983,
+                                           "height":  316.89181232944236
+                                       },
+                        "afterLand":  {
+                                          "left":  414.7715100049934,
+                                          "right":  893.1702217758663,
+                                          "top":  182.29283954938262,
+                                          "bottom":  560.6495311833828,
+                                          "width":  478.39871177087286,
+                                          "height":  378.3566916340002
+                                      },
+                        "widthIncreasePercent":  19.10,
+                        "heightIncreasePercent":  19.40
+                    }
+                ],
+    "base":  [
+                 {
+                     "viewport":  [
+                                      1920,
+                                      1080
+                                  ],
+                     "canvas":  [
+                                    1920,
+                                    888
+                                ],
+                     "canvasBounds":  {
+                                          "left":  0,
+                                          "top":  76,
+                                          "right":  1920,
+                                          "bottom":  964
+                                      },
+                     "land":  {
+                                  "left":  592.3476119199157,
+                                  "right":  1373.2631561341345,
+                                  "top":  262.56625279384514,
+                                  "bottom":  880.1779111964044,
+                                  "width":  780.9155442142188,
+                                  "height":  617.6116584025592
+                              },
+                     "visible":  {
+                                     "left":  530.3286796679528,
+                                     "right":  1422.0110624582487,
+                                     "top":  228.22329671595267,
+                                     "bottom":  945.9661556703481,
+                                     "width":  891.682382790296,
+                                     "height":  717.7428589543955
+                                 },
+                     "tiles":  [
+                                   [
+                                       0,
+                                       "hills"
+                                   ],
+                                   [
+                                       1,
+                                       "desert"
+                                   ],
+                                   [
+                                       2,
+                                       "forest"
+                                   ],
+                                   [
+                                       3,
+                                       "forest"
+                                   ],
+                                   [
+                                       4,
+                                       "fields"
+                                   ],
+                                   [
+                                       5,
+                                       "mountains"
+                                   ],
+                                   [
+                                       6,
+                                       "fields"
+                                   ],
+                                   [
+                                       7,
+                                       "forest"
+                                   ],
+                                   [
+                                       8,
+                                       "hills"
+                                   ],
+                                   [
+                                       9,
+                                       "mountains"
+                                   ],
+                                   [
+                                       10,
+                                       "pasture"
+                                   ],
+                                   [
+                                       11,
+                                       "pasture"
+                                   ],
+                                   [
+                                       12,
+                                       "hills"
+                                   ],
+                                   [
+                                       13,
+                                       "pasture"
+                                   ],
+                                   [
+                                       14,
+                                       "fields"
+                                   ],
+                                   [
+                                       15,
+                                       "fields"
+                                   ],
+                                   [
+                                       16,
+                                       "pasture"
+                                   ],
+                                   [
+                                       17,
+                                       "mountains"
+                                   ],
+                                   [
+                                       18,
+                                       "forest"
+                                   ]
+                               ],
+                     "ports":  [
+                                   {
+                                       "edge":  [
+                                                    27,
+                                                    28
+                                                ],
+                                       "vertices":  [
+                                                        27,
+                                                        28
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    2,
+                                                    17
+                                                ],
+                                       "vertices":  [
+                                                        2,
+                                                        17
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    4,
+                                                    5
+                                                ],
+                                       "vertices":  [
+                                                        4,
+                                                        5
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    12,
+                                                    13
+                                                ],
+                                       "vertices":  [
+                                                        12,
+                                                        13
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    22,
+                                                    24
+                                                ],
+                                       "vertices":  [
+                                                        22,
+                                                        24
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    35,
+                                                    36
+                                                ],
+                                       "vertices":  [
+                                                        35,
+                                                        36
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    52,
+                                                    53
+                                                ],
+                                       "vertices":  [
+                                                        52,
+                                                        53
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    47,
+                                                    51
+                                                ],
+                                       "vertices":  [
+                                                        47,
+                                                        51
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    39,
+                                                    49
+                                                ],
+                                       "vertices":  [
+                                                        39,
+                                                        49
+                                                    ]
+                                   }
+                               ],
+                     "pieces":  [
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     1
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     5
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     1,
+                                                     2
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     3,
+                                                     4
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     4,
+                                                     5
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     5,
+                                                     8
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     6,
+                                                     7
+                                                 ]
+                                    },
+                                    {
+                                        "vertex":  0,
+                                        "level":  2
+                                    },
+                                    {
+                                        "vertex":  2,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  4,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  6,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  8,
+                                        "level":  1
+                                    },
+                                    {
+                                        "piece":  "robber"
+                                    }
+                                ],
+                     "occludedByHud":  0,
+                     "calls":  653,
+                     "triangles":  18536,
+                     "frame":  28
+                 },
+                 {
+                     "viewport":  [
+                                      1440,
+                                      900
+                                  ],
+                     "canvas":  [
+                                    1440,
+                                    716
+                                ],
+                     "canvasBounds":  {
+                                          "left":  0,
+                                          "top":  72,
+                                          "right":  1440,
+                                          "bottom":  788
+                                      },
+                     "land":  {
+                                  "left":  423.55956096245455,
+                                  "right":  1053.2166889550003,
+                                  "top":  222.4295461716139,
+                                  "bottom":  720.4137211898936,
+                                  "width":  629.6571279925458,
+                                  "height":  497.98417501827976
+                              },
+                     "visible":  {
+                                     "left":  373.5533047773133,
+                                     "right":  1092.522433243363,
+                                     "top":  194.7386041088087,
+                                     "bottom":  773.4591975900555,
+                                     "width":  718.9691284660496,
+                                     "height":  578.7205934812469
+                                 },
+                     "tiles":  [
+                                   [
+                                       0,
+                                       "hills"
+                                   ],
+                                   [
+                                       1,
+                                       "desert"
+                                   ],
+                                   [
+                                       2,
+                                       "forest"
+                                   ],
+                                   [
+                                       3,
+                                       "forest"
+                                   ],
+                                   [
+                                       4,
+                                       "fields"
+                                   ],
+                                   [
+                                       5,
+                                       "mountains"
+                                   ],
+                                   [
+                                       6,
+                                       "fields"
+                                   ],
+                                   [
+                                       7,
+                                       "forest"
+                                   ],
+                                   [
+                                       8,
+                                       "hills"
+                                   ],
+                                   [
+                                       9,
+                                       "mountains"
+                                   ],
+                                   [
+                                       10,
+                                       "pasture"
+                                   ],
+                                   [
+                                       11,
+                                       "pasture"
+                                   ],
+                                   [
+                                       12,
+                                       "hills"
+                                   ],
+                                   [
+                                       13,
+                                       "pasture"
+                                   ],
+                                   [
+                                       14,
+                                       "fields"
+                                   ],
+                                   [
+                                       15,
+                                       "fields"
+                                   ],
+                                   [
+                                       16,
+                                       "pasture"
+                                   ],
+                                   [
+                                       17,
+                                       "mountains"
+                                   ],
+                                   [
+                                       18,
+                                       "forest"
+                                   ]
+                               ],
+                     "ports":  [
+                                   {
+                                       "edge":  [
+                                                    27,
+                                                    28
+                                                ],
+                                       "vertices":  [
+                                                        27,
+                                                        28
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    2,
+                                                    17
+                                                ],
+                                       "vertices":  [
+                                                        2,
+                                                        17
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    4,
+                                                    5
+                                                ],
+                                       "vertices":  [
+                                                        4,
+                                                        5
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    12,
+                                                    13
+                                                ],
+                                       "vertices":  [
+                                                        12,
+                                                        13
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    22,
+                                                    24
+                                                ],
+                                       "vertices":  [
+                                                        22,
+                                                        24
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    35,
+                                                    36
+                                                ],
+                                       "vertices":  [
+                                                        35,
+                                                        36
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    52,
+                                                    53
+                                                ],
+                                       "vertices":  [
+                                                        52,
+                                                        53
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    47,
+                                                    51
+                                                ],
+                                       "vertices":  [
+                                                        47,
+                                                        51
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    39,
+                                                    49
+                                                ],
+                                       "vertices":  [
+                                                        39,
+                                                        49
+                                                    ]
+                                   }
+                               ],
+                     "pieces":  [
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     1
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     5
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     1,
+                                                     2
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     3,
+                                                     4
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     4,
+                                                     5
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     5,
+                                                     8
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     6,
+                                                     7
+                                                 ]
+                                    },
+                                    {
+                                        "vertex":  0,
+                                        "level":  2
+                                    },
+                                    {
+                                        "vertex":  2,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  4,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  6,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  8,
+                                        "level":  1
+                                    },
+                                    {
+                                        "piece":  "robber"
+                                    }
+                                ],
+                     "occludedByHud":  0,
+                     "calls":  653,
+                     "triangles":  18536,
+                     "frame":  31
+                 },
+                 {
+                     "viewport":  [
+                                      1280,
+                                      720
+                                  ],
+                     "canvas":  [
+                                    1280,
+                                    544
+                                ],
+                     "canvasBounds":  {
+                                          "left":  0,
+                                          "top":  68,
+                                          "right":  1280,
+                                          "bottom":  612
+                                      },
+                     "land":  {
+                                  "left":  414.7715100049934,
+                                  "right":  893.1702217758663,
+                                  "top":  182.29283954938262,
+                                  "bottom":  560.6495311833828,
+                                  "width":  478.39871177087286,
+                                  "height":  378.3566916340002
+                              },
+                     "visible":  {
+                                     "left":  376.77792988667375,
+                                     "right":  923.0338040284768,
+                                     "top":  161.2539115016647,
+                                     "bottom":  600.9522395097629,
+                                     "width":  546.255874141803,
+                                     "height":  439.6983280080982
+                                 },
+                     "tiles":  [
+                                   [
+                                       0,
+                                       "hills"
+                                   ],
+                                   [
+                                       1,
+                                       "desert"
+                                   ],
+                                   [
+                                       2,
+                                       "forest"
+                                   ],
+                                   [
+                                       3,
+                                       "forest"
+                                   ],
+                                   [
+                                       4,
+                                       "fields"
+                                   ],
+                                   [
+                                       5,
+                                       "mountains"
+                                   ],
+                                   [
+                                       6,
+                                       "fields"
+                                   ],
+                                   [
+                                       7,
+                                       "forest"
+                                   ],
+                                   [
+                                       8,
+                                       "hills"
+                                   ],
+                                   [
+                                       9,
+                                       "mountains"
+                                   ],
+                                   [
+                                       10,
+                                       "pasture"
+                                   ],
+                                   [
+                                       11,
+                                       "pasture"
+                                   ],
+                                   [
+                                       12,
+                                       "hills"
+                                   ],
+                                   [
+                                       13,
+                                       "pasture"
+                                   ],
+                                   [
+                                       14,
+                                       "fields"
+                                   ],
+                                   [
+                                       15,
+                                       "fields"
+                                   ],
+                                   [
+                                       16,
+                                       "pasture"
+                                   ],
+                                   [
+                                       17,
+                                       "mountains"
+                                   ],
+                                   [
+                                       18,
+                                       "forest"
+                                   ]
+                               ],
+                     "ports":  [
+                                   {
+                                       "edge":  [
+                                                    27,
+                                                    28
+                                                ],
+                                       "vertices":  [
+                                                        27,
+                                                        28
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    2,
+                                                    17
+                                                ],
+                                       "vertices":  [
+                                                        2,
+                                                        17
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    4,
+                                                    5
+                                                ],
+                                       "vertices":  [
+                                                        4,
+                                                        5
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    12,
+                                                    13
+                                                ],
+                                       "vertices":  [
+                                                        12,
+                                                        13
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    22,
+                                                    24
+                                                ],
+                                       "vertices":  [
+                                                        22,
+                                                        24
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    35,
+                                                    36
+                                                ],
+                                       "vertices":  [
+                                                        35,
+                                                        36
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    52,
+                                                    53
+                                                ],
+                                       "vertices":  [
+                                                        52,
+                                                        53
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    47,
+                                                    51
+                                                ],
+                                       "vertices":  [
+                                                        47,
+                                                        51
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    39,
+                                                    49
+                                                ],
+                                       "vertices":  [
+                                                        39,
+                                                        49
+                                                    ]
+                                   }
+                               ],
+                     "pieces":  [
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     1
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     5
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     1,
+                                                     2
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     3,
+                                                     4
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     4,
+                                                     5
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     5,
+                                                     8
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     6,
+                                                     7
+                                                 ]
+                                    },
+                                    {
+                                        "vertex":  0,
+                                        "level":  2
+                                    },
+                                    {
+                                        "vertex":  2,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  4,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  6,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  8,
+                                        "level":  1
+                                    },
+                                    {
+                                        "piece":  "robber"
+                                    }
+                                ],
+                     "occludedByHud":  0,
+                     "calls":  653,
+                     "triangles":  18536,
+                     "frame":  34
+                 }
+             ],
+    "gold":  [
+                 {
+                     "viewport":  [
+                                      1920,
+                                      1080
+                                  ],
+                     "canvas":  [
+                                    1920,
+                                    888
+                                ],
+                     "canvasBounds":  {
+                                          "left":  0,
+                                          "top":  76,
+                                          "right":  1920,
+                                          "bottom":  964
+                                      },
+                     "land":  {
+                                  "left":  592.3476119199157,
+                                  "right":  1299.4009943933934,
+                                  "top":  262.56625279384514,
+                                  "bottom":  880.1779111964044,
+                                  "width":  707.0533824734777,
+                                  "height":  617.6116584025592
+                              },
+                     "visible":  {
+                                     "left":  530.3286796679528,
+                                     "right":  1422.0110624582487,
+                                     "top":  228.22329671595267,
+                                     "bottom":  945.9661556703481,
+                                     "width":  891.682382790296,
+                                     "height":  717.7428589543955
+                                 },
+                     "tiles":  [
+                                   [
+                                       0,
+                                       "gold"
+                                   ],
+                                   [
+                                       1,
+                                       "forest"
+                                   ],
+                                   [
+                                       2,
+                                       "sea"
+                                   ],
+                                   [
+                                       3,
+                                       "pasture"
+                                   ],
+                                   [
+                                       4,
+                                       "pasture"
+                                   ],
+                                   [
+                                       5,
+                                       "hills"
+                                   ],
+                                   [
+                                       6,
+                                       "sea"
+                                   ],
+                                   [
+                                       7,
+                                       "hills"
+                                   ],
+                                   [
+                                       8,
+                                       "fields"
+                                   ],
+                                   [
+                                       9,
+                                       "mountains"
+                                   ],
+                                   [
+                                       10,
+                                       "mountains"
+                                   ],
+                                   [
+                                       11,
+                                       "sea"
+                                   ],
+                                   [
+                                       12,
+                                       "pasture"
+                                   ],
+                                   [
+                                       13,
+                                       "gold"
+                                   ],
+                                   [
+                                       14,
+                                       "fields"
+                                   ],
+                                   [
+                                       15,
+                                       "forest"
+                                   ],
+                                   [
+                                       16,
+                                       "sea"
+                                   ],
+                                   [
+                                       17,
+                                       "forest"
+                                   ],
+                                   [
+                                       18,
+                                       "fields"
+                                   ]
+                               ],
+                     "ports":  [
+                                   {
+                                       "edge":  [
+                                                    27,
+                                                    28
+                                                ],
+                                       "vertices":  [
+                                                        27,
+                                                        28
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    2,
+                                                    17
+                                                ],
+                                       "vertices":  [
+                                                        2,
+                                                        17
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    4,
+                                                    5
+                                                ],
+                                       "vertices":  [
+                                                        4,
+                                                        5
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    12,
+                                                    13
+                                                ],
+                                       "vertices":  [
+                                                        12,
+                                                        13
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    22,
+                                                    24
+                                                ],
+                                       "vertices":  [
+                                                        22,
+                                                        24
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    35,
+                                                    36
+                                                ],
+                                       "vertices":  [
+                                                        35,
+                                                        36
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    52,
+                                                    53
+                                                ],
+                                       "vertices":  [
+                                                        52,
+                                                        53
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    47,
+                                                    51
+                                                ],
+                                       "vertices":  [
+                                                        47,
+                                                        51
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    39,
+                                                    49
+                                                ],
+                                       "vertices":  [
+                                                        39,
+                                                        49
+                                                    ]
+                                   }
+                               ],
+                     "pieces":  [
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     1
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     1,
+                                                     2
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     5,
+                                                     8
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     6,
+                                                     11
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "ship",
+                                        "edge":  [
+                                                     20,
+                                                     23
+                                                 ]
+                                    },
+                                    {
+                                        "vertex":  0,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  2,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  8,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  11,
+                                        "level":  1
+                                    },
+                                    {
+                                        "piece":  "robber"
+                                    },
+                                    {
+                                        "piece":  "pirate"
+                                    }
+                                ],
+                     "occludedByHud":  0,
+                     "calls":  568,
+                     "triangles":  16518,
+                     "frame":  17
+                 },
+                 {
+                     "viewport":  [
+                                      1440,
+                                      900
+                                  ],
+                     "canvas":  [
+                                    1440,
+                                    716
+                                ],
+                     "canvasBounds":  {
+                                          "left":  0,
+                                          "top":  72,
+                                          "right":  1440,
+                                          "bottom":  788
+                                      },
+                     "land":  {
+                                  "left":  423.55956096245455,
+                                  "right":  993.6611621460244,
+                                  "top":  222.4295461716139,
+                                  "bottom":  720.4137211898936,
+                                  "width":  570.1016011835698,
+                                  "height":  497.98417501827976
+                              },
+                     "visible":  {
+                                     "left":  373.5533047773133,
+                                     "right":  1092.522433243363,
+                                     "top":  194.7386041088087,
+                                     "bottom":  773.4591975900555,
+                                     "width":  718.9691284660496,
+                                     "height":  578.7205934812469
+                                 },
+                     "tiles":  [
+                                   [
+                                       0,
+                                       "gold"
+                                   ],
+                                   [
+                                       1,
+                                       "forest"
+                                   ],
+                                   [
+                                       2,
+                                       "sea"
+                                   ],
+                                   [
+                                       3,
+                                       "pasture"
+                                   ],
+                                   [
+                                       4,
+                                       "pasture"
+                                   ],
+                                   [
+                                       5,
+                                       "hills"
+                                   ],
+                                   [
+                                       6,
+                                       "sea"
+                                   ],
+                                   [
+                                       7,
+                                       "hills"
+                                   ],
+                                   [
+                                       8,
+                                       "fields"
+                                   ],
+                                   [
+                                       9,
+                                       "mountains"
+                                   ],
+                                   [
+                                       10,
+                                       "mountains"
+                                   ],
+                                   [
+                                       11,
+                                       "sea"
+                                   ],
+                                   [
+                                       12,
+                                       "pasture"
+                                   ],
+                                   [
+                                       13,
+                                       "gold"
+                                   ],
+                                   [
+                                       14,
+                                       "fields"
+                                   ],
+                                   [
+                                       15,
+                                       "forest"
+                                   ],
+                                   [
+                                       16,
+                                       "sea"
+                                   ],
+                                   [
+                                       17,
+                                       "forest"
+                                   ],
+                                   [
+                                       18,
+                                       "fields"
+                                   ]
+                               ],
+                     "ports":  [
+                                   {
+                                       "edge":  [
+                                                    27,
+                                                    28
+                                                ],
+                                       "vertices":  [
+                                                        27,
+                                                        28
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    2,
+                                                    17
+                                                ],
+                                       "vertices":  [
+                                                        2,
+                                                        17
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    4,
+                                                    5
+                                                ],
+                                       "vertices":  [
+                                                        4,
+                                                        5
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    12,
+                                                    13
+                                                ],
+                                       "vertices":  [
+                                                        12,
+                                                        13
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    22,
+                                                    24
+                                                ],
+                                       "vertices":  [
+                                                        22,
+                                                        24
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    35,
+                                                    36
+                                                ],
+                                       "vertices":  [
+                                                        35,
+                                                        36
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    52,
+                                                    53
+                                                ],
+                                       "vertices":  [
+                                                        52,
+                                                        53
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    47,
+                                                    51
+                                                ],
+                                       "vertices":  [
+                                                        47,
+                                                        51
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    39,
+                                                    49
+                                                ],
+                                       "vertices":  [
+                                                        39,
+                                                        49
+                                                    ]
+                                   }
+                               ],
+                     "pieces":  [
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     1
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     1,
+                                                     2
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     5,
+                                                     8
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     6,
+                                                     11
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "ship",
+                                        "edge":  [
+                                                     20,
+                                                     23
+                                                 ]
+                                    },
+                                    {
+                                        "vertex":  0,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  2,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  8,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  11,
+                                        "level":  1
+                                    },
+                                    {
+                                        "piece":  "robber"
+                                    },
+                                    {
+                                        "piece":  "pirate"
+                                    }
+                                ],
+                     "occludedByHud":  0,
+                     "calls":  568,
+                     "triangles":  16518,
+                     "frame":  20
+                 },
+                 {
+                     "viewport":  [
+                                      1280,
+                                      720
+                                  ],
+                     "canvas":  [
+                                    1280,
+                                    544
+                                ],
+                     "canvasBounds":  {
+                                          "left":  0,
+                                          "top":  68,
+                                          "right":  1280,
+                                          "bottom":  612
+                                      },
+                     "land":  {
+                                  "left":  414.7715100049934,
+                                  "right":  847.9213298986555,
+                                  "top":  182.29283954938262,
+                                  "bottom":  560.6495311833828,
+                                  "width":  433.1498198936621,
+                                  "height":  378.3566916340002
+                              },
+                     "visible":  {
+                                     "left":  376.77792988667375,
+                                     "right":  923.0338040284768,
+                                     "top":  161.2539115016647,
+                                     "bottom":  600.9522395097629,
+                                     "width":  546.255874141803,
+                                     "height":  439.6983280080982
+                                 },
+                     "tiles":  [
+                                   [
+                                       0,
+                                       "gold"
+                                   ],
+                                   [
+                                       1,
+                                       "forest"
+                                   ],
+                                   [
+                                       2,
+                                       "sea"
+                                   ],
+                                   [
+                                       3,
+                                       "pasture"
+                                   ],
+                                   [
+                                       4,
+                                       "pasture"
+                                   ],
+                                   [
+                                       5,
+                                       "hills"
+                                   ],
+                                   [
+                                       6,
+                                       "sea"
+                                   ],
+                                   [
+                                       7,
+                                       "hills"
+                                   ],
+                                   [
+                                       8,
+                                       "fields"
+                                   ],
+                                   [
+                                       9,
+                                       "mountains"
+                                   ],
+                                   [
+                                       10,
+                                       "mountains"
+                                   ],
+                                   [
+                                       11,
+                                       "sea"
+                                   ],
+                                   [
+                                       12,
+                                       "pasture"
+                                   ],
+                                   [
+                                       13,
+                                       "gold"
+                                   ],
+                                   [
+                                       14,
+                                       "fields"
+                                   ],
+                                   [
+                                       15,
+                                       "forest"
+                                   ],
+                                   [
+                                       16,
+                                       "sea"
+                                   ],
+                                   [
+                                       17,
+                                       "forest"
+                                   ],
+                                   [
+                                       18,
+                                       "fields"
+                                   ]
+                               ],
+                     "ports":  [
+                                   {
+                                       "edge":  [
+                                                    27,
+                                                    28
+                                                ],
+                                       "vertices":  [
+                                                        27,
+                                                        28
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    2,
+                                                    17
+                                                ],
+                                       "vertices":  [
+                                                        2,
+                                                        17
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    4,
+                                                    5
+                                                ],
+                                       "vertices":  [
+                                                        4,
+                                                        5
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    12,
+                                                    13
+                                                ],
+                                       "vertices":  [
+                                                        12,
+                                                        13
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    22,
+                                                    24
+                                                ],
+                                       "vertices":  [
+                                                        22,
+                                                        24
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    35,
+                                                    36
+                                                ],
+                                       "vertices":  [
+                                                        35,
+                                                        36
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    52,
+                                                    53
+                                                ],
+                                       "vertices":  [
+                                                        52,
+                                                        53
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    47,
+                                                    51
+                                                ],
+                                       "vertices":  [
+                                                        47,
+                                                        51
+                                                    ]
+                                   },
+                                   {
+                                       "edge":  [
+                                                    39,
+                                                    49
+                                                ],
+                                       "vertices":  [
+                                                        39,
+                                                        49
+                                                    ]
+                                   }
+                               ],
+                     "pieces":  [
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     0,
+                                                     1
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     1,
+                                                     2
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     5,
+                                                     8
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "road",
+                                        "edge":  [
+                                                     6,
+                                                     11
+                                                 ]
+                                    },
+                                    {
+                                        "piece":  "ship",
+                                        "edge":  [
+                                                     20,
+                                                     23
+                                                 ]
+                                    },
+                                    {
+                                        "vertex":  0,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  2,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  8,
+                                        "level":  1
+                                    },
+                                    {
+                                        "vertex":  11,
+                                        "level":  1
+                                    },
+                                    {
+                                        "piece":  "robber"
+                                    },
+                                    {
+                                        "piece":  "pirate"
+                                    }
+                                ],
+                     "occludedByHud":  0,
+                     "calls":  568,
+                     "triangles":  16518,
+                     "frame":  23
+                 }
+             ],
+    "limits":  "Prepared funded states; real WS/engine commands. Framing compares the same Base preset/topology with separately generated terrain, not pixel-identical maps. No low-end/mobile/full-match certification."
+}
