@@ -43,7 +43,7 @@ def initialize(room):
     for p in g.players:
         p.res = {r: 5 for r in rules.RESOURCES}
     g.bank = {r: 19 - sum(p.res[r] for p in g.players) for r in rules.RESOURCES}
-    g.rolled = mode not in ("knight", "road", "dice")
+    g.rolled = mode not in ("knight", "road", "dice", "roomux", "roomuxhidden")
     g.players[0].dev_cards = [{"type": c, "new": False} for c in
                               ("knight", "road_building", "year_of_plenty", "monopoly", "victory_point")]
     g.players[0].vp += 1
@@ -71,6 +71,10 @@ def initialize(room):
     if mode.startswith("bank"):
         expected = {"bank4": 4, "bank3": 3, "bank2": 2}[mode]
         assert rules.best_trade_rate(g, 0, "wood") == expected
+    if mode in ("roomux", "roomuxhidden"):
+        for player in g.players:
+            player.res = {r: 0 for r in rules.RESOURCES}
+        g.bank = {r: 19 for r in rules.RESOURCES}
 
 
 def verify_rejection(room, pid, cmd):

@@ -14,13 +14,14 @@ const compiled = await build({
   entryPoints: [fileURLToPath(new URL("../src/components/LobbyPage.tsx", import.meta.url))],
   bundle: true, write: false, platform: "node", format: "cjs", jsx: "automatic",
   external: ["react", "react/jsx-runtime"],
+  loader: { ".css": "empty" },
 });
 let select, start;
-const tracedRuntime = Object.fromEntries(["jsx", "jsxs"].map(name => [name, (type, props, key) => {
-  if (type === "select") select = props;
+const tracedRuntime = { ...jsxRuntime, ...Object.fromEntries(["jsx", "jsxs"].map(name => [name, (type, props, key) => {
+  if (type === "select" && props["aria-label"] === "Map preset") select = props;
   if (type === "button" && props.children === "Start Match") start = props;
   return jsxRuntime[name](type, props, key);
-}]));
+}])) };
 const loaded = { exports: {} };
 new Script(`(function(require, module, exports) { ${compiled.outputFiles[0].text}\n})`)
   .runInThisContext()(name => name === "react/jsx-runtime" ? tracedRuntime : require(name), loaded, loaded.exports);
@@ -31,7 +32,7 @@ function render(pendingMapId = null, mapId = "base_standard") {
   const client = { pendingMapId, youPid: 0, setMap: id => sent.push(id) };
   const room = { room_code: "ROOM", map_revision: 1, map_id: mapId, host_pid: 0,
     status: "lobby", max_players: 2,
-    players: [{ pid: 0, name: "Alice" }, { pid: 1, name: "Bob" }],
+    players: [{ pid: 0, name: "Alice", connected: true }, { pid: 1, name: "Bob", connected: true }],
     map_presets: [{ id: "base_standard", name: "Base" }, { id: "seafarers_gold_haven", name: "Gold Haven" }] };
   const html = renderToStaticMarkup(React.createElement(LobbyPage, {
     client, room, status: "connected", wsDefault: "ws://test/ws", error: null,

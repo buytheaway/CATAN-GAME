@@ -6,9 +6,37 @@ tags: [catan, web, интерфейс]
 
 [[Web клиент]] · [[Состояние игры]] · [[Стили и визуальные границы]] · [[Design System]]
 
+Last verified **2026-10-06 — Game / Room UX 2.2**: 119 web tests, 234 pytest, TypeScript/production/Docker builds и 19 Chrome cases. Двухклиентские настройки/цвета/Balanced/countdown/Visible и Hidden bank/chat/refresh/rematch проходят. Результаты ниже относятся к прежним этапам; текущие limits — [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]].
+
+## Game / Room UX 2.2 — settings, colors, timer and chat
+
+LobbyPage сохраняет исходный map/custom JSON flow. Room card добавляет [MatchSettings / PlayerColors](../../web/src/components/RoomSettings.tsx); отдельный компактный Chat раскрывается по запросу. Настройки получают Room.settings, connected/isHost/status и WSClient.pendingSettings; only host+lobby editable. Target VP 3..30, исходный preset может иметь другую цель и честно показывается собственной option. Цвет получает own pid, room.players[].color и pendingColor; занятый цвет disabled, сервер повторно валидирует. Старт disabled до подтверждения карты и всех config requests.
+
+UI → WSClient.setSettings/setColor → server Room validation → room_state с config_revision/request_id → App.room → lobby. Pending значения только визуальные: presence не подтверждает их, меньшая revision не откатывает состояние, disconnect/new room очищают pending, reconnect получает текущий Room. В одном WS более поздний подтверждённый запрос завершает предыдущие pending intents; подтверждение не основано на совпадении полей или timestamp. Прежние map_revision/queue/request error boundaries остаются.
+
+[TurnTimer](../../web/src/game/TurnTimer.tsx) получает snapshot turn_timer текущего игрока. performance.now интерполирует server remaining_ms с обновлением раз в 250ms, интервал очищается при смене/unmount/blocked. Off не показывает timer, ≤10s warning, ≤5s stronger warning; blocked показывает Action required. UI не запускает Roll/End и не определяет deadline.
+
+Event log drawer теперь имеет Game Log / Chat. Game Log сохраняет прежний App.log, полного engine event feed нет. [RoomChat](../../web/src/game/RoomChat.tsx) получает server history и connected, отправляет client.sendChat(text). История/name/color/time/order серверные, без optimistic messages и без HTML rendering; только draft живёт в React. WSClient.chat_state обновляет room history с chat_revision и сохраняет более новую историю при старом room_state. Чат отделён от gameplay seq и остаётся через refresh/rematch. Results/mandatory overlays сохраняют прежний приоритет и не открывают drawer.
+
+BankSummary получает bank_available и только при snapshot room_settings.bank_visibility=visible — bank counts. По умолчанию закрыт, использует прежние icons. Hidden не вычисляет количества. Deck/count/order по-прежнему скрыты. Foreign exact hands/active hidden VP/private choices UI не запрашивает.
+
+[board/colors.ts](../../web/src/board/colors.ts) разрешает public color ID независимо от pid; SVG, Three pieces/ghosts и top HUD используют одинаковую palette. Legacy pid palette — fallback только для old/offline snapshots. Snapshot players[].color — presentation, не identity/turn policy. Controller, legal targets, renderer geometry, terrain, trading/dev payloads и card/resource authority не изменены.
+
+Новые UI границы:
+
+| Блок | Данные | Локальное состояние |
+| --- | --- | --- |
+| MatchSettings | Room.settings + pendingSettings/isHost/status | Никакой альтернативной config model |
+| PlayerColors | room.players, own pid, pendingColor | Только optimistic selection из WSClient |
+| TurnTimer | authoritative remaining/deadline/stage | Visual elapsed и cleanup interval |
+| RoomChat | history/name/color/id/time, connected | Draft текста; сервер владеет историей |
+| Game Log / Bank | App.log, bank_available, optional public bank | Выбранная вкладка, раскрытие блока |
+
+Browser: два реальных React contexts через nginx/WS, white/orange actual Three materials, four Balanced rolls на каждый bank flow, countdown между snapshots, literal HTML chat, both-client public bank policy, unchanged deadline/history/color после refresh, rematch reset и первый seq=1. Server auto-expiry/grace/mandatory lifecycle проверен fake-clock pytest; естественный полный матч/mobile/low-end не сертифицированы. Evidence — [[Design System#Game / Room UX 2.2 — implemented room policy and HUD]].
+
 Основные UI-границы: App, LobbyPage, fullscreen GamePage, GameTopBar/ContextPrompt/ResourceHand/BankSummary/GameOverlay, ActionButton/DiceHUD и TradePanel/DevelopmentCards/Endgame в game/, BoardControls в dock, BoardRenderer, SVG BoardView и Board3D. Scene-компоненты находятся в board3d/. Action dock/player strip — JSX-блоки, не отдельные classes. MainMenu пока отсутствует.
 
-Last verified 2026-10-05 — Game UX 2.1: 108 web tests, 203 pytest, TypeScript, production/Docker builds и 17 Chrome E2E cases. Прямой dock, hand-driven trade и server dice сохраняют общий controller/legal/ACK/privacy. Base/Gold на 1920×1080, 1440×900, 1280×720, включая paid road/settlement/city, ship/move/pirate, reduced motion и idle rendering. Engine не менялся; server добавил только dice/roll_count metadata. Проверки и пределы — [[plans/game-ui-redesign#Game UX 2.1 — Direct Actions / Trade Hand / Dice / Board Readability]]. Предыдущие результаты ниже исторические.
+Предыдущая verification 2026-10-05 — Game UX 2.1: 108 web tests, 203 pytest, TypeScript, production/Docker builds и 17 Chrome E2E cases. Прямой dock, hand-driven trade и server dice сохраняют общий controller/legal/ACK/privacy. Base/Gold на 1920×1080, 1440×900, 1280×720, включая paid road/settlement/city, ship/move/pirate, reduced motion и idle rendering. Engine не менялся; server добавил только dice/roll_count metadata. Проверки и пределы — [[plans/game-ui-redesign#Game UX 2.1 — Direct Actions / Trade Hand / Dice / Board Readability]]. Предыдущие результаты ниже исторические.
 
 Game UI Phase 2 verified 2026-10-05: 92 web tests, 186 pytest, TypeScript, production/Docker build и 14 реальных Chrome E2E cases. Trade/dev/results используют существующие commands/snapshot и общий board controller; backend/protocol/renderer не изменены. Prepared games проходят через настоящий WebSocket в отдельном test stack; обычный production backend отдельно проверен setup/Roll/End/2D↔3D двумя клиентами. Подробности — [[plans/game-ui-redesign#Phase 2 — Trade / Development Cards / Endgame]].
 
@@ -24,7 +52,7 @@ Game UI Redesign Phase 1 verified 2026-10-05: 73 web tests, TypeScript, producti
 | --- | --- | --- | --- |
 | [App](../../web/src/App.tsx) | main.tsx | Нет | client, room, match, status, log, error |
 | [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, pendingMapId, customLabel; отображаемый mapId = pending или room.map_id |
-| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error, onBackToLobby | Прежний useBoardInteraction; discard/gold fields; drawer=log/info/dev/null, controlled tradeDraft, selectedDev, dismissedOffers, useGameCommand waiting и useDicePresentation |
+| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error, onBackToLobby | Прежний useBoardInteraction; discard/gold fields; drawer=log/info/dev/null, logTab=game/chat, controlled tradeDraft, selectedDev, dismissedOffers, useGameCommand waiting и useDicePresentation |
 | [TradePanel / IncomingTrades](../../web/src/game/TradePanel.tsx) | GamePage | state, pid, draft/onChange/connected targets, submit, waiting, error, onClose; incoming также offers | TradePanel — controlled nonmodal tray; Give/Want/target в GamePage, balances/offers только из snapshot |
 | [ActionButton](../../web/src/game/ActionButton.tsx) | BoardControls / GamePage | action, label, resources, disabled/selected/free/reason, onClick | Только hover/focus cost preview из costs.ts |
 | [DiceHUD](../../web/src/game/DiceHUD.tsx) | GamePage | exact faces, finite roll visual, legacy total | useDicePresentation хранит previous match/counter, reduced-motion preference и 1030ms cleanup timer; результат не вычисляет |
@@ -52,9 +80,9 @@ App показывает LobbyPage без match и GamePage при его нал
 | Roll / End Turn | GamePage | canRoll/canEnd; отправляют roll/end_turn |
 | Gold Choice | GamePage | pending_gold[youPid], goldRes, goldQty; choose_gold |
 | Discard | GamePage | discard_required[youPid], res, введённый discard; discard-команда |
-| Игроки матча | GameTopBar | public pid/name/vp/resource_count/dev_count/turn, PLAYER_COLORS; без чтения чужой руки |
+| Игроки матча | GameTopBar | public pid/name/color/vp/resource_count/dev_count/turn и optional turn_timer; без чтения чужой руки |
 | Ошибки | LobbyPage и GamePage | error.message |
-| Журнал / банк | GameOverlay / BankSummary | log из App и public bank_available, закрытый drawer; available/empty без точных counts, engine event feed не добавлен |
+| Журнал / банк | GameOverlay / BankSummary | log из App / server room chat; bank_available и optional Visible bank counts, закрытый drawer; engine event feed не добавлен |
 | Trade | TradePanel / IncomingTrades / TradeOffers | own res, ports/occupied_v, bank_available, public offers, players/turn/rolled/pending; bank/create/accept/decline/cancel |
 | Development cards | GamePage ActionButton / DevelopmentHand / DevelopmentPanel | Dock buy_dev; own dev_cards/new, dev_played_turn/free_roads, bank_available и turn/pending для private play/inspect/pickers |
 | Dice | DiceHUD / DiceRoll3D | Только server dice и roll_count; last_roll — legacy total, не источник выдуманных граней |
@@ -112,7 +140,7 @@ BoardView получает геометрию, фигуры, правила и �
 
 [useBoardInteraction](../../web/src/board/useBoardInteraction.ts) хранит selection в GamePage. [BoardControls](../../web/src/board/BoardControls.tsx) рисует прежние tools и небольшую панель victims. При нескольких victims click сначала открывает выбор без команды; при одной жертве её pid передаётся явно, при нуле поле victim опускается. Список берётся с сервера, клиент не вычисляет кражу или ownership rules.
 
-BoardView рисует SVG markers; [InteractionOverlay3D](../../web/src/board3d/InteractionOverlay3D.tsx) — vertex rings/тонкие edge rails с невидимыми увеличенными hit surfaces. После Polish 1.1 HexTile3D подсвечивает настоящую плитку через pooled emissive material: второго tile outline mesh нет. Hover светлее, выбранный ship source/victim tile выделен янтарным. Terrain decoration исключён из raycasting, чтобы не перехватывать legal clicks. Оба renderer вызывают одинаковые callbacks. Three не импортирует SVG internals; общие PLAYER_COLORS/edgeId находятся в board/constants.ts. Coordinate mapping Phase 1 сохранён.
+BoardView рисует SVG markers; [InteractionOverlay3D](../../web/src/board3d/InteractionOverlay3D.tsx) — vertex rings/тонкие edge rails с невидимыми увеличенными hit surfaces. После Polish 1.1 HexTile3D подсвечивает настоящую плитку через pooled emissive material: второго tile outline mesh нет. Hover светлее, выбранный ship source/victim tile выделен янтарным. Terrain decoration исключён из raycasting, чтобы не перехватывать legal clicks. Оба renderer вызывают одинаковые callbacks. Three не импортирует SVG internals; edgeId находится в board/constants.ts, public color mapping — в board/colors.ts (PLAYER_COLORS остаётся legacy fallback). Coordinate mapping Phase 1 сохранён.
 
 Путь: click → shared callback → GamePage.sendCmd → WSClient → server._apply_cmd → неизменный engine.apply_cmd → _snapshot_state с personal legal → App.setMatch → GamePage → оба renderer. Waiting блокирует повторные board clicks до ответа. Фигуры не создаются optimistic. Error снимает ожидание/source/victim и показывает существующий feedback; snapshot заново проверяет доступность selection. Новый room+match сбрасывает selection. При 2D↔3D сохраняются tool, ship source и victim choice; GameState и tick не меняются. Payloads/условия Roll/End/discard/gold сохранены; их представление перенесено в dock/choice overlays.
 
@@ -134,11 +162,11 @@ Build palette показывает только инструменты с сущ
 <App>
 ├── Если нет match: CATAN LAN Web + <LobbyPage> (без redesign)
 │   ├── Connection / Host / Join / preset / custom JSON
-│   └── Room / players / Start Match
+│   └── Room / <MatchSettings> / players / <PlayerColors> / Start / <RoomChat>
 └── Если есть match: <GamePage> → .game-shell
     ├── <GameTopBar>
     │   ├── Compact brand / room
-    │   ├── Players strip: name / color / public VP & counts / Turn
+    │   ├── Players strip: name / color / public VP & counts / Turn / <TurnTimer>
     │   └── Goal / Game info / Event log buttons
     ├── Board stage
     │   ├── <ContextPrompt>
@@ -166,7 +194,9 @@ Build palette показывает только инструменты с сущ
     │           ├── Ship only if enabled; contextual Move Ship
     │           ├── Robber / Pirate / Cancel (contextual)
     │           └── <GameOverlay> victim chooser, when needed
-    ├── <GameOverlay> Game info or Event log + <BankSummary>, when opened
+    ├── <GameOverlay> Game info / Event log drawer, when opened
+    │   ├── Game Log (existing log) / <RoomChat> tabs
+    │   └── <BankSummary> (collapsed; counts only when Visible)
     ├── <IncomingTrades> → compact received offers, when not dismissed
     ├── <DevelopmentPanel> → own cards / Play / resource pickers (no buy)
     ├── <Endgame> → server winner / final VP / rematch / lobby

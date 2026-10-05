@@ -1,13 +1,39 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
-Status: Clean modern tabletop accepted 2026-10-04. Game UX 2.1 implemented/verified 2026-10-05 after Board3D Phase 3, Game UI Phase 1, Polish 1.1 and Phase 2. The newest attached mockup is the primary UX/composition reference for this step. Match uses direct actions, resource-hand trading, real dice and richer procedural terrain. Lobby/menu/settings/mobile and final cross-screen tokens remain future work. Older phase descriptions and AI images are historical.
+## Game / Room UX 2.2 — implemented room policy and HUD
+
+Implemented and verified **2026-10-06**, based on e9db7af. The user separately accepted room settings, unique colors, server timer, chat and optional visible bank. Their concept-only status in the earlier 2.1 reference describes that earlier phase. Current direction remains clean modern tabletop, board primary, compact overlays, no new fantasy/commercial art or dashboard redesign.
+
+- Lobby retains existing map/custom JSON/connection layout. The Room column adds compact dark native selects for Dice, Starting player, Turn timer, Bank counts and Target VP, six color swatches and a collapsible chat. Read-only/occupied/locked controls are explicit; pending intent waits for authoritative confirmation. Alignment/contrast fixes are scoped to these controls rather than a full lobby/menu redesign.
+- Player colors red/blue/orange/white/green/purple are independent of pid/turn order and used consistently in top HUD, SVG, Three pieces/ghosts and chat indicators. White stays readable against navy. Geometry/terrain/camera/IDs and the shared interaction controller remain intact.
+- Current player shows a compact turn label plus countdown. 10s amber and 5s stronger accent, no flashing screen; Off omits the timer. An expired mandatory state shows Action required; no invented auto-placement.
+- The closed right drawer has Game Log / Chat tabs. Chat is plain text with name/color/time, a scrollable bounded history and a 500-character input. Game Log remains real existing transport information, not an invented authoritative engine feed. Mandatory/results overlays keep priority.
+- Bank is collapsed by default and uses existing resource icons. Visible shows real snapshot counts; Hidden shows availability/counts hidden. Development deck/count stays hidden. Exact bank in Visible is a deliberate casual-product privacy tradeoff, especially in two-player games.
+
+119 web tests, 234 pytest, TypeScript, production/Docker builds and 19 Chrome 154 E2E cases pass. Two new room flows verify Visible/Hidden, Balanced outcomes, starter policies, white/orange real meshes, countdown, plain-text chat, refresh/deadline/history and rematch. Existing Base/Gold cases and desktop match sizes 1920×1080, 1440×900, 1280×720 remain green. Browser screenshots use first-match engine-built fixtures; no claim of a natural full match/mobile/low-end test. Timer auto-expiry is verified with server clock tests rather than a long browser wait. No new runtime dependencies; existing lazy Three size warning remains.
+
+Actual Chrome evidence (not concept art):
+
+| Evidence | State shown |
+| --- | --- |
+| [roomux-lobby.png](../design/references/game-ux-2-2/roomux-lobby.png) | Host settings, locked occupied colors, room chat, connected participants |
+| [roomuxhidden-lobby.png](../design/references/game-ux-2-2/roomuxhidden-lobby.png) | Host/Hidden policy and the same lobby controls |
+| [roomux-bank-visible.png](../design/references/game-ux-2-2/roomux-bank-visible.png) | Compact timer/current player, public bank counts, selected piece colors |
+| [roomux-bank-hidden.png](../design/references/game-ux-2-2/roomux-bank-hidden.png) | Hidden policy without exact resource counts |
+| [roomux-chat-visible.png](../design/references/game-ux-2-2/roomux-chat-visible.png) · [roomux-chat-hidden.png](../design/references/game-ux-2-2/roomux-chat-hidden.png) | Separate chat tab rendering literal HTML text safely |
+| [roomux-rematch-visible.png](../design/references/game-ux-2-2/roomux-rematch-visible.png) · [roomux-rematch-hidden.png](../design/references/game-ux-2-2/roomux-rematch-hidden.png) | New setup/match, retained colors/settings, timer absent until main |
+| [verification.json](../design/references/game-ux-2-2/verification.json) | Date/browser, 19 passing cases, 78 command attempts, 7 expected rejections; no tokens/private snapshots |
+
+Scope/data authority/limits — [[React интерфейс#Game / Room UX 2.2 — settings, colors, timer and chat]] and [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]]. Earlier phase descriptions below are historical.
+
+Status: Clean modern tabletop accepted 2026-10-04. Game / Room UX 2.2 implemented/verified 2026-10-06 after Game UX 2.1. Match uses direct actions, hand trading, server dice/timer, chat and optional public bank; room settings/colors are implemented. Full lobby/menu/general settings/mobile redesign and final cross-screen tokens remain future work. Earlier mockup/phase descriptions and AI images retain their dated historical status.
 
 ## Game UX 2.1 — implemented direct tabletop UX
 

@@ -63,6 +63,20 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "map_data must be object")
         return {"ok": True}
 
+    if mtype in ("set_settings", "set_color"):
+        if "request_id" in msg and (not isinstance(msg["request_id"], str) or not 1 <= len(msg["request_id"]) <= 128):
+            return _err("invalid", "Invalid request_id")
+        if mtype == "set_settings" and not isinstance(msg.get("settings"), dict):
+            return _err("invalid", "settings must be object")
+        if mtype == "set_color" and not isinstance(msg.get("color"), str):
+            return _err("invalid", "color required")
+        return {"ok": True}
+
+    if mtype == "chat":
+        if not isinstance(msg.get("text"), str):
+            return _err("invalid", "Chat text required")
+        return {"ok": True}
+
     if mtype == "cmd":
         if type(msg.get("match_id")) is not int or msg["match_id"] <= 0:
             return _err("invalid", "match_id required")
@@ -91,9 +105,13 @@ def room_state_message(room) -> Dict[str, Any]:
         "type": "room_state",
         "room_code": room.room_code,
         "map_revision": room.map_revision,
+        "config_revision": room.config_revision,
+        "settings": room.settings.public(room.selected_rules_config.get("target_vp", 10)),
+        "chat_history": list(room.chat_history),
+        "chat_revision": room.chat_revision,
         "host_pid": room.host_pid,
         "players": [
-            {"pid": p.pid, "name": p.name, "connected": p.connected}
+            {"pid": p.pid, "name": p.name, "connected": p.connected, "color": p.color}
             for p in room.players
         ],
         "max_players": room.max_players,

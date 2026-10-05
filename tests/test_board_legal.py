@@ -133,7 +133,8 @@ def test_ship_sources_and_destinations_match_current_executor(funded):
 
 @pytest.mark.parametrize("pid", [0, 1])
 def test_personal_snapshot_does_not_reveal_another_players_affordability(funded, pid):
-    room = server.Room("TEST", 2, 0, [])
+    room = server.Room("TEST", 2, 0, [server.PlayerSlot(pid=i) for i in range(2)],
+                       settings=server.RoomSettings(bank_visibility="hidden"))
     before = deepcopy(funded)
     state = server._snapshot_state(funded, room, pid)
     assert state["legal"]["pid"] == pid

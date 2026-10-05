@@ -53,6 +53,12 @@ async def _recv_type(ws, want: str, timeout: float = 5.0):
     raise AssertionError(f"Timed out waiting for {want}")
 
 
+async def _start_host_match(ws):
+    # These pre-existing fixtures run commands as pid=0; make that room policy explicit.
+    await _send(ws, {"type": "set_settings", "settings": {"starting_player": "host"}})
+    await _send(ws, {"type": "start_match"})
+
+
 async def _recv_error(ws, want_code: str, timeout: float = 5.0) -> dict:
     end = time.time() + timeout
     while time.time() < end:
@@ -175,7 +181,7 @@ async def _run_clients(port: int):
         token2 = await _recv_type(ws2, "reconnect_token")
         await _recv_type(ws1, "room_state")
 
-        await _send(ws1, {"type": "start_match"})
+        await _start_host_match(ws1)
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         match_id = int(ms1.get("match_id", 0))
@@ -296,7 +302,7 @@ async def _run_duplicate_and_out_of_order(port: int):
         await _recv_type(ws2, "reconnect_token")
         await _recv_type(ws1, "room_state")
 
-        await _send(ws1, {"type": "start_match"})
+        await _start_host_match(ws1)
         ms1 = await _recv_type(ws1, "match_state")
         await _recv_type(ws2, "match_state")
         match_id = int(ms1.get("match_id", 0))
@@ -349,7 +355,7 @@ async def _run_reconnect(port: int):
         token2 = await _recv_type(ws2, "reconnect_token")
         await _recv_type(ws1, "room_state")
 
-        await _send(ws1, {"type": "start_match"})
+        await _start_host_match(ws1)
         ms1 = await _recv_type(ws1, "match_state")
         await _recv_type(ws2, "match_state")
         match_id = int(ms1.get("match_id", 0))
@@ -435,7 +441,7 @@ async def _run_map_selection(port: int):
         assert rs_custom["map_revision"] == 2
         custom_id = rs_custom.get("map_id") or "Custom Test Map"
 
-        await _send(ws1, {"type": "start_match"})
+        await _start_host_match(ws1)
         ms1 = await _recv_type(ws1, "match_state")
         ms2 = await _recv_type(ws2, "match_state")
         assert ms1.get("state", {}).get("map_id") == custom_id

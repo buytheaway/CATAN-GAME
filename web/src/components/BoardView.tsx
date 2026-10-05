@@ -8,12 +8,12 @@
  */
 
 import { useMemo } from "react";
+import { colorForPlayer } from "../board/colors";
 import type {
   BoardViewProps,
 } from "./BoardView.types";
 import {
   TERRAIN_COLORS,
-  PLAYER_COLORS,
   UI_STYLES,
   SHADOW_FILTERS,
   SIZE_RATIOS,
@@ -168,7 +168,7 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
                 y1={pa[1]}
                 x2={pb[0]}
                 y2={pb[1]}
-                stroke={PLAYER_COLORS[owner] || "#fff"}
+                stroke={colorForPlayer(owner, state.players)}
                 strokeWidth={STROKE_WIDTH.road}
                 strokeLinecap="round"
               />
@@ -184,7 +184,7 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
                 y1={pa[1]}
                 x2={pb[0]}
                 y2={pb[1]}
-                stroke={PLAYER_COLORS[shipOwner] || "#fff"}
+                stroke={colorForPlayer(shipOwner, state.players)}
                 strokeWidth={STROKE_WIDTH.ship}
                 strokeDasharray={STROKE_DASHARRAY.ship}
                 strokeLinecap="round"
@@ -201,7 +201,7 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
           if (!v || !Array.isArray(occ)) return null;
 
           const [pid, level] = occ as [number, number];
-          const color = PLAYER_COLORS[pid] || "#fff";
+          const color = colorForPlayer(pid, state.players);
           const [x, y] = v;
 
           // Settlement (level 1)

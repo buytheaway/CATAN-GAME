@@ -1,11 +1,27 @@
 import type { GameState } from "./components/BoardView.types";
 
+export type RoomSettings = {
+  dice_mode: "random" | "balanced"; starting_player: "random" | "host";
+  turn_timer: 0 | 30 | 60 | 90 | 120; bank_visibility: "visible" | "hidden"; target_vp: number;
+};
+export type ChatMessage = { id: number; name: string; color: string | null; text: string; sent_at_ms: number };
+export type TurnTimerState = {
+  pid: number; deadline_ms: number; server_time_ms: number; remaining_ms: number;
+  stage: "turn" | "grace" | "blocked" | "stopped";
+};
+type ChatState = { type: "chat_state"; room_code: string; chat_revision: number; chat_history: ChatMessage[] };
+
 export type RoomState = {
   type: "room_state";
   room_code: string;
   map_revision: number;
+  config_revision?: number;
+  request_id?: string;
+  settings?: RoomSettings;
+  chat_history?: ChatMessage[];
+  chat_revision?: number;
   host_pid: number;
-  players: { pid: number; name: string; connected: boolean }[];
+  players: { pid: number; name: string; connected: boolean; color?: string | null }[];
   max_players: number;
   status: "lobby" | "in_match";
   map_id?: string;
@@ -35,6 +51,7 @@ export type MatchState = {
     players: {
       pid: number;
       name: string;
+      color?: string | null;
       vp: number;
       resource_count: number;
       dev_count: number;
@@ -50,6 +67,9 @@ export type MatchState = {
     map_id?: string;
     map_meta?: { name?: string; description?: string };
     bank_available: Record<string, boolean>;
+    bank?: Record<string, number>;
+    room_settings?: RoomSettings;
+    turn_timer?: TurnTimerState | null;
     game_over?: boolean;
     winner_pid?: number | null;
     free_roads?: Record<string, number>;
@@ -89,7 +109,7 @@ export type CmdAck = {
   duplicate: boolean;
 };
 
-export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck;
+export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck | ChatState;
 
 type MapSelection = { mapId: string; payload: Record<string, any> };
 
@@ -129,6 +149,50 @@ export class WSClient {
   private mapInFlight: { revision: number } | null = null;
   private queuedMap: MapSelection | null = null;
   public pendingMapId: string | null = null;
+  private pendingConfig = new Map<string, { settings?: Partial<RoomSettings>; color?: string }>();
+  onConfigPending?: () => void;
+
+  get pendingSettings(): Partial<RoomSettings> {
+    return Object.assign({}, ...Array.from(this.pendingConfig.values(), p => p.settings ?? {}));
+  }
+  get pendingColor(): string | undefined {
+    return Array.from(this.pendingConfig.values()).filter(p => p.color !== undefined).pop()?.color;
+  }
+  get configPending(): boolean { return this.pendingConfig.size > 0; }
+
+  private resetConfig() { this.pendingConfig.clear(); this.onConfigPending?.(); }
+  private finishConfig(requestId: unknown, confirmed = false) {
+    if (typeof requestId !== "string" || !this.pendingConfig.has(requestId)) return;
+    if (confirmed) {
+      // On one socket a successful later request confirms the server has already
+      // processed every earlier request, even if their response frames are delayed.
+      for (const id of this.pendingConfig.keys()) {
+        this.pendingConfig.delete(id);
+        if (id === requestId) break;
+      }
+    } else this.pendingConfig.delete(requestId);
+    this.onConfigPending?.();
+  }
+
+  setSettings(settings: Partial<RoomSettings>) {
+    if (!this.isOpen() || this.roomState?.status !== "lobby" || this.youPid !== this.roomState.host_pid) return;
+    const request_id = genId();
+    this.pendingConfig.set(request_id, { settings });
+    this.onConfigPending?.();
+    this.send({ type: "set_settings", settings, request_id });
+  }
+  setColor(color: string) {
+    if (!this.isOpen() || this.roomState?.status !== "lobby" || this.youPid === null) return;
+    const request_id = genId();
+    this.pendingConfig.set(request_id, { color });
+    this.onConfigPending?.();
+    this.send({ type: "set_color", color, request_id });
+  }
+  sendChat(text: string) {
+    if (!this.isOpen() || !this.roomState || this.roomState.room_code !== this.roomCode) return false;
+    this.send({ type: "chat", text });
+    return true;
+  }
 
   onStatus?: (s: string) => void;
   onRoomState?: (s: RoomState) => void;
@@ -154,6 +218,7 @@ export class WSClient {
   }
 
   host(maxPlayers: number) {
+    this.resetConfig();
     this.resetMapSelection();
     this.roomState = null;
     this.roomCode = null;
@@ -175,6 +240,7 @@ export class WSClient {
   }
 
   private sendJoinIntent(roomCode: string) {
+    this.resetConfig();
     this.resetMapSelection();
     if (this.roomState?.room_code !== roomCode) this.roomState = null;
     if (this.roomCode !== roomCode) this.reconnectToken = null;
@@ -189,8 +255,8 @@ export class WSClient {
   }
 
   startMatch() {
-    if (this.pendingMapId !== null) {
-      this.onLog?.("Wait for map confirmation");
+    if (this.pendingMapId !== null || this.configPending) {
+      this.onLog?.("Wait for room configuration confirmation");
       return;
     }
     this.send({ type: "start_match" });
@@ -201,6 +267,7 @@ export class WSClient {
   }
 
   leaveRoom() {
+    this.resetConfig();
     this.send({ type: "leave_room" });
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
@@ -300,6 +367,7 @@ export class WSClient {
       }
     };
     this.ws.onclose = () => {
+      this.resetConfig();
       this.resetMapSelection();
       this.onStatus?.("disconnected");
       this.scheduleReconnect();
@@ -329,17 +397,31 @@ export class WSClient {
     }
     if (data.type === "room_state") {
       if (this.roomCode && data.room_code !== this.roomCode) return;
+      this.finishConfig(data.request_id, true);
+      if (this.roomState?.room_code === data.room_code
+          && (data.config_revision ?? 0) < (this.roomState.config_revision ?? 0)) return;
       if (this.roomState?.room_code === data.room_code
           && data.map_revision < this.roomState.map_revision) return;
+      if (this.roomState?.room_code === data.room_code && (data.chat_revision ?? 0) < (this.roomState.chat_revision ?? 0)) {
+        data.chat_history = this.roomState.chat_history;
+        data.chat_revision = this.roomState.chat_revision;
+      }
       this.roomState = data;
       this.roomCode = data.room_code;
       const you = data.players.find((p) => p.name === this.name);
       if (you) this.youPid = you.pid;
-      if (data.status !== "lobby") this.resetMapSelection();
+      if (data.status !== "lobby") { this.resetMapSelection(); this.resetConfig(); }
       else if (this.mapInFlight && data.map_revision >= this.mapInFlight.revision) {
         this.finishMapSelection();
       }
       this.onRoomState?.(data);
+      return;
+    }
+    if (data.type === "chat_state") {
+      if (!this.roomState || data.room_code !== this.roomCode
+          || data.chat_revision < (this.roomState.chat_revision ?? 0)) return;
+      this.roomState = { ...this.roomState, chat_history: data.chat_history, chat_revision: data.chat_revision };
+      this.onRoomState?.(this.roomState);
       return;
     }
     if (data.type === "reconnect_token") {
@@ -375,6 +457,7 @@ export class WSClient {
       return;
     }
     if (data.type === "error") {
+      this.finishConfig(data.detail?.request_id);
       if (this.mapInFlight && data.detail?.request_type === "set_map") this.finishMapSelection();
       if (this.pendingReconnectKey && (data.code === "forbidden" || data.code === "not_found")) {
         this.reconnectToken = null;

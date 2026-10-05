@@ -15,6 +15,7 @@ import { cameraFootprint } from "./coordinates";
 import GameIcon from "../game/GameIcon";
 import DiceRoll3D from "./DiceRoll3D";
 import type { DiceRollVisual } from "../game/dice";
+import { colorForPlayer } from "../board/colors";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -88,11 +89,11 @@ export default function Board3D({ state, interaction, diceRoll }: {
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
             onHover={hover} onInspect={inspect} />)}
           <Coastline coast={model.coast} />
-          {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} />)}
-          {model.ships.map(ship => <Ship3D key={ship.edge.join(",")} ship={ship} />)}
+          {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} color={colorForPlayer(road.owner, state.players)} />)}
+          {model.ships.map(ship => <Ship3D key={ship.edge.join(",")} ship={ship} color={colorForPlayer(ship.owner, state.players)} />)}
           {model.buildings.map(building => building.level === 1
-            ? <Settlement3D key={building.vertexId} building={building} />
-            : <City3D key={building.vertexId} building={building} />)}
+            ? <Settlement3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)} />
+            : <City3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)} />)}
           {model.ports.map(port => <Port3D key={port.edge.join(",")} port={port} />)}
           {model.robbers.map((robber, i) => <Robber3D key={i} {...robber} />)}
           {model.pirate && <Pirate3D {...model.pirate} />}

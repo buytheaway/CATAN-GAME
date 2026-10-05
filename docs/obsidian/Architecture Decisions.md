@@ -1,6 +1,6 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-04
+updated: 2026-10-06
 ---
 
 # Architecture Decisions
@@ -8,6 +8,16 @@ updated: 2026-10-04
 [[00 Главная]] · [[Project State]] · [[Documentation Policy]]
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
+
+## ADR-009 — Server-owned room policy, independent presentation colors
+
+Status: Accepted; implemented and verified 2026-10-06, Game / Room UX 2.2.
+
+Decision: Room owns validated lobby-only settings, unique slot colors, private balanced_v1 bag, monotonic turn timer and bounded chat. Shared engine receives only the approved starting_pid/target_vp and ordinary roll/end commands. Default starter/dice Random, timer Off, bank Visible. Rematch keeps options/colors/chat, selects starter again and resets match timers/RNG/sequence. Config_revision orders map/settings/colors; request_id confirms settings/color intentions, retaining existing map_revision behavior. Chat has a separate monotonic chat_revision because presence/config and messages have different lifecycles.
+
+Reason: Transport policy needs Room identity/lifecycle, while shared rules must remain independent of React/WS and be usable offline. Colors do not identify players or order turns. One lifespan scheduler avoids dormant tasks per room; pending/free-road states require explicit user choices. Request confirmation must not be inferred from a presence broadcast.
+
+Consequences: Additive room/snapshot fields with VERSION=1; no engine rewrite/state-management library/new dependencies. Automatic timeout uses existing authoritative executor without consuming client seq. UI only counts down remaining and renders server facts. Visible bank is an explicit privacy tradeoff (ADR-005); private RNG bag/deck stay hidden. In-memory room/chat/RNG/timer state disappears on restart; persistence, multi-worker coordination, mandatory automation and desktop feature parity remain separate work. Details and measured limits — [[Сервер и протокол#Room policy — Game / Room UX 2.2]], [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]].
 
 ## ADR-008 — Same-origin Docker deployment, one backend worker
 
@@ -65,11 +75,11 @@ Consequences: Наличие enable_seafarers не доказывает подд
 
 Status: Accepted; implemented in Phase 1, 2026-10-02.
 
-Decision: Сохранить trusted/offline to_dict и добавить to_player_dict для multiplayer. Собственная рука и choices доступны своему pid; чужой player содержит публичные counters/VP. Утверждённая 2026-10-03 policy: active VP соперника исключает hidden VP cards; после game_over players.vp раскрывает total VP всех участников. Чужая res/dev hand остаётся приватной и после завершения. Exact bank и map seed не передаются, development deck перемешивается независимым источником случайности.
+Decision: Сохранить trusted/offline to_dict и добавить to_player_dict для multiplayer. Собственная рука и choices доступны своему pid; чужой player содержит публичные counters/VP. Утверждённая 2026-10-03 policy: active VP соперника исключает hidden VP cards; после game_over players.vp раскрывает total VP всех участников. Чужая res/dev hand остаётся приватной и после завершения. Уточнение пользователя 2026-10-06: bank Visibility является room option, default Visible; server projection может добавить точные public counts. Hidden сохраняет прежнюю projection без bank. Map seed, private RNG bag и development deck/count/order не передаются; deck перемешивается независимым источником случайности.
 
-Reason: Удаления чужого res недостаточно: в двух игроках состав руки восстанавливается из bank и своей res, колода — из seed. Отдельная projection сохраняет offline serialization и предотвращает общую рассылку секретов.
+Reason: Удаления чужого res недостаточно: в двух игроках состав руки восстанавливается из bank и своей res, колода — из seed. Hidden защищает от bank deduction; Visible намеренно принимает этот tradeoff для casual games. Отдельная projection сохраняет offline serialization и не раскрывает остальные секреты вне принятой policy.
 
-Consequences: Сервер строит разные snapshots по соединениям. Клиент обрабатывает отсутствие чужого res/dev_cards и использует bank_available. Spectator API нет; старым клиентам нужна адаптация. Детали — [[Сервер и протокол]].
+Consequences: Сервер строит разные snapshots по соединениям. Клиент обрабатывает отсутствие чужого res/dev_cards; банк показывает counts только при Visible, иначе bank_available. to_player_dict сам остаётся private, Visible bank добавляется отдельным серверным слоем. Spectator API нет; старым клиентам нужна адаптация. Детали — [[Сервер и протокол]].
 
 ## ADR-006 — Consumed sequence for final command outcomes
 

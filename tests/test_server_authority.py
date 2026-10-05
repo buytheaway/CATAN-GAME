@@ -32,6 +32,9 @@ async def start_pair(a, b, capacity=4):
     await _send(a, {"type": "create_room", "name": "Alice", "max_players": capacity})
     room = await _recv_type(a, "room_state")
     await _recv_type(a, "reconnect_token")
+    # These security regressions exercise the prior Hidden/Host policy explicitly.
+    await _send(a, {"type": "set_settings", "settings": {"starting_player": "host", "bank_visibility": "hidden"}})
+    await _recv_type(a, "room_state")
     await _send(b, {"type": "join_room", "room_code": room["room_code"], "name": "Bob"})
     await _recv_type(b, "room_state")
     await _recv_type(b, "reconnect_token")
@@ -50,6 +53,8 @@ async def start_trio(clients):
     await _send(clients[0], {"type": "create_room", "name": "Alice", "max_players": 4})
     state = await _recv_type(clients[0], "room_state")
     await _recv_type(clients[0], "reconnect_token")
+    await _send(clients[0], {"type": "set_settings", "settings": {"starting_player": "host", "bank_visibility": "hidden"}})
+    await _recv_type(clients[0], "room_state")
     for client, name in zip(clients[1:], ("Bob", "Carol")):
         await _send(client, {"type": "join_room", "room_code": state["room_code"], "name": name})
         await _recv_type(client, "room_state")
@@ -274,6 +279,7 @@ def test_sparse_lobby_slots_are_remapped_with_tokens(monkeypatch):
     m = server.RoomManager()
     monkeypatch.setattr(server, "manager", m)
     room = m.create_room("Host", 4)
+    server._set_room_settings(room, 0, {"starting_player": "host"})
     m.join_room(room.room_code, "Absent")
     m.join_room(room.room_code, "Present")
     host = server.ClientConn(object())

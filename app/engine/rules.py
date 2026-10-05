@@ -82,8 +82,11 @@ def edge_neighbors_of_vertex(edges: set[Tuple[int, int]], vid: int) -> set[int]:
     return out
 
 
-def make_setup_order(n_players: int) -> List[int]:
-    return list(range(n_players)) + list(range(n_players - 1, -1, -1))
+def make_setup_order(n_players: int, starting_pid: int = 0) -> List[int]:
+    if type(starting_pid) is not int or not 0 <= starting_pid < n_players:
+        raise RuleError("invalid", "Invalid starting player")
+    forward = [(starting_pid + offset) % n_players for offset in range(n_players)]
+    return forward + forward[::-1]
 
 
 def parse_rules_config(rules: Dict[str, Any]) -> RulesConfig:
@@ -127,6 +130,7 @@ def build_game(
     map_id: Optional[str] = None,
     map_data: Optional[Dict[str, Any]] = None,
     map_path: Optional[str] = None,
+    starting_pid: int = 0,
 ) -> GameState:
     rng = random.Random(seed)
     g = GameState(seed=seed, size=size, max_players=max_players)
@@ -166,7 +170,7 @@ def build_game(
         player_names = [f"P{i+1}" for i in range(max_players)]
     g.players = [PlayerState(pid=i, name=player_names[i]) for i in range(max_players)]
 
-    g.setup_order = make_setup_order(max_players)
+    g.setup_order = make_setup_order(max_players, starting_pid)
     g.setup_idx = 0
     g.setup_need = "settlement"
     g.setup_anchor_vid = None
@@ -918,7 +922,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             g.setup_idx += 1
             if g.setup_idx >= len(g.setup_order):
                 g.phase = "main"
-                g.turn = 0
+                g.turn = g.setup_order[0]
             else:
                 g.turn = g.setup_order[g.setup_idx]
             events.append({"type": "place_road", "pid": pid, "eid": [a, b]})

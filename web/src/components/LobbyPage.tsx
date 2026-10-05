@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { RoomState, ServerError, WSClient } from "../wsClient";
+import { MatchSettings, PlayerColors } from "./RoomSettings";
+import RoomChat from "../game/RoomChat";
+import { colorForPlayer } from "../board/colors";
+import "../game/room.css";
 
 export default function LobbyPage({
   client,
@@ -20,6 +24,7 @@ export default function LobbyPage({
   const [maxPlayers, setMaxPlayers] = useState(4);
   const mapPresets = room?.map_presets ?? [];
   const [pendingMapId, setPendingMapId] = useState(client.pendingMapId);
+  const [, refreshConfig] = useState(0);
   const mapId = pendingMapId ?? room?.map_id ?? "base_standard";
   const [customLabel, setCustomLabel] = useState("Custom map: none");
   const isHost = room ? client.youPid === room.host_pid : false;
@@ -31,8 +36,9 @@ export default function LobbyPage({
 
   useEffect(() => {
     client.onMapPending = setPendingMapId;
+    client.onConfigPending = () => refreshConfig(version => version + 1);
     setPendingMapId(client.pendingMapId);
-    return () => { client.onMapPending = undefined; };
+    return () => { client.onMapPending = undefined; client.onConfigPending = undefined; };
   }, [client]);
 
   useEffect(() => { setCustomLabel("Custom map: none"); }, [room?.room_code]);
@@ -89,6 +95,7 @@ export default function LobbyPage({
         <label className="field">
           <span>Map preset</span>
           <select
+            aria-label="Map preset"
             value={mapId}
             onChange={(e) => client.setMap(e.target.value)}
             disabled={!isHost || room?.status !== "lobby"}
@@ -150,16 +157,22 @@ export default function LobbyPage({
             ) : room.map_id ? (
               <div className="muted">Map: {room.map_id}{ruleText}</div>
             ) : null}
+            <MatchSettings client={client} room={room} connected={status === "connected"} />
             <ul>
               {room.players.map((p) => (
                 <li key={p.pid}>
+                  {p.name && <span className="color-dot" style={{ background: colorForPlayer(p.pid, room.players) }} />}
                   P{p.pid + 1}: {p.name || "(empty)"} {p.connected ? "(online)" : ""} {p.pid === room.host_pid ? "[host]" : ""}
                 </li>
               ))}
             </ul>
-            <button onClick={() => client.startMatch()} className="btn primary" disabled={pendingMapId !== null || room.host_pid !== client.youPid || room.players.filter((p) => p.name).length < 2}>
+            <PlayerColors client={client} room={room} connected={status === "connected"} />
+            <button onClick={() => client.startMatch()} className="btn primary" disabled={pendingMapId !== null || client.configPending || room.status !== "lobby" || room.host_pid !== client.youPid || room.players.filter((p) => p.name && p.connected).length < 2}>
               Start Match
             </button>
+            {(pendingMapId !== null || client.configPending) && <p className="muted">Confirming room configuration…</p>}
+            <details className="lobby-chat"><summary>Room chat</summary><RoomChat messages={room.chat_history ?? []}
+              send={text => client.sendChat(text)} disabled={status !== "connected"} /></details>
           </div>
         ) : (
           <div className="muted">No room yet</div>

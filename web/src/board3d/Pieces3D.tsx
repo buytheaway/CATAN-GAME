@@ -16,20 +16,20 @@ function PieceMesh({ kind, color, ghost = false, ...props }: PieceMeshProps) {
     castShadow={!ghost} receiveShadow={!ghost} {...(ghost ? { raycast: ignoreRaycast } : {})} />;
 }
 
-export function Road3D({ road, ghost = false }: { road: RenderEdge; ghost?: boolean }) {
+export function Road3D({ road, ghost = false, color = playerColor(road.owner) }: { road: RenderEdge; ghost?: boolean; color?: string }) {
   const pool = useVisualResources();
   return <group position={road.position} rotation={[0, road.rotation, 0]}
     userData={{ edge: road.edge, owner: road.owner, piece: "road", preview: ghost }}>
-    <mesh scale={[road.length, 1, 1]} geometry={pool.geometry("road")} material={pool.standard(playerColor(road.owner), ghost)}
+    <mesh scale={[road.length, 1, 1]} geometry={pool.geometry("road")} material={pool.standard(color, ghost)}
       castShadow={!ghost} receiveShadow={!ghost} {...(ghost ? { raycast: ignoreRaycast } : {})} />
     <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[0, -.005, 0]}
       scale={[road.length * .85, .035, .14]} />
   </group>;
 }
 
-export function Settlement3D({ building, ghost = false }: { building: RenderBuilding; ghost?: boolean }) {
+export function Settlement3D({ building, ghost = false, color = playerColor(building.owner) }: { building: RenderBuilding; ghost?: boolean; color?: string }) {
   return <group position={building.position} userData={{ vertexId: building.vertexId, owner: building.owner, level: 1, preview: ghost }}>
-    <PieceMesh kind="house" color={playerColor(building.owner)} ghost={ghost} />
+    <PieceMesh kind="house" color={color} ghost={ghost} />
     <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[0, .014, 0]} scale={[.33, .028, .3]} />
     <PieceMesh kind="box" color={VISUAL.trunk} ghost={ghost} position={[-.08, .28, 0]}
       rotation={[0, 0, .72]} scale={[.24, .024, .31]} />
@@ -40,8 +40,7 @@ export function Settlement3D({ building, ghost = false }: { building: RenderBuil
   </group>;
 }
 
-export function City3D({ building, ghost = false }: { building: RenderBuilding; ghost?: boolean }) {
-  const color = playerColor(building.owner);
+export function City3D({ building, ghost = false, color = playerColor(building.owner) }: { building: RenderBuilding; ghost?: boolean; color?: string }) {
   return <group position={building.position} userData={{ vertexId: building.vertexId, owner: building.owner, level: 2, preview: ghost }}>
     <PieceMesh kind="house" color={color} ghost={ghost} position={[-0.1, 0, 0.08]} scale={[1.45, 0.92, 1]} />
     <PieceMesh kind="box" color={color} ghost={ghost} position={[0.14, 0.22, -0.13]} scale={[0.26, 0.44, 0.25]} />
@@ -54,14 +53,14 @@ export function City3D({ building, ghost = false }: { building: RenderBuilding; 
   </group>;
 }
 
-export function Ship3D({ ship, ghost = false }: { ship: RenderEdge; ghost?: boolean }) {
+export function Ship3D({ ship, ghost = false, color = playerColor(ship.owner) }: { ship: RenderEdge; ghost?: boolean; color?: string }) {
   return <group position={ship.position} rotation={[0, ship.rotation, 0]}
     userData={{ edge: ship.edge, owner: ship.owner, piece: "ship", preview: ghost }}>
-    <PieceMesh kind="hull" color={playerColor(ship.owner)} ghost={ghost} scale={[ship.length * 0.88, 1, 1]} />
+    <PieceMesh kind="hull" color={color} ghost={ghost} scale={[ship.length * 0.88, 1, 1]} />
     <PieceMesh kind="box" color={VISUAL.dock} ghost={ghost} position={[0, .14, 0]} scale={[.47, .025, .15]} />
     <PieceMesh kind="box" color={VISUAL.trunk} ghost={ghost} position={[-0.1, 0.2, 0]} scale={[0.027, 0.35, 0.027]} />
     <PieceMesh kind="sail" color={VISUAL.ivory} ghost={ghost} position={[0.03, 0.14, 0.02]} />
-    <PieceMesh kind="box" color={playerColor(ship.owner)} ghost={ghost} position={[0.03, 0.16, 0.05]} scale={[0.26, 0.045, 0.014]} />
+    <PieceMesh kind="box" color={color} ghost={ghost} position={[0.03, 0.16, 0.05]} scale={[0.26, 0.045, 0.014]} />
   </group>;
 }
 

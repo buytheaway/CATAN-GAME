@@ -8,6 +8,7 @@ import { buildPreview } from "./preview";
 import { City3D, Road3D, Settlement3D, Ship3D } from "./Pieces3D";
 import { useVisualResources } from "./VisualResources";
 import type { BoardSnapshot } from "./types";
+import { colorForPlayer } from "../board/colors";
 
 export default function InteractionOverlay3D({ state, interaction }: {
   state: BoardSnapshot; interaction: BoardInteraction;
@@ -64,9 +65,9 @@ export default function InteractionOverlay3D({ state, interaction }: {
           scale={[0.035, 0.025, 0.27]} geometry={pool.geometry("box")} material={pool.flat(targetColor(false, true))} />)}
       </group>;
     })}
-    {preview?.kind === "settlement" && <Settlement3D building={preview.building} ghost />}
-    {preview?.kind === "city" && <City3D building={preview.building} ghost />}
-    {preview?.kind === "road" && <Road3D road={preview.edge} ghost />}
-    {preview?.kind === "ship" && <Ship3D ship={preview.edge} ghost />}
+    {preview?.kind === "settlement" && <Settlement3D building={preview.building} color={colorForPlayer(preview.building.owner, state.players)} ghost />}
+    {preview?.kind === "city" && <City3D building={preview.building} color={colorForPlayer(preview.building.owner, state.players)} ghost />}
+    {preview?.kind === "road" && <Road3D road={preview.edge} color={colorForPlayer(preview.edge.owner, state.players)} ghost />}
+    {preview?.kind === "ship" && <Ship3D ship={preview.edge} color={colorForPlayer(preview.edge.owner, state.players)} ghost />}
   </group>;
 }

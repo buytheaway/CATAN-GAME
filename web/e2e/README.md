@@ -1,4 +1,4 @@
-# Game UI Phase 2 / Game UX 2.1 browser checks
+# Game UI / Game Room UX browser checks
 
 The runner uses installed Chrome through Playwright and real production web/backend
 Docker images. Playwright is a test runner only: install it outside the repository
@@ -15,14 +15,17 @@ docker compose -p catan-ui-e2e -f web/e2e/compose.yaml down
 
 The isolated stack binds only `127.0.0.1:18080`; it does not restart production
 containers or modify their rooms. Output defaults to the OS temporary directory
-`catan-game-ux-2-1`. Override with `CATAN_E2E_OUTPUT`. Set `CATAN_E2E_CASE`
-to a mode such as `direct`, `dice` or `gold` for an individual regression check;
-omit it to run all 17 cases.
+`catan-game-ux-2-2`. Override with `CATAN_E2E_OUTPUT`. Set `CATAN_E2E_CASE`
+to a mode such as `direct`, `dice`, `gold`, `roomux` or `roomuxhidden` for an
+individual regression check; omit it to run all 19 cases.
 
 `fixture_server.py` prepares funded hands, old cards, port ownership and near-win
 scores **only in the test container**, for the first match of `fixture-*` rooms.
 Setup placements use the existing engine. Rematch is completely unmodified.
-The test backend injects a deterministic dice function for reliable progression.
+The test backend injects a deterministic Random dice function for reliable progression.
+Balanced room cases use the real secure production bag algorithm. The 17 previous
+cases explicitly choose Host/Hidden/Off so their original gameplay/privacy
+assertions do not depend on the new Random starter/Visible bank defaults.
 No production initializer, debug command or snapshot interception is added.
 
 Every UI action travels through nginx, the real WebSocket endpoint, ownership,
@@ -50,6 +53,19 @@ scene projections check port endpoint IDs, geometry framing and HUD occlusion at
 1920×1080, 1440×900 and 1280×720. Screenshots and measurements go to the output
 directory; no production snapshot interception or gameplay results are fabricated.
 
-Prepared states are fixtures, not a claimed naturally played full match. Exact
-bank/deck contents and engine event logs are absent from the normal public view;
-the UI keeps server authority for facts it cannot know.
+Game / Room UX 2.2 adds two-client `roomux` (Random starter/Visible bank) and
+`roomuxhidden` (Host/Hidden bank), both with Balanced dice, 60s timer and 12 VP.
+They verify host/read-only settings, occupied colors, actual white/orange Three
+materials, initial starter, four accepted rolls and exact shared pairs/sums,
+decreasing HUD countdown, lobby/game plain-text chat and a separate log tab,
+collapsed bank policy, retained token/color/deadline/chat on refresh and rematch
+with retained settings/colors, reset dice/timer/match/sequence and first seq=1.
+Rematch is an existing server-permitted request, not a fixture-created win.
+Automatic timer expiry/grace/mandatory branches are covered by controlled-clock
+Python tests; this runner does not claim a long real-time expiry run.
+
+Prepared states are fixtures, not a claimed naturally played full match. Hidden
+bank counts and all deck contents/count/order remain absent; Visible intentionally
+publishes exact bank counts. Engine event feed is still absent. Screenshots and
+state observation describe actual server execution; full natural games,
+mobile/low-end/load and desktop-client feature parity are not certified here.

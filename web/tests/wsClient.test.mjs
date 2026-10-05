@@ -35,6 +35,64 @@ beforeEach(() => {
   globalThis.window = { setTimeout, clearTimeout };
 });
 
+test("settings A to B stay optimistic through presence and stale frames until their own confirmations", () => {
+  const { client, socket } = lobbyClient();
+  const base = { ...lobbyState(), config_revision: 0, settings: { dice_mode: "random", turn_timer: 0 } };
+  socket.receive(base);
+  client.setSettings({ dice_mode: "balanced" });
+  client.setSettings({ dice_mode: "random", turn_timer: 60 });
+  const [a, b] = socket.sent.filter(m => m.type === "set_settings");
+  socket.receive({ ...base, config_revision: 1 }); // Presence/config change without matching request ID.
+  assert.equal(client.pendingSettings.dice_mode, "random");
+  assert.equal(client.configPending, true);
+  client.startMatch();
+  assert.equal(socket.sent.filter(m => m.type === "start_match").length, 0);
+  socket.receive({ ...base, config_revision: 3, settings: { dice_mode: "random", turn_timer: 60 }, request_id: b.request_id });
+  // B is confirmed; its final value must not be covered by older still-pending A.
+  assert.equal(client.roomState.settings.dice_mode, "random");
+  assert.deepEqual(client.pendingSettings, {});
+  assert.equal(client.configPending, false);
+  socket.receive({ ...base, config_revision: 2, settings: { dice_mode: "balanced", turn_timer: 0 }, request_id: a.request_id });
+  assert.equal(client.roomState.settings.dice_mode, "random");
+  assert.equal(client.roomState.settings.turn_timer, 60);
+  assert.equal(client.configPending, false);
+  client.startMatch();
+  assert.equal(socket.sent.at(-1).type, "start_match");
+});
+
+test("color confirmation, rejection, disconnect and a new room never leave stale config intents", () => {
+  const { client, socket } = lobbyClient();
+  client.setColor("white");
+  const req = socket.sent.at(-1);
+  assert.equal(client.pendingColor, "white");
+  socket.receive({ type: "error", code: "invalid", message: "Occupied", detail: { request_id: req.request_id } });
+  assert.equal(client.pendingColor, undefined);
+  client.setSettings({ turn_timer: 60 });
+  window.setTimeout = () => 0;
+  socket.close();
+  assert.equal(client.configPending, false);
+  client.host(2);
+  client.connect("ws://test/ws", "Alice");
+  Socket.latest.open();
+  Socket.latest.receive({ ...lobbyState(), room_code: "NEW", config_revision: 0, settings: { turn_timer: 0 } });
+  assert.equal(client.roomState.room_code, "NEW");
+  assert.equal(client.roomState.settings.turn_timer, 0);
+});
+
+test("chat history uses server ordering, survives presence frames and does not touch gameplay command sequence", () => {
+  const { client, socket } = lobbyClient();
+  const message = { id: 2, name: "Bob", color: "blue", text: "hello", sent_at_ms: 1000 };
+  const seq = client.seq;
+  assert.equal(client.sendChat("hello"), true);
+  assert.equal(socket.sent.at(-1).type, "chat");
+  assert.equal(client.seq, seq);
+  socket.receive({ type: "chat_state", room_code: "ROOM", chat_revision: 2, chat_history: [message] });
+  socket.receive({ ...lobbyState(), chat_revision: 1, chat_history: [] });
+  socket.receive({ type: "chat_state", room_code: "ROOM", chat_revision: 1, chat_history: [] });
+  socket.receive({ type: "chat_state", room_code: "OTHER", chat_revision: 30, chat_history: [] });
+  assert.deepEqual(client.roomState.chat_history, [message]);
+});
+
 function connectedClient() {
   const client = new WSClient();
   client.connect("ws://test/ws", "Alice");

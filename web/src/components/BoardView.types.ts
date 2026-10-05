@@ -82,7 +82,7 @@ export interface GameState {
   rules_config?: RulesConfig;
   legal?: LegalMoves;
   ports?: Port[];
-  players?: { pid: number; name: string }[];
+  players?: { pid: number; name: string; color?: string | null }[];
 }
 
 export interface MoveShipState {

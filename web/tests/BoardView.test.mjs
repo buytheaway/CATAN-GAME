@@ -91,3 +91,12 @@ test("scenario without pirate allows robber only", () => {
   assert.deepEqual(sent, [{ type: "move_robber", tile: 1 }]);
   assert.doesNotMatch(html, />Pirate<\/span>/);
 });
+
+test("SVG roads, ships and houses use selected ownership colors rather than pid palette", () => {
+  const { html } = render({ players: [{ pid: 0, name: "Alice", color: "white" }, { pid: 1, name: "Bob", color: "orange" }],
+    vertices: { 0: [0, 0], 1: [40, 0], 2: [100, 0], 3: [140, 0] },
+    edges: [[0, 1], [2, 3]], occupied_e: { "0,1": 0 }, occupied_ships: { "2,3": 1 }, occupied_v: { 0: [0, 1] } });
+  assert.match(html, /stroke="#f2f4f8"/);
+  assert.match(html, /stroke="#f59e0b"/);
+  assert.match(html, /fill="#f2f4f8"/);
+});

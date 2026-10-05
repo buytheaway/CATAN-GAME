@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
 const origin = process.env.CATAN_E2E_ORIGIN || 'http://127.0.0.1:18080';
-const output = process.env.CATAN_E2E_OUTPUT || path.join(os.tmpdir(), 'catan-game-ux-2-1');
+const output = process.env.CATAN_E2E_OUTPUT || path.join(os.tmpdir(), 'catan-game-ux-2-2');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function wait(predicate, label) {
   const deadline = Date.now() + 20000;
@@ -59,6 +59,8 @@ async function newClient(browser, name) {
       const m = JSON.parse(String(payload));
       if (m.type === 'match_state') c.match = m;
       if (m.type === 'room_state') c.room = m;
+      if (m.type === 'chat_state' && c.room && m.room_code === c.room.room_code)
+        c.room = { ...c.room, chat_history: m.chat_history, chat_revision: m.chat_revision };
       if (m.type === 'error') c.errors.push(m);
       if (m.type === 'cmd_ack') c.acks.push(m);
       if (m.type === 'reconnect_token') c.tokens.push(m);
@@ -73,7 +75,9 @@ const own = c => c.match.state.players.find(p => p.pid === c.match.state.you_pid
 function privacy(clients) {
   for (const c of clients) {
     const s = c.match.state;
-    assert(!('seed' in s)); assert(!('bank' in s)); assert(!('dev_deck' in s));
+    assert(!('seed' in s)); assert(!('dev_deck' in s));
+    if (s.room_settings?.bank_visibility === 'visible') assert(s.bank && Object.values(s.bank).every(Number.isInteger));
+    else assert(!('bank' in s));
     assert(s.bank_available && Object.values(s.bank_available).every(v => typeof v === 'boolean'));
     for (const p of s.players) if (p.pid !== s.you_pid) {
       assert(!('res' in p)); assert(!('dev_cards' in p));
@@ -94,6 +98,29 @@ async function room(browser, mode, count = 2, natural = false, mapId = 'base_sta
     await wait(() => c.room, 'join');
   }
   await wait(() => a.room.players.filter(p => p.connected).length === count, 'all participants');
+  // Keep previous focused regressions under their original Host/Hidden/Off policy.
+  if (mode !== 'roomux' && mode !== 'roomuxhidden') {
+    await a.page.getByLabel('Starting player').selectOption('host');
+    await a.page.getByLabel('Bank resource counts').selectOption('hidden');
+    await wait(() => clients.every(c => c.room.settings.starting_player === 'host' && c.room.settings.bank_visibility === 'hidden'), 'legacy explicit room policy');
+  } else {
+    await a.page.getByLabel('Dice mode').selectOption('balanced');
+    await a.page.getByLabel('Turn timer').selectOption('60');
+    await a.page.getByLabel('Target VP').selectOption('12');
+    if (mode === 'roomuxhidden') await a.page.getByLabel('Starting player').selectOption('host');
+    await a.page.getByLabel('Bank resource counts').selectOption(mode === 'roomux' ? 'visible' : 'hidden');
+    await a.page.getByRole('button', { name: 'Choose white', exact: true }).click();
+    await clients[1].page.getByRole('button', { name: 'Choose orange', exact: true }).click();
+    await wait(() => clients.every(c => c.room.settings.dice_mode === 'balanced' && c.room.settings.turn_timer === 60
+      && c.room.players[0].color === 'white' && c.room.players[1].color === 'orange'), 'all confirmed room UX settings/colors');
+    assert.equal(await clients[1].page.getByLabel('Dice mode').isEnabled(), false);
+    assert.equal(await a.page.getByRole('button', { name: 'Choose orange', exact: true }).isEnabled(), false);
+    await a.page.screenshot({ path: path.join(output, mode + '-lobby.png') });
+    await a.page.locator('.lobby-chat summary').click();
+    await a.page.getByLabel('Chat message', { exact: true }).fill('hello from the lobby');
+    await a.page.getByRole('button', { name: 'Send', exact: true }).click();
+    await wait(() => clients.every(c => c.room.chat_history?.at(-1)?.text === 'hello from the lobby'), 'room chat broadcast before start');
+  }
   if (mapId !== 'base_standard') {
     await a.page.getByLabel('Map preset').selectOption(mapId);
     await wait(() => clients.every(c => c.room.map_id === mapId), 'confirmed preset on both clients');
@@ -617,6 +644,121 @@ async function goldUX(clients) {
   }
   await layout(a);
 }
+async function roomUX(clients) {
+  const [a, b] = clients;
+  for (const c of clients) {
+    assert.equal(c.match.state.rules_config.target_vp, 12);
+    assert.equal(c.match.state.room_settings.dice_mode, 'balanced');
+    assert.equal(c.match.state.room_settings.turn_timer, 60);
+    assert.equal(c.match.state.players[0].color, 'white');
+    assert.equal(c.match.state.players[1].color, 'orange');
+    assert.equal(c.match.state.turn, c.match.state.setup_order[0]);
+    if (c.room.settings.starting_player === 'host') assert.equal(c.match.state.turn, c.room.host_pid);
+    await open3d(c);
+    const materials = await c.page.evaluate(() => {
+      const colors = [];
+      window.__scene.getState().scene.traverse(object => {
+        if (object.userData.owner !== undefined && !object.userData.preview && object.children[0]?.material?.color)
+          colors.push([object.userData.owner, object.children[0].material.color.getHexString()]);
+      });
+      return colors;
+    });
+    assert(materials.length >= 8);
+    for (const [pid, color] of materials) assert.equal(color, pid === 0 ? 'f2f4f8' : 'f59e0b');
+  }
+  const initialTimer = await a.page.locator('.turn-timer').textContent();
+  await sleep(1200);
+  assert.notEqual(await a.page.locator('.turn-timer').textContent(), initialTimer, 'countdown between snapshots');
+  for (const c of clients) {
+    await c.page.getByRole('button', { name: 'Event log', exact: true }).click();
+    await c.page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  }
+  await a.page.getByLabel('Chat message', { exact: true }).fill('<b>hello from game</b>');
+  await a.page.getByRole('button', { name: 'Send', exact: true }).click();
+  await wait(() => clients.every(c => c.room.chat_history?.length === 2), 'game chat broadcast');
+  await b.page.getByLabel('Chat message', { exact: true }).fill('<img src=x onerror=alert(1)>');
+  await b.page.getByRole('button', { name: 'Send', exact: true }).click();
+  await wait(() => clients.every(c => c.room.chat_history?.length === 3), 'participant reply');
+  for (const c of clients) {
+    assert.equal(await c.page.locator('.chat-history b, .chat-history img').count(), 0);
+    assert.equal(await c.page.getByText('<b>hello from game</b>', { exact: true }).count(), 1);
+    assert.deepEqual(c.room.chat_history.map(m => m.id), [1, 2, 3]);
+    await c.page.getByRole('tab', { name: 'Game Log', exact: true }).click();
+    assert.equal(await c.page.getByText('<b>hello from game</b>', { exact: true }).count(), 0);
+    await c.page.locator('.bank-summary summary').click();
+    if (c.room.settings.bank_visibility === 'visible') {
+      for (const [resource, count] of Object.entries(c.match.state.bank))
+        assert.equal(await c.page.locator('.bank-summary').getByLabel(`${resource}: ${count}`, { exact: true }).count(), 1);
+    } else assert.equal(await c.page.getByText('Exact bank quantities are hidden.', { exact: true }).count(), 1);
+  }
+  await evidence(a, 'roomux-bank-' + a.room.settings.bank_visibility);
+  await a.page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await evidence(a, 'roomux-chat-' + a.room.settings.bank_visibility);
+  for (const c of clients) await c.page.keyboard.press('Escape');
+  for (let i = 0; i < 4; i++) {
+    const current = clients[a.match.state.turn];
+    await action(clients, current, () => current.page.getByRole('button', { name: 'Roll', exact: true }).click(), 'balanced roll ' + i);
+    const faces = a.match.state.dice;
+    assert.deepEqual(faces, b.match.state.dice);
+    assert.equal(faces[0] + faces[1], a.match.state.last_roll);
+    for (const c of clients) for (let die = 0; die < 2; die++)
+      assert.equal(await c.page.locator('.dice-hud').getByLabel(`Die ${die + 1}: ${faces[die]}`, { exact: true }).count(), 1);
+    if (a.match.state.pending_action === 'discard') {
+      for (const c of clients) {
+        const amount = c.match.state.discard_required[c.match.state.you_pid];
+        if (!amount) continue;
+        const panel = c.page.getByRole('dialog', { name: `Discard Required: ${amount}`, exact: true });
+        let left = amount;
+        for (const [resource, have] of Object.entries(own(c).res)) {
+          const count = Math.min(left, have); left -= count;
+          await panel.getByLabel(resource, { exact: true }).fill(String(count));
+        }
+        await action(clients, c, () => panel.getByRole('button', { name: 'Submit Discard' }).click(), 'balanced discard');
+      }
+    }
+    if (a.match.state.pending_action === 'robber_move') {
+      const legal = current.match.state.legal, tile = legal.robber_tiles[0];
+      await action(clients, current, () => clickTarget(current, 'tile', tile), 'balanced robber');
+      if (current.match.state.pending_action) throw Error('Robber choice did not resolve');
+    }
+    assert.equal(a.match.state.pending_action, null);
+    if (a.room.settings.bank_visibility === 'visible') assert.deepEqual(a.match.state.bank, b.match.state.bank);
+    await action(clients, current, () => current.page.getByRole('button', { name: 'End Turn', exact: true }).click(), 'balanced end ' + i);
+  }
+  const deadline = b.match.state.turn_timer.deadline_ms, matchId = b.match.match_id;
+  const color = own(b).color, code = b.room.room_code, chat = b.room.chat_history;
+  b.match = null;
+  await b.page.reload({ waitUntil: 'networkidle' });
+  await b.page.getByLabel('Name', { exact: true }).fill(b.name);
+  await b.page.getByLabel('Room code').fill(code);
+  await b.page.getByRole('button', { name: 'Join', exact: true }).click();
+  await wait(() => b.match?.match_id === matchId, 'room UX refresh');
+  assert.equal(b.match.state.turn_timer.deadline_ms, deadline);
+  assert.equal(own(b).color, color);
+  assert.deepEqual(b.room.chat_history, chat);
+  assert.deepEqual(b.match.state.dice, a.match.state.dice);
+  // The existing server permits rematch directly; this verifies retained policy,
+  // not a fabricated victory or new client-accessible finish-match command.
+  await a.page.evaluate(() => window.__sockets.at(-1).send(JSON.stringify({ type: 'rematch' })));
+  await wait(() => clients.every(c => c.match.match_id === matchId + 1), 'room UX rematch');
+  for (const c of clients) {
+    assert.equal(c.match.tick, 0); assert.equal(c.match.state.turn_timer, null);
+    assert.equal(c.match.state.roll_count, 0); assert.equal(c.match.state.dice, null);
+    assert.equal(c.match.state.room_settings.dice_mode, 'balanced');
+    assert.equal(c.match.state.room_settings.turn_timer, 60);
+    assert.equal(c.match.state.rules_config.target_vp, 12);
+    assert.equal(c.match.state.players[0].color, 'white'); assert.equal(c.match.state.players[1].color, 'orange');
+    assert.deepEqual(c.room.chat_history, chat);
+  }
+  const first = clients[a.match.state.turn];
+  await action(clients, first, () => clickTarget(first, 'vertex', first.match.state.legal.settlements[0]), 'random rematch starter placement');
+  assert.equal(first.sent.at(-1).seq, 1);
+  for (const size of [{ width: 1920, height: 1080 }, { width: 1440, height: 900 }, { width: 1280, height: 720 }]) {
+    await a.page.setViewportSize(size); await layout(a);
+  }
+  await evidence(a, 'roomux-rematch-' + a.room.settings.bank_visibility);
+}
+
 async function main() {
   await fs.mkdir(output, { recursive: true });
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -628,6 +770,7 @@ async function main() {
     ['results', 2, rematch], ['results', 3, c => rematch(c, true)], ['results', 2, exit],
     ['setup', 2, setup, true],
     ['direct', 2, directActions], ['dice', 2, diceUX], ['gold', 2, goldUX, false, 'seafarers_gold_haven'],
+    ['roomux', 2, roomUX], ['roomuxhidden', 2, roomUX],
   ];
   try {
     for (const [mode, count, run, natural, mapId] of cases) {

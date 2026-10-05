@@ -1,0 +1,128 @@
+{
+  "verified_local_date": "2026-10-06",
+  "verified_at_utc": "2026-10-05T19:20:54.950Z",
+  "chrome": "154.0.8037.93",
+  "stack": "isolated production Docker images, real nginx/WebSocket, test-only first-match fixtures",
+  "cases": [
+    {
+      "label": "bank4-2-",
+      "passed": true,
+      "commands": 2,
+      "expected_rejections": 1
+    },
+    {
+      "label": "bank3-2-",
+      "passed": true,
+      "commands": 1,
+      "expected_rejections": 0
+    },
+    {
+      "label": "bank2-2-",
+      "passed": true,
+      "commands": 1,
+      "expected_rejections": 0
+    },
+    {
+      "label": "trade-3-offer",
+      "passed": true,
+      "commands": 8,
+      "expected_rejections": 0
+    },
+    {
+      "label": "buy-2-buy",
+      "passed": true,
+      "commands": 5,
+      "expected_rejections": 1
+    },
+    {
+      "label": "knight-3-knight",
+      "passed": true,
+      "commands": 4,
+      "expected_rejections": 1
+    },
+    {
+      "label": "road-2-road",
+      "passed": true,
+      "commands": 3,
+      "expected_rejections": 0
+    },
+    {
+      "label": "plenty-2-plenty",
+      "passed": true,
+      "commands": 2,
+      "expected_rejections": 1
+    },
+    {
+      "label": "monopoly-3-monopoly",
+      "passed": true,
+      "commands": 1,
+      "expected_rejections": 0
+    },
+    {
+      "label": "passive-2-passive",
+      "passed": true,
+      "commands": 0,
+      "expected_rejections": 0
+    },
+    {
+      "label": "results-2-rematch",
+      "passed": true,
+      "commands": 3,
+      "expected_rejections": 1
+    },
+    {
+      "label": "results-3-",
+      "passed": true,
+      "commands": 3,
+      "expected_rejections": 1
+    },
+    {
+      "label": "results-2-exit",
+      "passed": true,
+      "commands": 2,
+      "expected_rejections": 1
+    },
+    {
+      "label": "setup-2-setup",
+      "passed": true,
+      "commands": 10,
+      "expected_rejections": 0
+    },
+    {
+      "label": "direct-2-directActions",
+      "passed": true,
+      "commands": 5,
+      "expected_rejections": 0
+    },
+    {
+      "label": "dice-2-diceUX",
+      "passed": true,
+      "commands": 5,
+      "expected_rejections": 0
+    },
+    {
+      "label": "gold-2-goldUX",
+      "passed": true,
+      "commands": 4,
+      "expected_rejections": 0
+    },
+    {
+      "label": "roomux-2-roomUX",
+      "passed": true,
+      "commands": 10,
+      "expected_rejections": 0
+    },
+    {
+      "label": "roomuxhidden-2-roomUX",
+      "passed": true,
+      "commands": 9,
+      "expected_rejections": 0
+    }
+  ],
+  "limits": [
+    "Prepared rare states are fixtures, not a natural full match",
+    "Timer automatic expiry is tested with controlled server clock, not long browser wait",
+    "No mobile, low-end, load or desktop parity certification",
+    "Production rooms were not restarted"
+  ]
+}

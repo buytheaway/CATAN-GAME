@@ -8,6 +8,7 @@ import secrets
 import string
 import time
 import uuid
+from contextlib import asynccontextmanager, suppress
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional, Set
@@ -29,18 +30,23 @@ from app.engine import (
 from app.engine import maps as map_loader
 from app.engine.legal import board_legal_moves
 from app.engine.serialize import to_player_dict
+from app.room_options import (BALANCED_ALGORITHM, CHAT_LIMIT, CHAT_MAX_LENGTH,
+                             CHAT_RATE_COUNT, CHAT_RATE_SECONDS, COLORS,
+                             RoomSettings, TurnTimer, shuffled_bag)
 
 
 @dataclass
 class PlayerSlot:
     pid: int
     name: str = ""
+    color: Optional[str] = None
     connected: bool = False
     reconnect_token: Optional[str] = None
     last_seq_applied: int = 0
     seen_cmd_ids: Deque[str] = field(default_factory=deque)
     seen_cmd_set: Set[str] = field(default_factory=set)
     active_ws: Optional[WebSocket] = field(default=None, repr=False, compare=False)
+    chat_times: Deque[float] = field(default_factory=deque, repr=False)
 
 
 @dataclass
@@ -63,6 +69,13 @@ class Room:
     selected_rules_config: Dict[str, Any] = field(default_factory=dict)
     selected_map_data: Optional[Dict[str, Any]] = None
     map_revision: int = 0
+    config_revision: int = 0
+    settings: RoomSettings = field(default_factory=RoomSettings)
+    dice_algorithm: str = BALANCED_ALGORITHM
+    dice_bag: List[tuple[int, int]] = field(default_factory=list, repr=False)
+    timer: Optional[TurnTimer] = None
+    chat_history: List[Dict[str, Any]] = field(default_factory=list)
+    chat_revision: int = 0
     status: str = "lobby"
     match_id: int = 0
     tick: int = 0
@@ -102,6 +115,9 @@ class RoomManager:
         slot = room.players[pid]
         slot.name = name
         slot.connected = connected
+        if slot.color is None:
+            used = {p.color for p in room.players if p.name and p is not slot}
+            slot.color = next(color for color in COLORS if color not in used)
         if not slot.reconnect_token:
             slot.reconnect_token = uuid.uuid4().hex
 
@@ -117,10 +133,8 @@ class RoomManager:
             return None
         for slot in room.players:
             if not slot.name:
-                slot.name = name
-                slot.connected = True
-                if not slot.reconnect_token:
-                    slot.reconnect_token = uuid.uuid4().hex
+                self._assign_player(room, slot.pid, name, connected=True)
+                room.config_revision += 1
                 return room
         return None
 
@@ -150,8 +164,32 @@ class RoomManager:
         slot.connected = False
         room.last_activity_ts = time.time()
 
+    def destroy_room(self, code: str) -> None:
+        room = self.rooms.pop(code, None)
+        if room is None:
+            return
+        room.timer = None
+        for conn in self.connections.values():
+            if conn.room_code == code:
+                conn.room_code = None
+                conn.pid = None
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # One bounded scheduler for the process; no dormant task per room.
+    task = asyncio.create_task(_timer_loop(), name="room-turn-timers")
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        for room in manager.rooms.values():
+            room.timer = None
+
+
+app = FastAPI(lifespan=lifespan)
 manager = RoomManager()
 
 
@@ -175,6 +213,12 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
     state["legal"] = _legal_moves(game, pid)
     state["dice"] = list(room.dice) if room.dice is not None else None
     state["roll_count"] = room.roll_count
+    state["room_settings"] = room.settings.public(game.rules_config.target_vp)
+    state["turn_timer"] = room.timer.public(time.monotonic(), time.time()) if room.timer else None
+    for player in state["players"]:
+        player["color"] = room.players[player["pid"]].color
+    if room.settings.bank_visibility == "visible":
+        state["bank"] = dict(game.bank)
     return state
 
 
@@ -195,8 +239,11 @@ async def _broadcast(room: Room, obj: Dict) -> None:
                 pass
 
 
-async def _send_room_state(room: Room) -> None:
-    await _broadcast(room, net_protocol.room_state_message(room))
+async def _send_room_state(room: Room, request_id: Optional[str] = None) -> None:
+    message = net_protocol.room_state_message(room)
+    if request_id is not None:
+        message["request_id"] = request_id
+    await _broadcast(room, message)
 
 
 async def _send_match_state(room: Room) -> None:
@@ -269,6 +316,8 @@ def _start_match(room: Room) -> None:
     if len(participants) < 2 or host_pid not in [p.pid for p in participants]:
         raise RuleError("invalid", "Need the host and at least 2 connected players")
     seed = secrets.randbits(64)
+    mapping = {slot.pid: pid for pid, slot in enumerate(participants)}
+    starter = mapping[host_pid] if room.settings.starting_player == "host" else secrets.randbelow(len(participants))
     if room.selected_map_data is not None:
         game = build_game(
             seed=seed,
@@ -277,13 +326,17 @@ def _start_match(room: Room) -> None:
             size=58.0,
             map_id=room.selected_map_id,
             map_data=room.selected_map_data,
+            starting_pid=starter,
         )
     else:
         game = build_game(seed=seed, max_players=len(participants), size=58.0,
-                          player_names=[p.name for p in participants], map_id=room.selected_map_id)
+                          player_names=[p.name for p in participants], map_id=room.selected_map_id,
+                          starting_pid=starter)
+    if room.settings.target_vp is not None:
+        game.rules_config.target_vp = room.settings.target_vp
+        game.rules["target_vp"] = room.settings.target_vp
     # Do not tie the secret development deck to the map's reproducible seed.
     random.SystemRandom().shuffle(game.dev_deck)
-    mapping = {slot.pid: pid for pid, slot in enumerate(participants)}
     room.host_pid = mapping[host_pid]
     for conn in manager.connections.values():
         if conn.room_code == room.room_code:
@@ -297,6 +350,9 @@ def _start_match(room: Room) -> None:
     room.tick = 0
     room.dice = None
     room.roll_count = 0
+    room.dice_bag = []
+    room.timer = None
+    room.config_revision += 1
     for pid, slot in enumerate(room.players):
         slot.pid = pid
         slot.last_seq_applied = 0
@@ -319,10 +375,15 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
         return net_protocol.error_message("invalid", "discards must be object")
 
     dice = None
+    next_bag = None
     if ctype == "roll":
         if set(cmd) != {"type"}:
             return net_protocol.error_message("invalid", "Send only the roll intention")
-        dice = _roll_dice()
+        if room.settings.dice_mode == "balanced":
+            next_bag = room.dice_bag if len(room.dice_bag) > 12 else shuffled_bag()
+            dice = next_bag[-1]
+        else:
+            dice = _roll_dice()
         cmd = {"type": "roll", "roll": sum(dice)}
 
     try:
@@ -333,6 +394,8 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
         # Public presentation metadata is committed only with an accepted roll.
         room.dice = dice
         room.roll_count += 1
+        if next_bag is not None:
+            room.dice_bag = next_bag[:-1]
     return None
 
 
@@ -343,11 +406,99 @@ def _roll_dice() -> tuple[int, int]:
 
 async def _start_and_notify(room: Room) -> None:
     _start_match(room)
+    _sync_timer(room)
     await _send_room_state(room)
     for ws, conn in list(manager.connections.items()):
         if conn.room_code == room.room_code and conn.pid is not None:
             await _send_reconnect_token(ws, room, conn.pid)
     await _send_match_state(room)
+
+
+def _sync_timer(room: Room) -> None:
+    g = room.game
+    if not g or g.game_over or g.phase != "main" or not room.settings.turn_timer:
+        room.timer = None
+    elif room.timer is None or room.timer.pid != g.turn:
+        room.timer = TurnTimer.start(g.turn, room.settings.turn_timer, time.monotonic(), time.time())
+
+
+async def _process_room_timer(room: Room) -> None:
+    if manager.rooms.get(room.room_code) is not room:
+        return
+    _sync_timer(room)
+    timer, g = room.timer, room.game
+    if not timer or not g or time.monotonic() < timer.deadline:
+        return
+    if timer.stage == "stopped":
+        return
+    mandatory = g.pending_action is not None or int(g.free_roads.get(g.turn, 0)) > 0
+    if mandatory:
+        if timer.stage == "blocked":
+            return
+        timer.stage = "blocked"
+    else:
+        error = _apply_cmd(room, g.turn, {"type": "end_turn" if g.rolled else "roll"})
+        if error:
+            # Stop retrying an unsafe/unknown state until a real command resolves it.
+            timer.stage = "stopped"
+            return
+        if room.game.turn == timer.pid:
+            room.timer = TurnTimer.start(g.turn, 20, time.monotonic(), time.time(), "grace")
+        _sync_timer(room)
+    room.tick += 1
+    room.last_activity_ts = time.time()
+    await _send_match_state(room)
+
+
+async def _timer_loop() -> None:
+    import logging
+    while True:
+        await asyncio.sleep(.25)
+        for room in list(manager.rooms.values()):
+            try:
+                await asyncio.wait_for(_process_room_timer(room), timeout=2)
+            except Exception:
+                logging.getLogger(__name__).exception("Turn timer update failed for %s", room.room_code)
+
+
+def _set_room_settings(room: Room, pid: int, patch: Dict[str, Any]) -> None:
+    if pid != room.host_pid:
+        raise RuleError("forbidden", "Only host can set room settings")
+    if room.status != "lobby":
+        raise RuleError("invalid", "Room settings are locked after start")
+    try:
+        updated = room.settings.updated(patch)
+    except ValueError as exc:
+        raise RuleError("invalid", str(exc)) from exc
+    room.settings = updated
+    if updated.target_vp is not None:
+        room.selected_rules_config = {**room.selected_rules_config, "target_vp": updated.target_vp}
+    room.config_revision += 1
+
+
+def _set_player_color(room: Room, pid: int, color: str) -> None:
+    if room.status != "lobby":
+        raise RuleError("invalid", "Colors are locked after start")
+    if color not in COLORS:
+        raise RuleError("invalid", "Unknown player color")
+    if any(p.name and p.pid != pid and p.color == color for p in room.players):
+        raise RuleError("invalid", "Color already occupied")
+    room.players[pid].color = color
+    room.config_revision += 1
+
+
+def _append_chat(room: Room, pid: int, text: str) -> None:
+    if len(text) > CHAT_MAX_LENGTH or not text.strip():
+        raise RuleError("invalid", f"Chat must contain 1..{CHAT_MAX_LENGTH} characters")
+    slot, now = room.players[pid], time.monotonic()
+    recent = [t for t in slot.chat_times if now - t < CHAT_RATE_SECONDS]
+    if len(recent) >= CHAT_RATE_COUNT:
+        raise RuleError("rate_limited", "Wait before sending more chat messages")
+    slot.chat_times = deque([*recent, now])
+    room.chat_revision += 1
+    room.chat_history.append({"id": room.chat_revision, "name": slot.name, "color": slot.color,
+                              "text": text.strip(), "sent_at_ms": round(time.time() * 1000)})
+    room.chat_history = room.chat_history[-CHAT_LIMIT:]
 
 
 def _remember_cmd_id(slot: PlayerSlot, cmd_id: str) -> None:
@@ -378,8 +529,8 @@ async def websocket_endpoint(ws: WebSocket):
             if not val.get("ok"):
                 err = val.get("error", {})
                 detail = err.get("detail", {})
-                if isinstance(data, dict) and data.get("type") == "set_map":
-                    detail = {**detail, "request_type": "set_map"}
+                if isinstance(data, dict) and data.get("type") in ("set_map", "set_settings", "set_color", "chat"):
+                    detail = {**detail, "request_type": data["type"], "request_id": data.get("request_id")}
                 await _send(ws, net_protocol.error_message(err.get("code", "invalid"), err.get("message", "invalid"), detail))
                 continue
 
@@ -514,7 +665,33 @@ async def websocket_endpoint(ws: WebSocket):
                     room.selected_map_meta = dict(meta)
                     room.selected_map_data = None
                 room.map_revision += 1
+                if room.settings.target_vp is not None:
+                    room.selected_rules_config["target_vp"] = room.settings.target_vp
+                room.config_revision += 1
                 await _send_room_state(room)
+                continue
+
+            if mtype in ("set_settings", "set_color", "chat"):
+                room = manager.rooms.get(conn.room_code or "")
+                detail = {"request_type": mtype, "request_id": data.get("request_id")}
+                if not room or conn.pid is None or room.players[conn.pid].active_ws is not ws:
+                    await _send(ws, net_protocol.error_message("forbidden", "Room membership required", detail))
+                    continue
+                try:
+                    if mtype == "set_settings":
+                        _set_room_settings(room, conn.pid, data["settings"])
+                    elif mtype == "set_color":
+                        _set_player_color(room, conn.pid, data["color"])
+                    else:
+                        _append_chat(room, conn.pid, data["text"])
+                except RuleError as exc:
+                    await _send(ws, net_protocol.error_message(exc.code, exc.message, detail))
+                    continue
+                if mtype == "chat":
+                    await _broadcast(room, {"type": "chat_state", "room_code": room.room_code,
+                                           "chat_revision": room.chat_revision, "chat_history": list(room.chat_history)})
+                else:
+                    await _send_room_state(room, data.get("request_id"))
                 continue
 
             if mtype == "rematch":
@@ -535,6 +712,10 @@ async def websocket_endpoint(ws: WebSocket):
                 room = manager.rooms.get(conn.room_code or "")
                 if not room:
                     await _send(ws, net_protocol.error_message("not_found", "Room not found"))
+                    continue
+                await _process_room_timer(room)
+                if conn.room_code != room.room_code or conn.pid is None or room.players[conn.pid].active_ws is not ws:
+                    await _send(ws, net_protocol.error_message("forbidden", "Room membership required"))
                     continue
                 if data.get("room_code") is not None and data.get("room_code") != room.room_code:
                     await _send(ws, net_protocol.error_message("invalid", "room_code mismatch"))
@@ -566,6 +747,7 @@ async def websocket_endpoint(ws: WebSocket):
                     await _send(ws, err)
                     await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=False)
                 else:
+                    _sync_timer(room)
                     room.tick += 1
                     room.last_activity_ts = time.time()
                     await _send_match_state(room)

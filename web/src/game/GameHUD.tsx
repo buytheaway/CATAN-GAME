@@ -1,11 +1,12 @@
 import type { CSSProperties } from "react";
-import { PLAYER_COLORS } from "../board/constants";
+import { colorForPlayer } from "../board/colors";
 import type { BoardInteraction } from "../board/interaction";
 import type { GameSnapshot } from "./presentation";
 import { contextPrompt, RESOURCES } from "./presentation";
 import GameIcon from "./GameIcon";
 import ResourceCard from "./ResourceCard";
 import type { Resource } from "./actions";
+import TurnTimer from "./TurnTimer";
 
 export function GameTopBar({ state, pid, roomCode, onInfo, onLog, drawer }: {
   state: GameSnapshot; pid: number; roomCode: string; drawer: string | null; onInfo: () => void; onLog: () => void;
@@ -15,7 +16,7 @@ export function GameTopBar({ state, pid, roomCode, onInfo, onLog, drawer }: {
       <span className="game-room" title={state.map_meta?.name}>{state.map_meta?.name ?? "Room"} · {roomCode}</span></div>
     <ol className="players-strip" aria-label="Players">
       {state.players.map(p => <li key={p.pid} className={`player-hud${state.turn === p.pid ? " is-current" : ""}`}
-        style={{ "--player-color": PLAYER_COLORS[p.pid] ?? "#ffffff" } as CSSProperties}
+        style={{ "--player-color": colorForPlayer(p.pid, state.players) } as CSSProperties}
         aria-current={state.turn === p.pid ? "true" : undefined}>
         <span className="player-number">{p.pid + 1}</span>
         <div className="player-hud-details"><div className="player-name"><strong title={p.name}>{p.name}</strong><span>{p.pid === pid ? "you" : ""}</span></div>
@@ -23,7 +24,8 @@ export function GameTopBar({ state, pid, roomCode, onInfo, onLog, drawer }: {
             <span aria-label={`${p.resource_count} resource cards`}>{p.resource_count} cards</span>
             <span aria-label={`${p.dev_count} development cards`}>{p.dev_count} dev</span>
           </div></div>
-        {state.turn === p.pid && <span className="turn-indicator">{p.pid === pid ? "Your turn" : "Turn"}</span>}
+        {state.turn === p.pid && <div className="turn-status"><span className="turn-indicator">{p.pid === pid ? "Your turn" : "Turn"}</span>
+          <TurnTimer timer={state.turn_timer} /></div>}
       </li>)}
     </ol>
     <div className="match-summary"><span className="vp-goal">Goal <strong>{state.rules_config?.target_vp ?? 10} VP</strong></span>
@@ -55,14 +57,15 @@ export function ResourceHand({ resources, onResource, disabled = false }: {
   </section>;
 }
 
-/** The public snapshot exposes availability, never the bank's exact card counts. */
-export function BankSummary({ available }: { available: Record<string, boolean> | undefined }) {
-  return <details className="bank-summary"><summary>Bank availability</summary>
+export function BankSummary({ available, counts }: {
+  available: Record<string, boolean> | undefined; counts?: Record<string, number>;
+}) {
+  return <details className="bank-summary"><summary>{counts ? "Bank" : "Bank availability"}</summary>
     <div className="bank-resources">{RESOURCES.map(resource => <span key={resource}
       className={`bank-resource resource-${resource}${available?.[resource] ? "" : " is-empty"}`}
-      aria-label={`${resource}: ${available?.[resource] ? "available" : "unavailable"}`}>
-      <GameIcon name={resource} /><small>{available?.[resource] ? "Available" : "Empty"}</small>
+      aria-label={`${resource}: ${counts ? counts[resource] ?? 0 : available?.[resource] ? "available" : "unavailable"}`}>
+      <GameIcon name={resource} /><small>{counts ? counts[resource] ?? 0 : available?.[resource] ? "Available" : "Empty"}</small>
     </span>)}</div>
-    <p>Exact bank quantities are hidden.</p>
+    <p>{counts ? "Public bank counts · Development deck hidden." : "Exact bank quantities are hidden."}</p>
   </details>;
 }

@@ -1,11 +1,41 @@
 ---
 tags: [catan, план, web, дизайн]
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # Game UI Redesign
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[plans/board3d]]
+
+## Game / Room UX 2.2 — Match Settings, Timer and Chat
+
+Status: Completed — 2026-10-06. READY FOR CHECKPOINT. Base: e9db7af (Game UX 2.1); local game-ux-2-1 tag absent. No persistence/auth, map changes, new art, dependency upgrades or gameplay backlog fixes.
+
+Audit: Room owns map selection/map_revision and match presentation metadata; there is no separate GameConfig. RulesConfig already owns target_vp. Setup order and its main-phase transition both hardcode pid=0. Colors are presentation lookups by pid. WSClient owns map confirmation and command sequence; shared board controller/executor remain authoritative.
+
+Path: Lobby settings/color → WSClient intent → server Room validation → public room_state → React. Start builds the shared engine game using server-selected starter and effective target_vp. Personal snapshot adds public colors/settings, timer and conditionally bank; Board3D/SVG only read ownership colors. Roll uses Random secrets faces or a private balanced_v1 bag, then the unchanged engine sum command. Accepted outcome alone consumes the bag. Chat is separate from gameplay commands/transport log, bounded to 50 messages in Room, rate-limited by slot, restored on reconnect.
+
+Ordering: additive config_revision covers map/settings/colors/start composition; retain map_revision for existing map request ordering and older clients. Settings/color requests have request_id echoed in their room_state/error; pending intents survive presence broadcasts, stale config revisions are ignored, Start waits for every confirmation. No timestamps for ordering.
+
+Product defaults: Random starter, Random dice, timer Off, bank Visible. Target VP begins with preset rules; an explicit host override survives subsequent map changes and rematch. Color IDs red/blue/orange/white/green/purple are unique per named slot and retained after compact pid remap. Lobby-only color changes. Bank Hidden preserves the prior private projection; Visible explicitly publishes counts, including the possible two-player deduction. Development deck count/order stays hidden: no public deck-count policy is established.
+
+Timer: one FastAPI-lifespan scheduler for all rooms, monotonic deadlines with server-time/absolute-deadline/remaining projection. Main turns only; no setup auto-placement. Expiry before roll → normal server roll plus 20s grace; expiry after roll → End only when no mandatory pending/free-road entitlement. Expired mandatory states wait for explicit resolution, then the safe timeout policy resumes; unsent Plenty/Monopoly form choices are not authoritative pending. Manual End may still forfeit unused free roads. Reset on turn/game-over/rematch/destruction; cancel scheduler on shutdown. No client-controlled pause or random target selection.
+
+### Implemented and verified — 2026-10-06
+
+Runtime: room_options.py contains validated RoomSettings, private bag creation and timer projection. server_mp owns options, RNG commits, unique slot colors, bounded chat and one lifespan scheduler. rules.py only adds optional starting_pid, rotated setup and the corresponding first main turn; default offline pid=0 and the Road Building cleanup remain. VERSION=1 and the existing cmd/ACK/token model remain; room_state and personal snapshots receive additive public fields. Docker only adds the new Python module to its existing COPY list.
+
+React adds MatchSettings/PlayerColors, RoomChat and TurnTimer. WSClient confirms settings/colors by request_id and config_revision; an accepted later request also completes earlier pending intents from the same ordered socket. Chat has its own chat_revision and cannot be overwritten by an older room_state. Board meshes/SVG use public color IDs through board/colors.ts, including ghost pieces; controller, targets, terrain and topology are unchanged. A small lobby layout/CSS adjustment makes settings readable without a lobby redesign.
+
+- Full pytest: 234/234 (203 prior + 31 room regression cases). Web: 119/119 (108 prior + 11 new cases). TypeScript, production web build and both Docker images pass. No dependencies changed. Main JS 216.73 KB / 68.24 KB gzip; lazy Three 887.87 KB / 239.17 KB gzip retains its existing size warning.
+- All 508 scenarios executed against pre-change and current rules: 348 passed / 160 failed in each. Outcomes and failure details are identical; old scenarios/assertions are untouched.
+- Chrome 154.0.8037.93 against an isolated production Docker stack: all 19 E2E cases pass (17 existing plus Visible/Hidden room flows). Host settings/participant read-only, selected white/orange pieces in actual Three materials, setup starter, four accepted Balanced rolls per flow, matching faces/sums on both clients, countdown, plain-text chat and separate log, bank policy, refresh/token/deadline/history and rematch/new seq=1 are verified. Rematch uses the existing server-permitted request; no fake win or new production debug command is introduced.
+- Previous cases explicitly choose Host/Hidden/Off to retain their original purpose; assertions of privacy/atomic rejection are preserved. Prepared first-match hands/cards/setup are test-container fixtures. Balanced uses the real secure production algorithm. Ordinary setup remains a separate unprepared case. Auto-roll/grace/end/mandatory/lifecycle branches are verified with a controlled server clock, not claimed as an 80-second browser expiry run.
+- Current room screenshots: [[Design System#Game / Room UX 2.2 — implemented room policy and HUD]]. Desktop 1920×1080, 1440×900, 1280×720 has no match page overflow/hand-dock overlap; no browser page/console/WebGL errors. Production rooms were not restarted for E2E.
+
+Limits: choices still local in Plenty/Monopoly forms are not server pending actions. The timer can auto-end such a form after expiry; it never selects a resource/target. Server-known pending and free_roads block automatic End. Mandatory timeout automation, true engine event feed, persistence, room retention cleanup, multi-worker coordination, desktop feature parity, mobile/low-end/load and a naturally completed full match remain outside scope. Visible bank intentionally permits deductions in a two-player game; Hidden retains the earlier private projection. Chat is in-memory and kept through rematch, but the current results/mandatory overlays do not expose its drawer.
+
+Checkpoint: commit `feat: add multiplayer room settings timer and chat`, tag `game-ux-2-2`. No next phase starts automatically.
 
 ## Phase 1 — Game Screen Composition
 

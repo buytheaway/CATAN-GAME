@@ -13,7 +13,7 @@ def room():
     g = rules.build_game(1, 2, map_id="base_standard")
     finish_setup(g)
     return server.Room("DICE", 2, 0, [server.PlayerSlot(pid=i) for i in range(2)],
-                       status="in_match", game=g)
+                       status="in_match", game=g, settings=server.RoomSettings(bank_visibility="hidden"))
 
 
 def test_generation_preserves_the_two_independent_server_faces(monkeypatch):

@@ -15,6 +15,8 @@ import { useGameCommand } from "../game/useGameCommand";
 import ActionButton from "../game/ActionButton";
 import DiceHUD, { useDicePresentation } from "../game/DiceHUD";
 import "../game/game.css";
+import RoomChat from "../game/RoomChat";
+import "../game/room.css";
 
 export default function GamePage({ client, match, room, status, log, error, onBackToLobby }: {
   client: WSClient; match: MatchState; room: RoomState | null; status: string; log: string[]; error: ServerError | null;
@@ -36,6 +38,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const [goldRes, setGoldRes] = useState<string>(RESOURCES[0]);
   const [goldQty, setGoldQty] = useState(1);
   const [drawer, setDrawer] = useState<"log" | "info" | "dev" | null>(null);
+  const [logTab, setLogTab] = useState<"log" | "chat">("log");
   const [tradeDraft, setTradeDraft] = useState<TradeDraft | null>(null);
   const [selectedDev, setSelectedDev] = useState<DevType | null>(null);
   const [dismissedOffers, setDismissedOffers] = useState<number[]>([]);
@@ -124,8 +127,18 @@ export default function GamePage({ client, match, room, status, log, error, onBa
 
     {(drawer === "log" || drawer === "info") && !mandatoryChoice && !state.game_over && <GameOverlay key={drawer} id={`game-${drawer}`}
       title={drawer === "log" ? "Event log" : "Game info"} onClose={closeDrawer}>
-      {drawer === "log" ? <><pre className="game-log">{log.length ? log.join("\n") : "No events yet."}</pre>
-        <BankSummary available={state.bank_available} /></> : <>
+      {drawer === "log" ? <>
+        <div className="activity-tabs" role="tablist" aria-label="Room activity">
+          <button role="tab" aria-selected={logTab === "log"} aria-controls="activity-panel" className="game-button"
+            onClick={() => setLogTab("log")}>Game Log</button>
+          <button role="tab" aria-selected={logTab === "chat"} aria-controls="activity-panel" className="game-button"
+            onClick={() => setLogTab("chat")}>Chat</button>
+        </div>
+        <div id="activity-panel" role="tabpanel" aria-label={logTab === "log" ? "Game Log" : "Chat"}>
+          {logTab === "log" ? <pre className="game-log">{log.length ? log.join("\n") : "No events yet."}</pre>
+            : <RoomChat messages={room?.chat_history ?? []} send={text => client.sendChat(text)} disabled={status !== "connected"} />}
+        </div>
+        <BankSummary available={state.bank_available} counts={state.room_settings?.bank_visibility === "visible" ? state.bank : undefined} /></> : <>
         <div className="info-map"><strong>{mapMeta.name || mapId || "Current map"}</strong>
           {mapMeta.description && <p>{mapMeta.description}</p>}</div>
         <dl className="game-info-list">
@@ -133,6 +146,10 @@ export default function GamePage({ client, match, room, status, log, error, onBa
           <dt>Tick</dt><dd>{match.tick}</dd><dt>Phase</dt><dd>{state.phase}</dd>
           <dt>Pending</dt><dd>{pending}</dd><dt>Connection</dt><dd>{status}</dd>
           <dt>Goal</dt><dd>{rules.target_vp ?? 10} VP</dd>
+          <dt>Dice</dt><dd>{state.room_settings?.dice_mode === "balanced" ? "Balanced" : "Random"}</dd>
+          <dt>Starting player</dt><dd>{state.room_settings?.starting_player === "host" ? "Host" : "Random"}</dd>
+          <dt>Turn timer</dt><dd>{state.room_settings?.turn_timer ? `${state.room_settings.turn_timer} sec` : "Off"}</dd>
+          <dt>Bank counts</dt><dd>{state.room_settings?.bank_visibility === "visible" ? "Visible" : "Hidden"}</dd>
           <dt>Robbers</dt><dd>{rules.robber_count ?? state.robbers?.length ?? 1}</dd>
           <dt>Seafarers</dt><dd>{rules.enable_seafarers ? "On" : "Off"}</dd>
           <dt>Pirate</dt><dd>{rules.enable_pirate ? "On" : "Off"}</dd>
