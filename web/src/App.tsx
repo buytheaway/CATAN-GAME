@@ -41,6 +41,10 @@ export default function App() {
           status={status}
           log={log}
           error={error}
+          onBackToLobby={() => {
+            client.leaveRoom();
+            setMatch(null); setRoom(null); setError(null); setLog([]);
+          }}
         />
       ) : (
         <LobbyPage

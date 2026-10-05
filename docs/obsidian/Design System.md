@@ -7,7 +7,29 @@ updated: 2026-10-05
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
-Status: Clean modern tabletop accepted 2026-10-04. Board3D Phase 3, Game UI Redesign Phase 1 and narrow Board3D Polish 1.1 implemented/verified 2026-10-05. Current match composition is implemented below; lobby/menu/trade/dev/settings/mobile and final cross-screen tokens remain future work. Older phase descriptions and AI images are historical.
+Status: Clean modern tabletop accepted 2026-10-04. Board3D Phase 3, Game UI Phase 1, Polish 1.1 and Game UI Phase 2 implemented/verified 2026-10-05. Match trade/dev/results are now implemented below; lobby/menu/settings/mobile and final cross-screen tokens remain future work. Older phase descriptions and AI images are historical.
+
+## Game UI Phase 2 — implemented actions and results
+
+Implemented and verified 2026-10-05, based on clean 9c6c820. Existing dark navy/graphite tabletop/HUD preserved. Board/terrain/pieces/controller were not redesigned. Forms are native React/CSS under web/src/game/ with existing GameOverlay/GameIcon; no new runtime dependencies, commercial assets, fantasy card art or confetti.
+
+- Trade: compact 540px maximum modal, Bank / Players tabs. Bank shows give/receive and owned 4/3/2:1 ratio. Player offer uses parallel Give/Want steppers, target/Everyone, readable resource terms and accept/reject/cancel. Incoming offers use the existing right-side nonmodal drawer. Broadcast Reject explicitly says it closes the whole offer. To edit, cancel then send a replacement.
+- Personal dev mini-hand sits beside the bottom-left resource hand: small icon/name/count cards, ready accent and accessible unavailable reason. Own types/new only; opponent strip retains public count. Details/buy/pickers use a 470px maximum modal. VP stays passive with no Play button. Knight/roads return to the same board targets; Road Building prompt advances from the server free counter.
+- Year of Plenty selects exactly two; Monopoly selects one resource. Exact bank/deck counts stay hidden: server refusal keeps choices and shows the actual error. No generated card/resource history or optimistic hand changes.
+- Results: 480px maximum modal over the existing board, server winner/final VP/standings, Rematch and Back to Lobby. No particles or new menu screen. Final VP reveal does not reveal opponents' cards/resources. Disconnected host/rematch minimum and compact pids follow the server, not a new UI rules engine.
+
+92 web tests, 186 pytest, TypeScript, production/Docker build and 14 real Chrome 154 E2E cases pass. E2E prepares rare states only in an isolated Docker backend; actual commands/privacy/ACK/validation remain real. Ordinary production backend separately passed two-client Base setup/Roll/End/2D↔3D. Desktop 1280×720, 1440×900, 1024×768 checked for no horizontal scroll/hand-dock overlap; demand rendering remains idle without additional frames. Full naturally played match/mobile/low-end/a11y certification are not claimed. Three lazy chunk retains its existing size warning.
+
+These images are actual Chrome screenshots from prepared engine states through real WebSocket, not additional accepted mockups or naturally completed full matches:
+
+| Evidence | State |
+| --- | --- |
+| [bank-3.png](../design/references/game-ui-phase2/bank-3.png) | Owned generic port, authoritative 3:1 exchange |
+| [incoming-trade.png](../design/references/game-ui-phase2/incoming-trade.png) | Other client's targeted offer and off-turn response |
+| [private-development-hand.png](../design/references/game-ui-phase2/private-development-hand.png) | Five own types, passive VP detail; public opponent count |
+| [match-results.png](../design/references/game-ui-phase2/match-results.png) | Winning VP purchase, revealed final scores and rematch/exit |
+
+Interaction/protocol boundaries — [[React интерфейс#Trade / Development Cards / Endgame — Phase 2]], verification/gaps — [[plans/game-ui-redesign#Phase 2 — Trade / Development Cards / Endgame]]. Older unavailable Trade/Dev descriptions below describe Phase 1 only.
 
 ## Polish 1.1 visual evidence
 

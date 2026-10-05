@@ -46,6 +46,9 @@ export function contextPrompt(state: GameSnapshot, pid: number, interaction: Boa
     : action === "robber" || !legal?.pirate_tiles?.length ? "Move the robber" : "Move the robber or pirate",
     detail: "Choose a highlighted tile on the board." };
   if (state.pending_action) return { title: "Waiting for player choices", detail: "The turn continues once all choices are complete." };
+  const freeRoads = state.free_roads?.[String(pid)] ?? 0;
+  if (freeRoads > 0 && legal?.road_free) return { title: `Place road ${freeRoads >= 2 ? 1 : 2} of 2`,
+    detail: legal.roads.length ? "Choose a highlighted edge for your free road." : "No legal road targets remain." };
   if (state.phase === "setup") return { title: state.setup_need === "settlement" ? "Place a settlement" : "Choose a road",
     detail: "Select a small highlighted target on the board." };
   if (action === "move_ship") return { title: selection.shipSource ? "Choose its destination" : "Select a ship to move",
@@ -56,6 +59,6 @@ export function contextPrompt(state: GameSnapshot, pid: number, interaction: Boa
     detail: "Choose a highlighted target. Cancel to leave this tool.",
   };
   return state.rolled ? { title: "Your turn", detail: state.rules_config?.enable_seafarers
-    ? "Build, move a ship, or end your turn." : "Build or end your turn." }
+    ? "Trade, build, play a card, move a ship, or end your turn." : "Trade, build, play a card, or end your turn." }
     : { title: "Roll the dice", detail: "Your turn begins with a roll." };
 }

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { MatchState, RoomState, ServerError, WSClient } from "../wsClient";
 import BoardRenderer from "./BoardRenderer";
 import BoardControls from "../board/BoardControls";
@@ -7,10 +7,16 @@ import { ContextPrompt, GameTopBar, ResourceHand } from "../game/GameHUD";
 import GameOverlay from "../game/GameOverlay";
 import GameIcon from "../game/GameIcon";
 import { RESOURCES, turnActions, type GameSnapshot } from "../game/presentation";
+import TradePanel, { IncomingTrades } from "../game/TradePanel";
+import DevelopmentPanel, { DevelopmentHand } from "../game/DevelopmentCards";
+import Endgame from "../game/Endgame";
+import { addressedOffers, type DevType } from "../game/actions";
+import { useGameCommand } from "../game/useGameCommand";
 import "../game/game.css";
 
-export default function GamePage({ client, match, room, status, log, error }: {
+export default function GamePage({ client, match, room, status, log, error, onBackToLobby }: {
   client: WSClient; match: MatchState; room: RoomState | null; status: string; log: string[]; error: ServerError | null;
+  onBackToLobby?: () => void;
 }) {
   const state: GameSnapshot = match.state;
   const youPid = client.youPid ?? 0;
@@ -27,48 +33,73 @@ export default function GamePage({ client, match, room, status, log, error }: {
   const [discard, setDiscard] = useState<Record<string, number>>({});
   const [goldRes, setGoldRes] = useState<string>(RESOURCES[0]);
   const [goldQty, setGoldQty] = useState(1);
-  const [drawer, setDrawer] = useState<"log" | "info" | null>(null);
+  const [drawer, setDrawer] = useState<"log" | "info" | "trade" | "dev" | null>(null);
+  const [selectedDev, setSelectedDev] = useState<DevType | null>(null);
+  const [dismissedOffers, setDismissedOffers] = useState<number[]>([]);
   const closeDrawer = useCallback(() => setDrawer(null), []);
-  const interaction = useBoardInteraction(state, youPid, `${match.room_code}:${match.match_id}`, error,
+  const matchKey = `${match.room_code}:${match.match_id}`;
+  const request = useGameCommand(client, matchKey);
+  const interaction = useBoardInteraction(state, youPid, matchKey, error,
     cmd => client.sendCmd(cmd));
+  const freeRoads = state.free_roads?.[String(youPid)] ?? 0;
+  const previousFree = useRef(0);
+  useEffect(() => {
+    setDrawer(null); setSelectedDev(null); setDismissedOffers([]); previousFree.current = 0;
+  }, [matchKey]);
+  useEffect(() => { if (state.pending_action || state.game_over) setDrawer(null); }, [state.pending_action, state.game_over]);
+  useEffect(() => {
+    // Let the shared controller reconcile the board ACK before changing tools.
+    if (interaction.selection.waiting) return;
+    if (freeRoads > previousFree.current) interaction.onSelectAction("road");
+    else if (freeRoads === 0 && previousFree.current > 0 && interaction.action === "road") interaction.onSelectAction(null);
+    previousFree.current = freeRoads;
+  }, [freeRoads, matchKey, youPid, interaction.selection.waiting]);
   const { canRoll, canEnd } = turnActions(state, youPid);
   const ordinaryActions = state.phase === "main" && pending === "none" && !state.game_over;
   const mandatoryChoice = needGold || needDiscard || !!interaction.selection.victim;
+  const incoming = addressedOffers(state, youPid).filter(o => !dismissedOffers.includes(o.offer_id));
+  const blocked = request.waiting || status !== "connected";
+  const openDev = (type: DevType | null) => {
+    setSelectedDev(type); interaction.onSelectAction(null); setDrawer("dev");
+  };
 
   return <main className="game-shell">
-    <GameTopBar state={state} pid={youPid} roomCode={match.room_code} drawer={drawer}
+    <GameTopBar state={state} pid={youPid} roomCode={match.room_code} drawer={drawer === "info" || drawer === "log" ? drawer : null}
       onInfo={() => setDrawer(current => current === "info" ? null : "info")}
       onLog={() => setDrawer(current => current === "log" ? null : "log")} />
     <section className="board-stage" aria-label="Game board">
       <ContextPrompt state={state} pid={youPid} interaction={interaction} />
-      <BoardRenderer state={state} interaction={interaction} />
+      <div className="board-command-surface" style={{ height: "100%", pointerEvents: blocked ? "none" : undefined }}
+        aria-busy={request.waiting}><BoardRenderer state={state} interaction={interaction} /></div>
       {error && <div className="game-error error" role="alert">{error.message}</div>}
       {status !== "connected" && <div className="connection-notice" role="status">Connection: {status}</div>}
     </section>
     <footer className="game-bottom-hud">
-      <ResourceHand resources={res} />
+      <div className="personal-hands"><ResourceHand resources={res} />
+        <DevelopmentHand state={state} pid={youPid} onCard={openDev} /></div>
       <section className="action-dock" aria-label="Actions">
         <div className="hud-caption">{state.phase === "setup" ? "Starting placements" : "Your actions"}
           {state.last_roll != null && <span className="last-roll"><GameIcon name="roll" /> Last roll {state.last_roll}</span>}
         </div>
         <div className="dock-buttons">
-          {ordinaryActions && <button className="game-button primary-action" disabled={!canRoll}
+          {ordinaryActions && <button className="game-button primary-action" disabled={!canRoll || blocked}
             onClick={() => client.sendCmd({ type: "roll" })}><GameIcon name="roll" /><span>Roll</span></button>}
-          {!state.game_over && <BoardControls state={state} interaction={interaction} />}
+          {!state.game_over && <BoardControls state={state} interaction={{ ...interaction,
+            selection: { ...interaction.selection, waiting: interaction.selection.waiting || blocked } }} />}
           {ordinaryActions && <>
-            <button className="game-button future-action" disabled aria-describedby="future-actions">
+            <button className="game-button" disabled={blocked} aria-label="Trade" aria-haspopup="dialog"
+              onClick={() => { interaction.onSelectAction(null); setDrawer("trade"); }}>
               <GameIcon name="trade" /><span>Trade</span></button>
-            <button className="game-button future-action" disabled aria-describedby="future-actions">
+            <button className="game-button" disabled={blocked} aria-haspopup="dialog" onClick={() => openDev(null)}>
               <GameIcon name="dev" /><span>Dev Card</span></button>
-            <button className="game-button end-action" disabled={!canEnd}
+            <button className="game-button end-action" disabled={!canEnd || blocked}
               onClick={() => client.sendCmd({ type: "end_turn" })}><GameIcon name="end" /><span>End Turn</span></button>
-            <span id="future-actions" className="sr-only">Trade and development card controls are not available in this client yet.</span>
           </>}
         </div>
       </section>
     </footer>
 
-    {drawer && !mandatoryChoice && <GameOverlay key={drawer} id={`game-${drawer}`}
+    {(drawer === "log" || drawer === "info") && !mandatoryChoice && !state.game_over && <GameOverlay key={drawer} id={`game-${drawer}`}
       title={drawer === "log" ? "Event log" : "Game info"} onClose={closeDrawer}>
       {drawer === "log" ? <pre className="game-log">{log.length ? log.join("\n") : "No events yet."}</pre> : <>
         <div className="info-map"><strong>{mapMeta.name || mapId || "Current map"}</strong>
@@ -86,6 +117,17 @@ export default function GamePage({ client, match, room, status, log, error }: {
         </dl>
       </>}
     </GameOverlay>}
+
+    {drawer === "trade" && !mandatoryChoice && !state.game_over && <TradePanel key={matchKey} state={state} pid={youPid}
+      submit={request.submit} waiting={blocked} error={error} onClose={closeDrawer} />}
+    {drawer === "dev" && !mandatoryChoice && !state.game_over && <DevelopmentPanel key={`${matchKey}:${selectedDev ?? "all"}`}
+      state={state} pid={youPid} selected={selectedDev} submit={request.submit} waiting={blocked} error={error}
+      onClose={closeDrawer} onBoardPlay={closeDrawer} />}
+    {!drawer && !mandatoryChoice && !state.pending_action && !state.game_over && incoming.length > 0 &&
+      <IncomingTrades state={state} pid={youPid} offers={incoming} submit={request.submit} waiting={blocked} error={error}
+        onClose={() => setDismissedOffers(ids => [...ids, ...incoming.map(o => o.offer_id)])} />}
+    {state.game_over && <Endgame key={matchKey} state={state} pid={youPid} room={room} connected={status === "connected"}
+      matchKey={matchKey} error={error} onRematch={() => client.rematch()} onLobby={onBackToLobby} />}
 
     {needGold && <GameOverlay id="gold-choice" title={`Gold Choice: ${goldNeed}`} modal>
       <p>Choose resources from the bank.</p>

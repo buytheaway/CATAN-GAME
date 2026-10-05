@@ -5,7 +5,9 @@ updated: 2026-10-05
 
 # Project State
 
-Last verified: 2026-10-05 — Board3D Polish 1.1: 76/76 web tests, TypeScript, production build, Docker frontend build/up и Chrome 154 headless прошли. Hover использует emissive настоящей плитки; azimuth свободный 360°, tilt/zoom/reset сохранены. Terrain имеет стабильные небольшие вариации, порты — compact dock/placard; декоративные meshes больше не перехватывают legal hits. Base/Gold/50-hex fixture: framing, отсутствие page scroll, 0 дополнительных idle frames, cleanup при 2D switch. Два live React-клиента: Base — setup/Roll/road/robber, 4 хода/tick 18; Gold — setup/Roll/ship/pirate, 17 ходов/tick 50. Move ship и multiple victims дополнительно проверены engine-built fixtures в обоих renderer. Python/protocol/maps/controller/HUD/dependencies не менялись; pytest/scenarios не повторялись. Evidence/limits — [[plans/board3d#Game UI / Board3D Polish 1.1]] и [[Design System#Polish 1.1 visual evidence]]. Полная партия/mobile/low-end FPS не сертифицированы.
+Last verified: 2026-10-05 — Game UI Phase 2: 92/92 web tests, 186/186 pytest, TypeScript, production web build, Docker build и 14 Chrome 154 E2E cases прошли. Добавлены bank/player trade, личная dev hand/все пять карт, итоговые VP/winner/results, rematch и явный выход. Prepared games проверены через настоящий WebSocket в отдельном Docker stack; обычный production backend отдельно прошёл двухклиентский Base setup/Roll/End/2D↔3D (tick 10). Backend/rules/protocol/board/controller/maps/dependencies не менялись. Scenario suite не повторялась: 348/508 — исторический baseline. Полная естественная партия, mobile и low-end FPS не сертифицированы. Детали/limits — [[plans/game-ui-redesign#Phase 2 — Trade / Development Cards / Endgame]] и [[Design System#Game UI Phase 2 — implemented actions and results]].
+
+Предыдущая verification, 2026-10-05 — Board3D Polish 1.1: 76/76 web tests, TypeScript, production build, Docker frontend build/up и Chrome 154 headless прошли. Hover использует emissive настоящей плитки; azimuth свободный 360°, tilt/zoom/reset сохранены. Terrain имеет стабильные небольшие вариации, порты — compact dock/placard; декоративные meshes больше не перехватывают legal hits. Base/Gold/50-hex fixture: framing, отсутствие page scroll, 0 дополнительных idle frames, cleanup при 2D switch. Два live React-клиента: Base — setup/Roll/road/robber, 4 хода/tick 18; Gold — setup/Roll/ship/pirate, 17 ходов/tick 50. Move ship и multiple victims дополнительно проверены engine-built fixtures в обоих renderer. Python/protocol/maps/controller/HUD/dependencies не менялись; pytest/scenarios не повторялись. Evidence/limits — [[plans/board3d#Game UI / Board3D Polish 1.1]] и [[Design System#Polish 1.1 visual evidence]].
 
 Предыдущая UI verification, 2026-10-05: Game UI Redesign Phase 1 — 73/73 web tests (65 прежних + 8 UI cases), TypeScript, production/Docker build. Fullscreen match shell, compact HUD/hand/dock, закрытые drawers и default 3D; SVG сохранён. Desktop 1920×1080, 1440×900, 1280×720, шесть длинных имён, drawer/Escape/focus и modal focus trap проверены. Исторические Python результаты: 186 pytest и 348/508 scenarios. Подробнее — [[plans/game-ui-redesign]].
 
@@ -38,14 +40,17 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - React Join использует один transport helper для открытого и подключающегося WS: token выбранной пары room/name → reconnect, отсутствие token → join_room. Смена комнаты/игрока очищает прежний token в памяти; создание комнаты не использует старый token. Отклонённый reconnect очищает соответствующий cache без автоматического Join по имени.
 - Каждый старт, включая rematch, включает только подключённых участников, минимум двух; pid уплотняются вместе с сетевыми привязками. Отключившийся прежний участник не создаёт пустое место в новом GameState. Подключённый host запускает rematch; если он отключён, это может сделать первый подключённый участник, который становится host после успешного старта.
 - Reconnect token восстанавливает прежний слот до rematch. Сохранившиеся участники сохраняют token с новым pid; исключённый участник теряет доступ к слоту при новом матче. match_id увеличивается; tick, sequence и deduplication history сбрасываются.
-- В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для будущего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed и точные остатки банка не передаются, колода перемешивается независимо от карты.
+- В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для действующего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed и точные остатки банка не передаются, колода перемешивается независимо от карты.
 - Pirate использует одно разрешённое событие после 7/завершения discard либо Knight: pending `robber_move` позволяет выбрать land robber или sea pirate при enable_pirate. Успех закрывает pending и допускает максимум одну кражу; повтор без нового события отклоняется общим движком. React/PySide клики согласованы с этим событием.
-- 73 web cases проходят (24 transport + 3 LobbyPage + 5 BoardView + 4 URL + 20 Board3D projection/visual/resource cases + 9 shared interaction + 8 Game UI). TypeScript/production/Docker build и Chrome проверены 2026-10-05 для Game UI Phase 1. 186 pytest — историческая проверка Phase 2; Python не менялся.
+- Trade: bank 4:1/3:1/2:1 по собственным port endpoints; targeted/broadcast offer, accept/reject/cancel и отмена при end turn. Состав рук не изменяется до snapshot. Изменение offer = cancel + новое предложение; broadcast Reject закрывает offer для всех согласно существующему engine.
+- Dev cards: own types/count/new в нижнем HUD; покупка, Knight через общий robber/pirate controller, две бесплатные дороги, Year of Plenty picker, Monopoly picker и passive VP. UI объясняет new/one-play/turn/pending restrictions; окончательная проверка остаётся серверной.
+- Results: server winner/final VP, connected-player rematch с прежними tokens/compact pids/sequence reset, Back to Lobby через существующий leave_room. Выход останавливает auto-reconnect; сохранённый token остаётся для явного Join с прежним room/name.
+- 92 web cases, TypeScript/production/Docker build и Chrome Phase 2 проверены 2026-10-05. 186 pytest повторены успешно; сценарии не запускались, rules.py не менялся.
 
 ## Partially Implemented
 
 - Seafarers: корабли, золото, пират и перемещение есть; полная семантика маршрутов и сценариев не завершена.
-- Web UI: отсутствуют формы торговли/карт развития, отдельное меню, результат партии и законченный путь выхода.
+- Web UI: trade/dev/results/exit реализованы; отдельное меню, lobby/settings/mobile redesign и полноценный game event feed остаются вне scope. Точный bank/deck отсутствует в personal snapshot: сервер может отклонить попытку взять две одинаковые карты при остатке одной или покупку из пустой колоды.
 - Desktop online: диалоги развития и банка отключены.
 - Очереди web/desktop теперь привязаны к room/match; отказ расходует seq и удаляется по ACK. Полноценная user auth, потеря состояния сервера и сохранения остаются отдельными вопросами.
 - Старые ошибки TypeScript и секции setup.cfg устранены в рамках проверки контракта/тестов. Сценарный прогон по-прежнему даёт 348/508 успешных запусков: восемь сценариев действуют до обязательного броска. Правило не ослаблялось.
@@ -66,6 +71,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 | Offline-save | Ключи флагов и бесплатных дорог после JSON становятся строками |
 | Seafarers rules | Остаются ограничения смешанных/закрытых маршрутов, Longest Trade Route и полноты отдельных сценариев |
 | Остальные Base rules | Требуют отдельного исправления ничьи достижений, победа вне активного хода, детерминированная кража |
+| Road Building lifecycle | Неиспользованный free_roads не сбрасывается при end turn; подтверждено чтением rules.apply_cmd (end_turn) / end_turn_cleanup. Phase 2 UI не меняет это правило/баг и не списывает credit самостоятельно |
 | Сетевой lifecycle | Нет persistence/cleanup/rate limits; рассылка остаётся последовательной |
 
 Статусы таблицы отражают завершённую Phase 1, включая reconnect/pirate fixes и финальные продуктовые решения. Остальные перечисленные P1 остаются открытыми; исторические доказательства и текущая проверка — [[Результаты аудита]].
@@ -77,7 +83,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 3. Подготовить новый React UI, сохраняя игровое поведение.
 4. Затем постепенно рефакторить архитектуру.
 
-Production Hardening Phase 1 завершена в утверждённом scope. Game UI Redesign Phase 1 пересобрала match composition; lobby/menu/trade/dev/settings остаются будущими задачами. Board3D Phase 1 реализовала отдельную visual foundation в принятом clean modern tabletop направлении. Fantasy/MMORPG-декор исключён, прежние references остаются historical. Desktop в Hardening Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
+Production Hardening Phase 1 завершена в утверждённом scope. Game UI Phase 1 пересобрала match composition; Phase 2 добавила существующие trade/dev/endgame mechanics в web. Lobby/menu/settings остаются будущими задачами. Board3D Phase 1 реализовала отдельную visual foundation в принятом clean modern tabletop направлении. Fantasy/MMORPG-декор исключён, прежние references остаются historical. Desktop в Hardening Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
 
 ## Map / 3D preparation
 
@@ -89,8 +95,8 @@ Production Hardening Phase 1 завершена в утверждённом scop
 
 ## Next Engineering Tasks
 
-- Следующий шаг: ручная визуальная приёмка/checkpoint Polish 1.1; proposal `fix: polish board interaction visuals`, tag `game-ui-polish-1-1`. В этой checkout tag game-ui-phase-1 отсутствует; прежний UI Phase 1 diff остаётся незакоммиченным поверх a1cbd7e. Размер polish считается отдельно от состояния на начало задачи. Агент не создавал commits/tags; следующий этап не начат.
-- Дальнейшие UI phases, accessibility/low-end/mobile и gameplay P1 требуют отдельных задач. Подтверждённый существующий нюанс Three: terrain decoration иногда перекрывает midpoint road target; видимая часть того же target кликается. Geometry/raycast architecture здесь не исправлялись.
+- Следующий шаг: ручная приёмка/checkpoint Game UI Phase 2. Base на начало задачи — clean 9c6c820, пользователь уже закоммитил Phase 1/Polish; прежнее утверждение об их незакоммиченном diff устарело. Proposal: `feat: complete web game actions and endgame UI`, tag `game-ui-phase-2`. Агент не создаёт commit/tag и не начинает следующую фазу автоматически.
+- Дальнейшие UI phases, accessibility/low-end/mobile и gameplay P1 требуют отдельных задач. Историческое перекрытие road targets terrain decoration устранено в Polish 1.1; renderer/controller в Phase 2 не меняются.
 - Открытый backlog: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения.
 - Дальнейшие ограничения Phase 1 и результаты — [[plans/server-authority-hardening]].
 - Уточнить gameplay-композицию, состояния и visual tokens актуального clean tabletop направления в [[Design System]].

@@ -47,7 +47,18 @@ export type MatchState = {
     map_id?: string;
     map_meta?: { name?: string; description?: string };
     bank_available: Record<string, boolean>;
+    game_over?: boolean;
+    winner_pid?: number | null;
+    free_roads?: Record<string, number>;
+    dev_played_turn?: Record<string, boolean>;
+    trade_offers?: TradeOffer[];
   };
+};
+
+export type TradeOffer = {
+  offer_id: number; from_pid: number; to_pid: number | null;
+  give: Record<string, number>; get: Record<string, number>;
+  status: string; created_turn: number; created_tick: number;
 };
 
 export type ServerError = {
@@ -122,6 +133,8 @@ export class WSClient {
   onMatchState?: (s: MatchState) => void;
   onError?: (e: ServerError) => void;
   onLog?: (msg: string) => void;
+  // Local notification only; null means reconnect consumed the intent, outcome unknown.
+  onCommandSettled?: (cmdId: string, applied: boolean | null) => void;
 
   isOpen(): boolean {
     return !!this.ws && this.ws.readyState === WebSocket.OPEN;
@@ -184,6 +197,26 @@ export class WSClient {
     this.send({ type: "rematch" });
   }
 
+  leaveRoom() {
+    this.send({ type: "leave_room" });
+    if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    if (this.ws) {
+      this.ws.onclose = this.ws.onmessage = this.ws.onerror = this.ws.onopen = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this.resetMapSelection();
+    this.pendingCmds.clear();
+    this.pendingAction = null;
+    this.roomCode = this.reconnectToken = this.pendingReconnectKey = this.matchKey = null;
+    this.roomState = this.matchState = null;
+    this.youPid = null;
+    this.matchId = this.seq = this.lastSeqApplied = 0;
+    // Saved room tokens remain available for an explicit later Join.
+    this.onStatus?.("idle");
+  }
+
   setMap(mapId?: string, mapData?: Record<string, any>) {
     if (!mapId && !mapData) return;
     if (!this.isOpen() || !this.roomState || this.roomState.room_code !== this.roomCode
@@ -242,6 +275,7 @@ export class WSClient {
     }
     this.pendingCmds.set(cmdId, { seq: nextSeq, payload });
     this.send(payload);
+    return cmdId;
   }
 
   private openSocket() {
@@ -322,6 +356,7 @@ export class WSClient {
       this.pendingCmds.delete(data.cmd_id);
       this.lastSeqApplied = data.last_seq_applied ?? this.lastSeqApplied;
       this.seq = Math.max(this.seq, this.lastSeqApplied);
+      this.onCommandSettled?.(data.cmd_id, data.duplicate ? null : data.applied);
       return;
     }
     if (data.type === "match_state") {
@@ -363,6 +398,7 @@ export class WSClient {
     for (const [cmdId, item] of Array.from(this.pendingCmds.entries())) {
       if (item.seq <= this.lastSeqApplied) {
         this.pendingCmds.delete(cmdId);
+        this.onCommandSettled?.(cmdId, null);
       }
     }
     for (const item of items) {

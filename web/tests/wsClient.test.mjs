@@ -20,6 +20,7 @@ class Socket {
   constructor() { Socket.latest = this; }
   open() { this.readyState = Socket.OPEN; this.onopen(); }
   send(raw) { this.sent.push(JSON.parse(raw)); }
+  close() { this.readyState = 3; this.onclose?.(); }
   receive(data) { this.onmessage({ data: JSON.stringify(data) }); }
 }
 
@@ -31,7 +32,7 @@ beforeEach(() => {
     getItem(key) { return values.get(key) ?? null; },
     removeItem(key) { values.delete(key); },
   };
-  globalThis.window = { setTimeout };
+  globalThis.window = { setTimeout, clearTimeout };
 });
 
 function connectedClient() {
@@ -55,6 +56,41 @@ function lobbyClient() {
   pair.socket.receive(lobbyState());
   return pair;
 }
+
+test("feature request settles only on its matching ACK, with no settlement from an unrelated snapshot", () => {
+  const { client, socket } = connectedClient();const settled = [];
+  client.onCommandSettled = (id, applied) => settled.push([id, applied]);
+  const id = client.sendCmd({ type: "buy_dev" });
+  socket.receive({ type: "cmd_ack", cmd_id: "other", applied: true, last_seq_applied: 7 });
+  socket.receive({ type: "match_state", room_code: "ROOM", match_id: 1, tick: 3, state: { you_pid: 0 } });
+  assert.deepEqual(settled, []);
+  socket.receive({ type: "cmd_ack", cmd_id: id, applied: false, last_seq_applied: 5 });
+  socket.receive({ type: "cmd_ack", cmd_id: id, applied: true, last_seq_applied: 5 });
+  assert.deepEqual(settled, [[id, false]]);
+});
+
+test("reconnect consumed intent releases UI waiting without inventing a successful card/resource effect", () => {
+  const { client, socket } = connectedClient();const settled = [];
+  client.onCommandSettled = (id, applied) => settled.push([id, applied]);
+  const id = client.sendCmd({ type: "play_dev", card: "knight" });
+  socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0, reconnect_token: "secret", match_id: 1, last_seq_applied: 5 });
+  assert.deepEqual(settled, [[id, null]]);
+  assert.equal(socket.sent.filter(m => m.type === "cmd").length, 1);
+});
+
+test("explicit leave stops reconnect/late socket callbacks and clears old intents while preserving saved room token", () => {
+  const { client, socket } = connectedClient();
+  client.sendCmd({ type: "trade_bank", give: "wood", get: "ore" });
+  client.leaveRoom();
+  assert.equal(socket.sent.at(-1).type, "leave_room");assert.equal(socket.readyState, 3);
+  assert.equal(socket.onclose, null);assert.equal(socket.onmessage, null);
+  assert.equal(client.matchId, 0);assert.equal(client.seq, 0);assert.equal(client.youPid, null);
+  assert.equal(client.roomState, null);assert.equal(client.matchState, null);
+  assert.ok(localStorage.getItem("catan_reconnect_ROOM_Alice"));
+  client.loadToken("ROOM", "Alice");client.connect("ws://test/ws", "Alice");Socket.latest.open();
+  assert.equal(Socket.latest.sent.at(-1).type, "reconnect");
+  assert.equal(Socket.latest.sent.filter(m => m.type === "cmd").length, 0);
+});
 
 test("map A remains pending through older/presence snapshots and confirmation sends no echo", () => {
   const { client, socket } = lobbyClient();

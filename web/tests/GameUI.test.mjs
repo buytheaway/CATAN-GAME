@@ -14,6 +14,9 @@ const compiled = await build({
   stdin: { contents: `export {default as GamePage} from "./components/GamePage";
     export {default as GameOverlay} from "./game/GameOverlay";
     export * from "./game/GameHUD"; export * from "./game/presentation";
+    export {default as TradePanel,TradeOffers} from "./game/TradePanel";
+    export {default as DevelopmentPanel,DevelopmentHand} from "./game/DevelopmentCards";
+    export {default as Endgame} from "./game/Endgame";
     export {createBoardInteraction,emptySelection} from "./board/interaction";`,
     resolveDir: fileURLToPath(new URL("../src/", import.meta.url)), loader: "tsx" },
   bundle: true, write: false, platform: "node", format: "cjs", jsx: "automatic",
@@ -137,13 +140,69 @@ test("drawer exposes a named close control and delegates dismissal; mandatory ch
   assert.equal(modal.button("Close Gold Choice"), undefined);
 });
 
-test("Trade/Dev remain explicitly unavailable and game-over displays no active command controls", () => {
+test("Trade/Dev open supported features and game-over displays no active command controls", () => {
   const view = renderGame();
   for (const name of ["Trade", "Dev Card"]) {
-    assert.equal(view.button(name).disabled, true);
-    assert.equal(view.button(name)["aria-describedby"], "future-actions");
+    assert.equal(view.button(name).disabled, false);
+    assert.equal(view.button(name)["aria-haspopup"], "dialog");
   }
   const finished = renderGame(snapshot({ game_over: true }));
   assert.match(finished.html, /Match complete/);
   for (const name of ["Roll", "Build", "End Turn"]) assert.equal(finished.button(name), undefined);
+});
+
+test("development hand/details use only self cards and passive VP never has a Play action", () => {
+  const { DevelopmentHand, DevelopmentPanel } = loaded.exports;
+  const state = snapshot({ dev_played_turn: { "0": false }, bank_available: { wood: true }, rolled: true });
+  state.players[0].dev_cards = [{ type: "victory_point", new: false }, { type: "knight", new: true }];
+  state.players[1].dev_cards = [{ type: "PRIVATE_CARD_SENTINEL", new: false }];
+  const hand = render(DevelopmentHand, { state, pid: 0, onCard() {} });
+  assert.match(hand.html, /Victory Point/); assert.match(hand.html, /Knight/);
+  assert.doesNotMatch(hand.html, /PRIVATE_CARD_SENTINEL/);
+  const sent = [];
+  const props = { state, pid: 0, waiting: false, error: null, submit: cmd => sent.push(cmd), onClose() {}, onBoardPlay() {} };
+  let panel = render(DevelopmentPanel, { ...props, selected: "victory_point" });
+  assert.equal(panel.button("Play Victory Point"), undefined);
+  panel = render(DevelopmentPanel, { ...props, selected: "knight" });
+  assert.equal(panel.button("Play Knight").disabled, true);
+  state.players[0].dev_cards[1].new = false;
+  panel = render(DevelopmentPanel, { ...props, selected: "knight" });
+  panel.button("Play Knight").onClick();
+  panel.button("Buy Dev Card").onClick();
+  assert.deepEqual(sent, [{ type: "play_dev", card: "knight" }, { type: "buy_dev" }]);
+});
+
+test("bank and player offer buttons keep the existing payloads and rejection message", () => {
+  const { TradePanel, TradeOffers } = loaded.exports;
+  const state = snapshot({ rolled: true, bank_available: { ore: true } });
+  state.players[0].res.wood = 4;
+  const sent = [];
+  const props = { state, pid: 0, waiting: false, submit: cmd => sent.push(cmd) };
+  const panel = render(TradePanel, { ...props, onClose() {}, error: { message: "Bank has not enough resources" } });
+  assert.match(panel.html, /Bank has not enough resources/);
+  panel.button("Trade with bank").onClick();
+  assert.deepEqual(sent.pop(), { type: "trade_bank", give: "wood", get: "ore", get_qty: 1 });
+  state.trade_offers = [{ offer_id: 17, from_pid: 0, to_pid: 1, give: { wood: 2 }, get: { ore: 1 }, status: "active" }];
+  const recipient = render(TradeOffers, { ...props, pid: 1 });
+  assert.equal(recipient.button("Accept").disabled, true); // Missing private ore, no invented opponent hand.
+  recipient.button("Reject").onClick();
+  assert.deepEqual(sent.pop(), { type: "trade_offer_decline", offer_id: 17 });
+  const creator = render(TradeOffers, props);creator.button("Cancel offer").onClick();
+  assert.deepEqual(sent.pop(), { type: "trade_offer_cancel", offer_id: 17 });
+});
+
+test("results use server winner/final scores and delegate rematch/exit without creating a match", () => {
+  const { Endgame } = loaded.exports;
+  const state = snapshot({ game_over: true, winner_pid: 1 });
+  state.players[0].vp = 8; state.players[1].vp = 10;
+  state.players[1].dev_cards = [{ type: "PRIVATE_RESULTS_SENTINEL", new: false }];
+  const room = { room_code: "ROOM", status: "in_match", host_pid: 0, players: state.players.map(p => ({ ...p, connected: true })) };
+  let rematches = 0, exits = 0;
+  const view = render(Endgame, { state, pid: 0, room, connected: true, matchKey: "ROOM:1", error: null,
+    onRematch: () => rematches++, onLobby: () => exits++ });
+  assert.match(view.html, /Bob/);assert.match(view.html, /10 VP/);assert.match(view.html, /8 VP/);
+  assert.doesNotMatch(view.html, /PRIVATE_RESULTS_SENTINEL/);
+  assert.equal(view.button("Rematch").disabled, false);
+  view.button("Rematch").onClick(); view.button("Back to Lobby").onClick();
+  assert.equal(rematches, 1);assert.equal(exits, 1);assert.equal(state.game_over, true);
 });

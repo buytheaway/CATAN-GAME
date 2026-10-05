@@ -1,0 +1,21 @@
+# Isolated test project: existing production images + test-only initializer.
+services:
+  backend:
+    image: catan-game-backend:latest
+    volumes:
+      - .:/fixtures:ro
+    environment:
+      PYTHONPATH: /fixtures:/app
+    command: [python, -m, uvicorn, fixture_server:app, --host, 0.0.0.0, --port, "8000", --workers, "1"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).close()"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+  web:
+    image: catan-game-web:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18080:8080"

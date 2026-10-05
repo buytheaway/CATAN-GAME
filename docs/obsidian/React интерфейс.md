@@ -6,7 +6,9 @@ tags: [catan, web, интерфейс]
 
 [[Web клиент]] · [[Состояние игры]] · [[Стили и визуальные границы]] · [[Design System]]
 
-Основные UI-границы: App, LobbyPage, fullscreen GamePage, GameTopBar/ContextPrompt/ResourceHand/GameOverlay в game/, BoardControls в dock, BoardRenderer, SVG BoardView и Board3D. Scene-компоненты находятся в board3d/. Action dock/player strip — JSX-блоки, не отдельные classes. TradeDialog, MainMenu и development-card формы в web отсутствуют.
+Основные UI-границы: App, LobbyPage, fullscreen GamePage, GameTopBar/ContextPrompt/ResourceHand/GameOverlay и TradePanel/DevelopmentCards/Endgame в game/, BoardControls в dock, BoardRenderer, SVG BoardView и Board3D. Scene-компоненты находятся в board3d/. Action dock/player strip — JSX-блоки, не отдельные classes. MainMenu пока отсутствует.
+
+Game UI Phase 2 verified 2026-10-05: 92 web tests, 186 pytest, TypeScript, production/Docker build и 14 реальных Chrome E2E cases. Trade/dev/results используют существующие commands/snapshot и общий board controller; backend/protocol/renderer не изменены. Prepared games проходят через настоящий WebSocket в отдельном test stack; обычный production backend отдельно проверен setup/Roll/End/2D↔3D двумя клиентами. Подробности — [[plans/game-ui-redesign#Phase 2 — Trade / Development Cards / Endgame]].
 
 Game UI Redesign Phase 1 verified 2026-10-05: 73 web tests, TypeScript, production/Docker build и Chrome. Default 3D; 2D сохранён. Новая композиция/HUD отделена от прежнего controller/network/gameplay. Scope, screenshots и limits — [[plans/game-ui-redesign]] и [[Design System#Game UI Redesign Phase 1 — implemented composition]].
 
@@ -20,7 +22,10 @@ Game UI Redesign Phase 1 verified 2026-10-05: 73 web tests, TypeScript, producti
 | --- | --- | --- | --- |
 | [App](../../web/src/App.tsx) | main.tsx | Нет | client, room, match, status, log, error |
 | [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, pendingMapId, customLabel; отображаемый mapId = pending или room.map_id |
-| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error | Прежний useBoardInteraction; discard/gold fields, новый drawer=log/info/null |
+| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error, onBackToLobby | Прежний useBoardInteraction; discard/gold fields; drawer=log/info/trade/dev/null, selectedDev, dismissedOffers и useGameCommand waiting |
+| [TradePanel / IncomingTrades](../../web/src/game/TradePanel.tsx) | GamePage | state, pid, submit, waiting, error, onClose; incoming также offers | tab, bank give/get, give/want quantities, target; все balances/offers из snapshot |
+| [DevelopmentHand / DevelopmentPanel](../../web/src/game/DevelopmentCards.tsx) | GamePage | state, pid; hand onCard, panel selected/submit/waiting/error/onClose/onBoardPlay | selected type, Year of Plenty counts, Monopoly resource; own cards/new из snapshot |
+| [Endgame](../../web/src/game/Endgame.tsx) | GamePage при game_over | state, pid, room, connected, matchKey, error, onRematch/onLobby | Только ожидание rematch; winner/scores/pids не вычисляются локально |
 | [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | state + interaction | mode=2d/3d, default 3d; lazy/failure boundary |
 | [BoardControls](../../web/src/board/BoardControls.tsx) | GamePage action dock, оба режима | state + interaction | Только buildOpen/focus; tools/victim chooser вызывают прежние callbacks, собственного игрового selection нет |
 | [BoardView](../../web/src/components/BoardView.tsx) | BoardRenderer, режим 2D | state + interaction | SVG presentation, selection берётся из controller |
@@ -28,7 +33,7 @@ Game UI Redesign Phase 1 verified 2026-10-05: 73 web tests, TypeScript, producti
 
 ## Экраны
 
-App показывает LobbyPage до первого match и GamePage после его получения. Лобби до/после входа — один экран. Setup, обычный ход, discard и gold — состояния одного игрового экрана. Отдельный React-экран победы отсутствует.
+App показывает LobbyPage без match и GamePage при его наличии. Лобби до/после входа — один экран. Setup, обычный ход, discard/gold, trade/dev dialogs и results — состояния одного игрового экрана. Back to Lobby явно завершает локальное соединение/очищает App match; новая комната или явный Join доступны через прежнее lobby.
 
 ## Данные UI-блоков
 
@@ -46,11 +51,27 @@ App показывает LobbyPage до первого match и GamePage пос�
 | Игроки матча | GameTopBar | public pid/name/vp/resource_count/dev_count/turn, PLAYER_COLORS; без чтения чужой руки |
 | Ошибки | LobbyPage и GamePage | error.message |
 | Журнал | GameOverlay | log из App, закрыт по умолчанию; сетевые ошибки/сообщения клиента сохранены, engine event feed не добавлен |
-| Trade / Dev | Формы отсутствуют | Dock controls disabled с объяснением; новые команды/формы не добавлены |
+| Trade | TradePanel / IncomingTrades / TradeOffers | own res, ports/occupied_v, bank_available, public offers, players/turn/rolled/pending; bank/create/accept/decline/cancel |
+| Development cards | DevelopmentHand / DevelopmentPanel | own dev_cards/new, own res, dev_played_turn/free_roads, bank_available и turn/pending; buy/play/pickers |
+| Results | Endgame | game_over, winner_pid, final players.vp, room connected/host; существующие rematch/leave_room |
 | Строительство и перемещения | BoardControls + оба renderer | interaction.action/targets/selection; server legal, исходные vertex/edge/tile IDs |
 | Выбор жертвы | BoardControls | selection.victim.victims из personal legal, публичные player names; move_robber/move_pirate с victim |
 
 Roll доступен в свой ход основной фазы до броска и без pending-action. End Turn зависит от своего хода, rolled и отсутствия pending-action. presentation.turnActions сохраняет эти прежние условия; проверки правил остаются на сервере.
+
+## Trade / Development Cards / Endgame — Phase 2
+
+[actions.ts](../../web/src/game/actions.ts) — чистые presentation helpers: лучший отображаемый maritime ratio по public ports и own ownership, disabled reasons, целочисленные количества, self-only dev grouping, public offer audience, server winner standings и rematch hint. Это не альтернативный GameState/executor; сервер повторно проверяет всё. MatchState лишь типизирует уже существующие trade_offers/game_over/winner_pid/free_roads/dev_played_turn, wire shape не меняется.
+
+Путь нового действия: GamePage → TradePanel/DevelopmentPanel → useGameCommand.submit → WSClient.sendCmd → серверный apply_cmd → player-specific snapshot → App.setMatch → UI. [useGameCommand](../../web/src/game/useGameCommand.ts) привязывает ожидание к конкретному cmd_id. Чужой snapshot не завершает собственный запрос; matching ACK снимает waiting. При reconnect consumed intent без известного результата снимает ожидание с applied=null, не изображая успех. Choices остаются редактируемыми после отказа; ресурсы/карты/pieces никогда не генерируются optimistic.
+
+- Bank: existing trade_bank/give/get/get_qty=1, ratio 4/3/2. Players: trade_offer_create/give/get/to_pid, accept/decline/cancel по offer_id. Off-turn recipient использует свою hand; состав creator hand не угадывается. Targeted terms уже публичны в server snapshot. Broadcast Reject закрывает предложение для всех; change = cancel + новое, disconnect сам по себе не закрывает offer, end turn закрывает активные.
+- Buy: existing buy_dev, стоимость показана 1 Ore/Sheep/Wheat. Hand/type/new приходит только владельцу. Старые карты можно играть до Roll; new, already-played и pending блокируют Play. Passive VP без кнопки Play. Покупка разрешена после сыгранной карты, если серверные условия соблюдены.
+- Knight: play_dev/card=knight → existing robber_move → shared targets/victim callbacks. Road Building: play_dev/card=road_building → personal free_roads/legal.road_free → тот же place_road/free=true. Prompt показывает 1/2 и 2/2. Автовыбор road выполняется после reconciliation board waiting, чтобы не восстановить старый waiting и не заблокировать вторую дорогу; free counter не уменьшается в React.
+- Year of Plenty: ровно две карты, existing a/qa/b/qb. bank_available сообщает только есть/нет: две одинаковые при остатке одной отклоняются сервером, picker сохраняется. Monopoly: existing play_dev/card=monopoly/r, изменение hand только из snapshot. Engine events не передаются: клиент не сочиняет trade/dev историю; прежний log сохраняет реальные transport/error messages.
+- Results: game_over показывает winner_pid и итоговые players.vp. Активные controls скрыты, engine также блокирует команды. Rematch вызывает прежний server flow, hint читает connected/host, новый match сбрасывает UI state. Потеря соединения снимает rematch waiting для явной повторной попытки; произвольный timeout/optimistic new match не используется. Back to Lobby вызывает existing leave_room + WSClient cleanup; auto-reconnect остановлен, token cache сохранён для Join с прежними room/name (lobby Name по умолчанию Player).
+
+E2E runner и test-only initializer: [web/e2e/README.md](../../web/e2e/README.md). Проверены 4/3/2:1, отказ/retry/atomicity, targeted/broadcast accept/reject/cancel/end, buy/aging/new/one-play restrictions, Knight, обе free roads до Roll, Year of Plenty retry, Monopoly, active/final VP privacy, win/post-game rejection, rematch с connected/disconnected host, потерянный rematch, refresh/token/new pid/sequence и leave/rejoin. Desktop 1280×720/1440×900/1024×768 без горизонтального scroll/hand-dock overlap; mobile/full natural game не заявляются. Known engine gaps — [[Project State]].
 
 ## Выбор карты в lobby
 
@@ -112,13 +133,19 @@ Build palette показывает только инструменты с сущ
     │   │           └── InteractionOverlay3D → targets / ghosts
     │   └── Error / disconnected feedback
     ├── Bottom HUD
-    │   ├── <ResourceHand> → five own resource cards
+    │   ├── Personal hands
+    │   │   ├── <ResourceHand> → five own resource cards
+    │   │   └── <DevelopmentHand> → own types / counts / playable state
     │   └── Action dock
-    │       ├── Roll / disabled Trade & Dev / End Turn (ordinary turn)
+    │       ├── Roll / Trade / Dev Card / End Turn (ordinary turn)
     │       └── <BoardControls>
     │           ├── Setup cue / Build palette / Move Ship
     │           ├── Robber / Pirate / Cancel (contextual)
     │           └── <GameOverlay> victim chooser, when needed
     ├── <GameOverlay> Game info or Event log, when opened
+    ├── <TradePanel> → bank or players / ResourcePicker / TradeOffers
+    ├── <IncomingTrades> → compact received offers, when not dismissed
+    ├── <DevelopmentPanel> → buy / own cards / resource pickers
+    ├── <Endgame> → server winner / final VP / rematch / lobby
     └── <GameOverlay> Gold Choice / Discard, when required
 ```
