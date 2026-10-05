@@ -570,6 +570,7 @@ def _clear_dev_new_flags(g: GameState, pid: int) -> None:
 def end_turn_cleanup(g: GameState, pid: int) -> None:
     _clear_dev_new_flags(g, pid)
     g.dev_played_turn[pid] = False
+    g.free_roads[pid] = 0
 
 
 def buy_dev(g: GameState, pid: int) -> str:
