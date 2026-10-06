@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultWebSocketUrl, WSClient, MatchState, RoomState, ServerError } from "./wsClient";
 import LobbyPage from "./components/LobbyPage";
 import GamePage from "./components/GamePage";
@@ -7,6 +7,7 @@ const WS_DEFAULT = defaultWebSocketUrl();
 
 export default function App() {
   const client = useMemo(() => new WSClient(), []);
+  const restored = useRef(false);
   const [status, setStatus] = useState("idle");
   const [room, setRoom] = useState<RoomState | null>(null);
   const [match, setMatch] = useState<MatchState | null>(null);
@@ -28,6 +29,10 @@ export default function App() {
       setLog((prev) => [...prev, `[ERR] ${err.code}: ${err.message}`]);
     };
     client.onLog = (msg) => setLog((prev) => [...prev, `[WS] ${msg}`]);
+    if (!restored.current) {
+      restored.current = true;
+      client.restoreCurrentGame(WS_DEFAULT);
+    }
   }, [client]);
 
   return (

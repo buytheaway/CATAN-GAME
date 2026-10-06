@@ -9,6 +9,29 @@ updated: 2026-10-06
 
 Production Infrastructure Phase 1 добавила Docker Compose; Persistence 1B добавляет durable PostgreSQL и startup recovery. Проверено 2026-10-06 на Docker Desktop Linux containers, Windows host. Это production-like запуск с persistence, без TLS/accounts, не готовый публичный internet deployment.
 
+## Continue API — Persistence 1C
+
+Verified **2026-10-06**: Docker backend/web builds, nginx -t, pip check and **10 Chrome E2E
+checks** against real Nginx/PostgreSQL. [nginx.conf](../../deploy/nginx.conf) adds `/api/`
+proxy to FastAPI with 16k body limit/3s connect/10s read timeout. Existing exact `/ws`,
+`/health` and SPA/static routing remain. API secrets are POST bodies, never query strings;
+access logs include path/status, not body. Endpoint returns no-store and safe metadata only.
+Limits/privacy — [[Сервер и протокол#Recent game inspection — Persistence 1C]].
+
+Vite dev `/api` proxy derives HTTP(S) origin from VITE_WS_URL (web/.env or process env),
+otherwise 127.0.0.1:8000. Production uses site's same origin. Recent validation does not
+send known manual-WS-server proofs to a different backend; legacy without origin assumes
+default. No new services, port exposure, dependencies, DB migration, worker or auth cookies.
+
+Repeat smoke after isolated build/up, using installed external Playwright/Chrome:
+`node web/e2e/continue-games.cjs` with NODE_PATH pointing at that test install.
+Default project `catan-persistence-test`, browser origin :18081; test-only DB port :15432
+from tests/persistence.compose.yaml. Runner performs SIGKILL, down/up WITHOUT -v,
+and stops backend temporarily to exercise existing internal durable close through a
+one-off backend process. Never point this runner at the normal production stack.
+Full pytest 535, web 147, TS/build pass; latency single 8.2ms/batch5 8.4ms local medians.
+Auth/TLS/backup/multi-worker remain future. Details — [[plans/persistence-auth#Persistence Phase 1C — completed 2026-10-06]].
+
 ## Local development
 
 Из корня репозитория, желательно в своём Python 3.12 virtualenv:
@@ -117,7 +140,7 @@ TLS в Compose не добавлен; HTTPS deployment и trust forwarded header
 | [compose.yaml](../../compose.yaml) | Три сервиса, private DB/volume, web host port, readiness и stop grace period |
 | [backend.Dockerfile](../../deploy/backend.Dockerfile) | Official Python 3.12 slim-bookworm, non-root uid 10001, один Uvicorn worker |
 | [web.Dockerfile](../../deploy/web.Dockerfile) | Official Node 24 Alpine → npm ci/build → official Nginx Alpine, non-root nginx uid 101 |
-| [nginx.conf](../../deploy/nginx.conf) | Static/SPA, /ws и /health proxy; pid в /tmp |
+| [nginx.conf](../../deploy/nginx.conf) | Static/SPA, /api/, /ws и /health proxy; pid в /tmp |
 | [.dockerignore](../../.dockerignore) | Allowlist необходимых исходников/config/maps; excludes env, credentials, docs/tests, caches, node_modules и desktop/legacy |
 | [requirements-server.txt](../../requirements-server.txt) | Точно закреплённые server + SQLAlchemy/Alembic/psycopg/support dependencies, отдельные от desktop/tests |
 | [package-lock.json](../../web/package-lock.json) | npm ci input; дополнены пропущенные зависимости, уже объявленные package.json |
@@ -175,8 +198,8 @@ CREATE DATABASE нужен один раз для свежего test volume. [t
 ## Known limitations
 
 - Local memory mode всё ещё теряет rooms при restart; durable Compose восстанавливает committed state. Older RAM-only running games не появляются в DB автоматически.
-- Нет горизонтального масштабирования, TLS, accounts/auth, rate limiting или публичного production security review.
-- Один backend worker/replica; нет accounts/Continue UI, automatic retention scheduler или backup system. Hash-only guest tokens не восстанавливаются по имени при потере browser proof.
+- Нет горизонтального масштабирования, TLS, accounts/auth или публичного production security review. Inspection имеет собственный bounded single-worker rate limit; остальные endpoints не получили общий rate-limiting framework.
+- Один backend worker/replica; нет accounts, automatic retention scheduler или backup system. Hash-only guest tokens не восстанавливаются по имени при потере browser proof.
 - Проверен Linux/amd64 Docker Desktop и локальные browser contexts/Windows backend process. Полная естественная партия, нагрузка, ARM и отдельные LAN-устройства не проверялись.
 - npm audit сообщал 18 advisories в dev/build dependency tree; npm audit --omit=dev показал 0. Они не устранялись обновлением tooling в рамках контейнеризации; Node build dependencies не входят в Nginx runtime image.
 

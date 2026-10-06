@@ -1,16 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { beforeEach, test } from "node:test";
-import ts from "typescript";
+import { build } from "esbuild";
+import { fileURLToPath } from "node:url";
 
 const NativeWebSocket = globalThis.WebSocket;
 
-// Use the installed compiler, with no extra test dependency or generated files.
-const source = readFileSync(new URL("../src/wsClient.ts", import.meta.url), "utf8");
-const js = ts.transpileModule(source, {
-  compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext },
-}).outputText;
-const { WSClient } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+// Bundle the production storage dependency in memory; no generated files/test package.
+const compiled = await build({ entryPoints: [fileURLToPath(new URL("../src/wsClient.ts", import.meta.url))],
+  bundle: true, write: false, format: "esm", define: { "import.meta.env": "{}" } });
+const { WSClient } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
+function storedBinding(code, name) {
+  return JSON.parse(localStorage.getItem("catan_recent_games") ?? '{"entries":[]}').entries
+    .find(e => e.room_code === code && e.last_known_name === name) ?? null;
+}
 
 class Socket {
   static OPEN = 1;
@@ -28,10 +30,13 @@ beforeEach(() => {
   globalThis.WebSocket = Socket;
   const values = new Map();
   globalThis.localStorage = {
+    get length() { return values.size; },
+    key(i) { return Array.from(values.keys())[i] ?? null; },
     setItem(key, value) { values.set(key, value); },
     getItem(key) { return values.get(key) ?? null; },
     removeItem(key) { values.delete(key); },
   };
+  globalThis.sessionStorage = { setItem() {}, getItem() { return null; }, removeItem() {} };
   globalThis.window = { setTimeout, clearTimeout };
 });
 
@@ -144,7 +149,7 @@ test("explicit leave stops reconnect/late socket callbacks and clears old intent
   assert.equal(socket.onclose, null);assert.equal(socket.onmessage, null);
   assert.equal(client.matchId, 0);assert.equal(client.seq, 0);assert.equal(client.youPid, null);
   assert.equal(client.roomState, null);assert.equal(client.matchState, null);
-  assert.ok(localStorage.getItem("catan_reconnect_ROOM_Alice"));
+  assert.ok(storedBinding("ROOM", "Alice"));
   client.loadToken("ROOM", "Alice");client.connect("ws://test/ws", "Alice");Socket.latest.open();
   assert.equal(Socket.latest.sent.at(-1).type, "reconnect");
   assert.equal(Socket.latest.sent.filter(m => m.type === "cmd").length, 0);
@@ -429,13 +434,11 @@ test("rejected reconnect reports the error without a Join fallback or retry loop
     socket.receive({ type: "error", code, message: "Reconnect rejected" });
     assert.equal(error.code, code);
     assert.equal(socket.sent.length, before);
-    assert.equal(localStorage.getItem("catan_reconnect_ROOM_Alice"), null);
+    assert.equal(storedBinding("ROOM", "Alice"), null);
     let retry;
     window.setTimeout = (callback) => { retry = callback; return 1; };
     socket.onclose();
-    retry();
-    Socket.latest.open();
-    assert.deepEqual(Socket.latest.sent, [{ type: "hello", version: 1, name: "Alice" }]);
+    assert.equal(retry, undefined, "permanently rejected proof must not schedule another connection");
   }
 });
 
@@ -446,7 +449,7 @@ test("tokens are scoped to the requested room and player, including cache misses
     client.setName(name);
     client.join(room);
     assert.deepEqual(socket.sent.at(-1), { type: "join_room", room_code: room, name });
-    assert.notEqual(localStorage.getItem("catan_reconnect_ROOM_Alice"), null);
+    assert.notEqual(storedBinding("ROOM", "Alice"), null);
   }
 });
 
@@ -470,8 +473,10 @@ test("creating a room ignores an old token on both open and unopened sockets", (
       client.connect("ws://test/ws", "Alice");
       Socket.latest.open();
     }
+    // Host replaces an open socket whose earlier reconnect is still unverified.
+    if (Socket.latest.readyState !== Socket.OPEN) Socket.latest.open();
     assert.equal(Socket.latest.sent.at(-1).type, "create_room");
-    assert.notEqual(localStorage.getItem("catan_reconnect_ROOM_Alice"), null);
+    assert.notEqual(storedBinding("ROOM", "Alice"), null);
   }
 });
 
@@ -516,7 +521,7 @@ if (process.env.CATAN_TEST_WS_URL) {
     owner.setName("Alice");
     owner.host(2);
     owner.connect(url, "Alice");
-    await waitFor(() => owner.roomState && localStorage.getItem(`catan_reconnect_${owner.roomState.room_code}_Alice`));
+    await waitFor(() => owner.roomState && storedBinding(owner.roomState.room_code, "Alice"));
     const room = owner.roomState.room_code;
     const replacement = new WSClient();
     let updates = 0;
@@ -596,12 +601,12 @@ test("Start and Rematch retry the same request ID/epoch after disconnect, then s
 test("temporary persistence failure keeps the guest credential, permanent rejection clears it", () => {
   const { client, socket } = lobbyClient();
   socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0,
-                   reconnect_token: "saved", match_id: 1, last_seq_applied: 0 });
+                   reconnect_token: "secret", match_id: 1, last_seq_applied: 0 });
   client.join("ROOM");
   socket.receive({ type: "error", code: "persistence_unavailable", message: "DB down", detail: { retryable: true } });
-  assert(localStorage.getItem("catan_reconnect_ROOM_Alice"));
+  assert(storedBinding("ROOM", "Alice"));
   client.join("ROOM");
-  assert.equal(socket.sent.at(-1).reconnect_token, "saved");
+  assert.equal(socket.sent.at(-1).reconnect_token, "secret");
   socket.receive({ type: "error", code: "forbidden", message: "revoked" });
-  assert.equal(localStorage.getItem("catan_reconnect_ROOM_Alice"), null);
+  assert.equal(storedBinding("ROOM", "Alice"), null);
 });

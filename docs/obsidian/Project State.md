@@ -5,6 +5,18 @@ updated: 2026-10-06
 
 # Project State
 
+## Persistence Phase 1C — Continue Game / Recent Games
+
+**Completed — 2026-10-06. READY FOR CHECKPOINT.** Landing показывает компактные dark Recent Games над прежним Create/Join. До 10 browser-local guest proofs в `catan_recent_games`, schema version 1: room_code, reconnect_token, last_known_name, last_seen_at; optional server_url защищает ручной WS override от проверки на другом backend. Старые `catan_reconnect_<room>_<name>` мигрируют без pid; старые ключи удаляются только после успешной записи соответствующего proof в новый список; overflow keys сохраняются до появления места. GameState/руки/dev cards/DB UUID не кэшируются.
+
+`POST /api/reconnect/inspect-many` проверяет до 10 credentials одним read-only PostgreSQL metadata SELECT. DTO содержит только room/map/own name/color/counts/status/target VP/updated time и optional public winner. Private snapshots не читаются; inspection не bind/renew/resume/mutate. Server name/color authoritative. Continue использует прежний WS reconnect; token подтверждается повторно, pid/match/seq приходят с сервера. Retained rematch proof остаётся одной entry, excluded/closed/expired/revoked proof удаляется отдельно после подтверждённого отказа. 503/429/network/DB failure сохраняют список.
+
+SessionStorage pointer на room/name/server (без token/pid) позволяет той же вкладке автоматически восстановиться после refresh. StrictMode не дублирует старт; permanent rejection не запускает повторный reconnect или Join по имени. Explicit leave убирает только current pointer, оставляя Recent. Loading/outage затрагивают лишь Recent, Create/Join доступны. API проксируется Nginx `/api/` и Vite на тот же backend, что configured dev WS; `/ws` сохранён.
+
+Verification: **535/535 pytest**, включая **73 real-PostgreSQL cases**; **150/150 web**, TypeScript, production web build, Docker backend/web, nginx -t и pip check. После последних WS изменений повторены live-server Join/reconnect case и Chrome smoke свежего Docker-образа: Host/Join/Start, refresh двух клиентов, Continue с тем же room/match/tick и privacy без browser errors. Chrome 154/Nginx/PG: **10/10 E2E checks**, обычные два клиента, Host/Join/Start/natural setup → backend SIGKILL → card/Continue → same seat/match/state/deck/bag → accepted Roll → automatic refresh → full down/up без -v → Continue. Две bindings, lobby Continue, cached-name correction, held loading/503/retry и internal durable close одной комнаты с accepted End в другой. Итоговый screenshot просмотрен, старый layout Connection/Room сохранён. Median browser HTTP latency, 12 samples: single **8.2ms**, batch 5 distinct valid proofs **8.4ms**. Local Docker Desktop, не load benchmark.
+
+Проверки destructive restart выполнялись только в `catan-persistence-test`, normal stack на :80 не перезапускался; volume сохранялся. Сценарии не повторялись: engine/rules/codec/Board3D/personal serializer неизменны, **348/508 historical**. Нет подтверждённого нового blocker в scope 1C. Auth/Profile/history/TLS/backup/retention/multi-worker и прежние gameplay P1 остаются отдельными задачами. Guest proof остаётся localStorage bearer: XSS/потеря browser storage лишают защиты/восстановления, nickname не помогает. Один active socket на seat; новая verified вкладка заменяет ownership. Legacy bindings без адреса предполагают default backend; known manual-server proofs не отправляются чужому endpoint. Checkpoint: `feat: add continue game recovery experience`, tag `persistence-phase-1c`. Auth автоматически не начинается.
+
 ## Persistence Phase 1B — Durable Multiplayer State
 
 **Completed — 2026-10-06. READY FOR CHECKPOINT.** PostgreSQL хранит committed Room/Match, private codec v1, hashed guest credentials, consumed sequence/receipts, точный Balanced bag, UTC timer, config/colors/membership/revisions, последние 50 chat messages и 80 canonical private events. Активная модель остаётся Python Room/GameState в памяти одного backend worker. Durable mutation проходит общий room lock: candidate → SQL transaction/COMMIT → RAM promotion → personal broadcast/ACK. Отказ записи не применяет и не подтверждает candidate; неопределённый COMMIT разрешается чтением head/receipt, без повторного random effect.
@@ -17,7 +29,7 @@ Startup выполняет Alembic и восстанавливает lobby, acti
 
 Ограничения: один worker/replica; нет accounts/auth, Continue UI, automatic retention/cleanup и backup system. Refresh требует прежний Join/name/room/token flow. Local dev без DATABASE_URL остаётся memory mode; Compose принудительно durable и не деградирует при outage. Guest token expiry — 30 дней authenticated inactivity. Неполученный issuance token нельзя восстановить по имени. Live RAM rooms старого image не импортируются автоматически; нужен отдельный controlled rollout. Details — [[plans/persistence-auth#Persistence Phase 1B — implementation and verification]], [[Сервер и протокол#Durable command and recovery flow — Persistence 1B]], [[Deployment#Persistence verification — 2026-10-06]], [[Architecture Decisions#ADR-012 — Durable commit gate and conservative restart]].
 
-Предложенный checkpoint: `feat: persist multiplayer games across server restarts`, tag `persistence-phase-1b`; commit/tag автоматически не создавались. Следующие Continue/Auth/Seafarers этапы требуют отдельной задачи. Existing `.obsidian/graph.json` preference change оставлено вне scope.
+Checkpoint существует: commit `1e4dfb9`, tag `persistence-phase-1b`. Следующие Continue/Auth/Seafarers этапы требуют отдельной задачи. Existing `.obsidian/graph.json` preference change оставлено вне scope.
 
 ## Persistence Phase 1A — Full Trusted GameState Codec
 
@@ -103,7 +115,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Seafarers: корабли, золото, пират и перемещение есть; полная семантика маршрутов и сценариев не завершена.
 - Web UI: trade/dev/results/exit, room settings/colors, chat/timer и bank policy реализованы; отдельное меню, полный lobby/mobile redesign и полноценный game event feed остаются вне scope. Hidden bank/deck остаются закрыты: отказ Year of Plenty/пустой deck проверяет сервер, UI не знает будущих cards.
 - Desktop online: диалоги развития и банка отключены.
-- Очереди web/desktop теперь привязаны к room/match; отказ расходует seq и удаляется по ACK. Полноценная user auth, потеря состояния сервера и сохранения остаются отдельными вопросами.
+- Очереди web/desktop теперь привязаны к room/match; отказ расходует seq и удаляется по ACK. Durable guest backend и Continue реализованы в 1B/1C; account auth, backup/retention и Qt offline save остаются отдельными вопросами.
 - Старые ошибки TypeScript и секции setup.cfg устранены в рамках проверки контракта/тестов. Сценарный прогон по-прежнему даёт 348/508 успешных запусков: восемь сценариев действуют до обязательного броска. Правило не ослаблялось.
 
 ## Known Critical Problems

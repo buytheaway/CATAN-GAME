@@ -1,4 +1,6 @@
 import type { GameState } from "./components/BoardView.types";
+import { clearCurrentGame, currentGame, readRecentGames, removeRecentGame, saveRecentGame, setCurrentGame } from "./recentGames";
+import type { RecentGame } from "./recentGames";
 
 export type RoomSettings = {
   dice_mode: "random" | "balanced"; starting_player: "random" | "host";
@@ -143,7 +145,7 @@ export class WSClient {
   private name = "";
   private roomCode: string | null = null;
   private reconnectToken: string | null = null;
-  private pendingReconnectKey: string | null = null;
+  private pendingReconnect: RecentGame | null = null;
   private pendingMatchOperation: { roomCode: string; type: "start_match" | "rematch"; request_id: string; expected_match_id: number } | null = null;
   private reconnectTimer: number | null = null;
   private reconnectDelay = 1000;
@@ -221,8 +223,8 @@ export class WSClient {
   // Local notification only; null means reconnect consumed the intent, outcome unknown.
   onCommandSettled?: (cmdId: string, applied: boolean | null) => void;
 
-  isOpen(): boolean {
-    return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+  isOpen(url?: string): boolean {
+    return !!this.ws && this.ws.readyState === WebSocket.OPEN && (!url || this.url === url);
   }
 
   setName(name: string) {
@@ -230,23 +232,44 @@ export class WSClient {
   }
 
   connect(url: string, name: string) {
-    this.url = url || defaultWebSocketUrl();
+    const nextUrl = url || defaultWebSocketUrl();
+    if (this.url && this.url !== nextUrl) {
+      this.pendingMatchOperation = null;
+      this.pendingCmds.clear();
+      this.roomState = this.matchState = null;
+      this.matchKey = null;
+      this.youPid = null;
+      this.matchId = this.seq = this.lastSeqApplied = 0;
+    }
+    // A manual Host/Join can replace a still-connecting refresh attempt.
+    if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    if (this.ws) {
+      this.ws.onopen = this.ws.onclose = this.ws.onerror = this.ws.onmessage = null;
+      this.ws.close();
+    }
+    this.url = nextUrl;
     this.name = name;
     this.openSocket();
   }
 
   host(maxPlayers: number) {
+    const interruptedReconnect = this.pendingReconnect !== null;
+    if (interruptedReconnect) this.leaveRoom();
+    clearCurrentGame();
     this.pendingMatchOperation = null;
     this.resetConfig();
     this.resetMapSelection();
     this.roomState = null;
     this.roomCode = null;
     this.reconnectToken = null;
-    this.pendingReconnectKey = null;
+    this.pendingReconnect = null;
     this.pendingAction = { type: "host", maxPlayers };
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.send({ type: "create_room", name: this.name, max_players: maxPlayers, ruleset: { base: true, max_players: maxPlayers } });
       this.pendingAction = null;
+    } else if (interruptedReconnect) {
+      this.openSocket();
     }
   }
 
@@ -266,10 +289,10 @@ export class WSClient {
     if (this.roomCode !== roomCode) this.reconnectToken = null;
     this.roomCode = roomCode;
     if (this.reconnectToken) {
-      this.pendingReconnectKey = `catan_reconnect_${roomCode}_${this.name}`;
+      this.pendingReconnect = { room_code: roomCode, reconnect_token: this.reconnectToken, last_known_name: this.name, last_seen_at: 0, server_url: this.url };
       this.send({ type: "reconnect", room_code: roomCode, reconnect_token: this.reconnectToken });
     } else {
-      this.pendingReconnectKey = null;
+      this.pendingReconnect = null;
       this.send({ type: "join_room", room_code: roomCode, name: this.name });
     }
   }
@@ -294,6 +317,7 @@ export class WSClient {
   }
 
   leaveRoom() {
+    clearCurrentGame();
     this.pendingMatchOperation = null;
     this.resetConfig();
     this.send({ type: "leave_room" });
@@ -307,7 +331,8 @@ export class WSClient {
     this.resetMapSelection();
     this.pendingCmds.clear();
     this.pendingAction = null;
-    this.roomCode = this.reconnectToken = this.pendingReconnectKey = this.matchKey = null;
+    this.roomCode = this.reconnectToken = this.matchKey = null;
+    this.pendingReconnect = null;
     this.roomState = this.matchState = null;
     this.youPid = null;
     this.matchId = this.seq = this.lastSeqApplied = 0;
@@ -382,7 +407,6 @@ export class WSClient {
     this.ws = new WebSocket(this.url);
     this.ws.onopen = () => {
       this.onStatus?.("connected");
-      this.reconnectDelay = 1000;
       this.send({ type: "hello", version: 1, name: this.name });
       if (this.pendingAction?.type === "host") {
         this.send({ type: "create_room", name: this.name, max_players: this.pendingAction.maxPlayers, ruleset: { base: true, max_players: this.pendingAction.maxPlayers } });
@@ -407,6 +431,7 @@ export class WSClient {
   }
 
   private scheduleReconnect() {
+    if (!this.pendingAction && !(this.roomCode && this.reconnectToken)) return;
     if (this.reconnectTimer) return;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
@@ -458,14 +483,23 @@ export class WSClient {
       return;
     }
     if (data.type === "reconnect_token") {
-      this.pendingReconnectKey = null;
+      this.pendingReconnect = null;
+      this.reconnectDelay = 1000;
       this.setMatch(data.room_code, data.match_id);
       this.roomCode = data.room_code;
       this.reconnectToken = data.reconnect_token;
       this.lastSeqApplied = data.last_seq_applied ?? 0;
       this.seq = Math.max(this.seq, this.lastSeqApplied);
+      const serverName = this.roomState?.players.find(p => p.pid === data.pid)?.name || this.name;
+      const identityChanged = this.youPid !== data.pid || this.name !== serverName;
       this.youPid = data.pid;
+      this.name = serverName;
       this.persistToken();
+      // A stale cached nickname may not identify us in the earlier room_state.
+      if (identityChanged && this.roomState) {
+        this.roomState = { ...this.roomState };
+        this.onRoomState?.(this.roomState);
+      }
       const operation = this.pendingMatchOperation;
       if (operation?.roomCode === data.room_code) {
         if (data.match_id > operation.expected_match_id) this.pendingMatchOperation = null;
@@ -502,14 +536,11 @@ export class WSClient {
         this.pendingMatchOperation = null;
       this.finishConfig(data.detail?.request_id);
       if (this.mapInFlight && data.detail?.request_type === "set_map") this.finishMapSelection();
-      if (this.pendingReconnectKey && (data.code === "forbidden" || data.code === "not_found")) {
+      if (this.pendingReconnect && !data.detail?.retryable && (data.code === "forbidden" || data.code === "not_found")) {
+        removeRecentGame(this.pendingReconnect);
         this.reconnectToken = null;
-        try {
-          localStorage.removeItem(this.pendingReconnectKey);
-        } catch {
-          // Storage may be unavailable; still report the server rejection.
-        }
-        this.pendingReconnectKey = null;
+        this.pendingReconnect = null;
+        clearCurrentGame();
       }
       if (data.code === "out_of_order") {
         const expected = data.detail?.expected_seq;
@@ -537,7 +568,7 @@ export class WSClient {
   }
 
   private setMatch(roomCode: string, matchId: number) {
-    const key = `${roomCode}:${matchId}`;
+    const key = `${this.url}:${roomCode}:${matchId}`;
     if (this.matchKey === key) return;
     this.matchKey = key;
     this.matchId = matchId;
@@ -548,23 +579,34 @@ export class WSClient {
 
   private persistToken() {
     if (!this.roomCode || !this.reconnectToken) return;
-    const key = `catan_reconnect_${this.roomCode}_${this.name}`;
-    localStorage.setItem(key, JSON.stringify({ token: this.reconnectToken, pid: this.youPid ?? 0 }));
+    const entry = { room_code: this.roomCode, reconnect_token: this.reconnectToken,
+      last_known_name: this.name, last_seen_at: Date.now(), server_url: this.url };
+    saveRecentGame(entry);
+    setCurrentGame(entry);
   }
 
-  loadToken(roomCode: string, name: string) {
-    const key = `catan_reconnect_${roomCode}_${name}`;
+  loadToken(roomCode: string, name: string, url = this.url || defaultWebSocketUrl()) {
+    if (this.pendingReconnect) this.leaveRoom();
     this.roomCode = roomCode;
     this.reconnectToken = null;
-    this.pendingReconnectKey = null;
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      this.reconnectToken = typeof data.token === "string" && data.token ? data.token : null;
-    } catch {
-      return;
-    }
+    this.pendingReconnect = null;
+    this.reconnectToken = readRecentGames().find(entry => entry.room_code === roomCode && entry.last_known_name === name
+      && (!entry.server_url || entry.server_url === url))?.reconnect_token ?? null;
+  }
+
+  continueGame(entry: RecentGame, url = defaultWebSocketUrl()) {
+    this.leaveRoom(); // Fence late callbacks before selecting the saved room.
+    this.name = entry.last_known_name;
+    this.roomCode = entry.room_code;
+    this.reconnectToken = entry.reconnect_token;
+    this.join(entry.room_code); // Existing Join intent sends reconnect, never a new seat.
+    setCurrentGame(entry); // Temporary failures must keep same-tab refresh recovery available.
+    this.connect(entry.server_url || url, this.name);
+  }
+
+  restoreCurrentGame(url = defaultWebSocketUrl()) {
+    const entry = currentGame();
+    if (entry) this.continueGame(entry, url);
   }
 
   private send(obj: any) {

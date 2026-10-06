@@ -4,6 +4,20 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Persistence 1C — Recent Games and Continue
+
+Implemented/verified **2026-10-06**: 150 web cases, TS/production/Docker builds и 10 Chrome/Nginx/PG checks; full pytest 535. [RecentGames.tsx](../../web/src/components/RecentGames.tsx) находится над lobby-grid, поэтому Connection/Room не получают лишние пустые grid tracks. Scoped [recentGames.css](../../web/src/components/recentGames.css) оформляет компактные dark cards; match UI/Board3D не менялись.
+
+[recentGames.ts](../../web/src/recentGames.ts) — version-1 local guest discovery, max 10, ordered by last successful reconnect time. Entry: room_code/token/name hint/last_seen_at, optional server_url. Exact hand/dev/snapshot/DB IDs/pid не сохраняются. Legacy keys мигрируют после безопасной записи; overflow proofs сохраняются в прежних ключах до появления места в bounded списке; rematch не создаёт entry по новому pid. Known manual-server credentials проверяются только на своём сервере; карточки используют API backend сайта. Legacy без endpoint относится к default backend.
+
+RecentGames effect запускает один bounded batch HTTP с AbortController/8s timeout; StrictMode/unmount cleanup не позволяет позднему ответу менять экран. Available card отображает только server map/name/color/participants/presence/status, optional public winner. Cache name не authoritative. Invalid removes only that proof, temporary 503/429/offline/invalid response keeps it and shows Retry. Loading confined to section, Host/Join remain interactive. Никаких tokens в DOM/URL/transport log.
+
+Click Continue → WSClient.continueGame → existing queued Join intent → reconnect(code,token) → normal room_state → reconnect_token(pid/epoch/consumed seq) → personalized match_state → App/GamePage. Lobby и game_over используют прежние экраны. Verified token corrects stale nickname/own pid and republishes identity for lobby host permissions. Continue never falls back to name join. Manual Host/Join cancels an unfinished refresh reconnect, including an already open but unverified socket; old callbacks cannot overwrite the new room or remove its proof. Selected WS URL is honored. Changing servers clears previous room revisions, match/sequence and pending commands, even if room code/epoch happen to match.
+
+App запускает restoreCurrentGame один раз после установки callbacks, guarded useRef. Current pointer в sessionStorage содержит room/name/server, без token/pid, и разрешается через localStorage proof. Refresh той же вкладки auto reconnect; новый вход без pointer показывает Recent. Successful proof updates last_seen_at; permanent rejection clears selected proof/pointer and stops retries, outages keep proof with existing bounded backoff. Explicit leave clears pointer and client state, preserving Recent. New verified connection retains existing single-active-socket takeover.
+
+Browser-local only: cleared/blocked storage cannot recover by nickname; neutral text states the limit. No account/login/history/cross-device recovery. Details and repeatable checks — [[plans/persistence-auth#Persistence Phase 1C — completed 2026-10-06]], [[Сервер и протокол#Recent game inspection — Persistence 1C]].
+
 ## Game UX 2.3 — current playtest feedback flow
 
 Verified **2026-10-06**: 128 web tests, 266 pytest, TypeScript/production/Docker builds, 27 real Chrome cases. SVG/shared controller/Ship/matching-ACK пути сохранены. Актуальная композиция ниже заменяет прежние top strip, target select, modal-first play и numeric discard; секции 2.2/2.1/Phase 2 описывают исторические этапы.
@@ -176,7 +190,7 @@ Build palette показывает только инструменты с сущ
 
 ```text
 App
-├── LobbyPage → connection / map / MatchSettings / PlayerColors / RoomChat
+├── LobbyPage → RecentGames (home only) / connection / map / MatchSettings / PlayerColors / RoomChat
 │   └── Enable Test Room (only host, flag ON, lobby)
 └── GamePage → one snapshot / useBoardInteraction / useGameCommand
     ├── GameTopBar → brand / goal / info / event button

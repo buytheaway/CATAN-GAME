@@ -45,10 +45,8 @@ function stable(c) {
 async function freshReconnect(c, code) {
   c.match = null; c.room = null;
   await c.page.reload({ waitUntil: 'networkidle' });
-  await c.page.getByLabel('Name', { exact: true }).fill(c.name);
-  await c.page.getByLabel('Room code').fill(code);
-  await c.page.getByRole('button', { name: 'Join', exact: true }).click();
   await h.wait(() => c.match && c.room, 'refresh verified guest reconnect');
+  assert.equal(c.room.room_code, code);
 }
 async function resolvePending(clients) {
   if (clients[0].match.state.pending_action === 'discard') {
@@ -214,4 +212,5 @@ async function main() {
     await browser.close();
   }
 }
-main().catch(error=>{console.error(error);process.exitCode=1;});
+if (require.main === module) main().catch(error=>{console.error(error);process.exitCode=1;});
+module.exports = { docker, compose, metadata, stable, freshReconnect, naturalSetup, resolvePending };

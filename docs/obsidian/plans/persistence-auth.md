@@ -1,7 +1,7 @@
 ---
 tags: [catan, architecture, persistence, auth, plan]
 updated: 2026-10-06
-status: phase-1b-completed
+status: phase-1c-completed
 ---
 
 # Persistence + Auth Architecture v1
@@ -10,9 +10,54 @@ status: phase-1b-completed
 
 ## Status and boundary
 
-Architecture plan audited 2026-10-06 against `745d749` / `game-ux-2-3`, then used as the user-approved direction for Persistence 1A/1B. **Full GameState codec 1A and durable guest backend 1B are implemented/verified.** Auth, Continue and Profile remain future scope. Current authority/privacy/consumed-sequence/rematch constraints remain in force; engine/rules/codec/player projection unchanged. Historical pre-persistence audit and future account proposals below are labelled separately from the implemented 1B contract.
+Architecture plan audited 2026-10-06 against `745d749` / `game-ux-2-3`, then used as the user-approved direction for Persistence 1A/1B. **Full GameState codec 1A, durable guest backend 1B and guest Continue UX 1C are implemented/verified.** Auth and Profile remain future scope. Current authority/privacy/consumed-sequence/rematch constraints remain in force; engine/rules/codec/player projection unchanged. Historical pre-persistence audit and future account proposals below are labelled separately from the implemented 1B contract.
 
 Goal: one FastAPI worker and one PostgreSQL database; committed active games survive process/container restart, guests can continue using their credential, accounts can later list their games. No Redis, broker, event sourcing, multi-instance coordination, engine rewrite or mandatory registration.
+
+## Persistence Phase 1C — completed 2026-10-06
+
+**Completed; READY FOR CHECKPOINT.** Authorized after `1e4dfb9` / `persistence-phase-1b`.
+Pre-implementation audit found legacy localStorage token+pid keys, manual Join on refresh,
+and an already durable verified reconnect; no second reconnect/auth system was needed.
+
+Implemented flow: browser version-1 max10 bindings → POST inspect-many → safe cards →
+existing WS Join intent/reconnect → server-owned seat/epoch/seq → ordinary personal snapshot.
+Browser entry fields are room_code/reconnect_token/last_known_name/last_seen_at plus optional
+server_url to keep explicit manual-server proofs out of another server's validation request.
+Legacy keys migrate without pid, only after a successful bounded write; overflow proofs keep their old keys until a bounded slot can hold a replacement; unknown future schema
+is preserved. A separate same-tab sessionStorage pointer has room/name/server, not token/pid.
+App restores it once; explicit leave preserves Recent but clears current pointer. New socket
+fences old callbacks, server takeover is unchanged. Manual Host/Join can cancel an unfinished refresh even after socket open; server changes clear prior revisions/sequence/pending state. Rematch preserves one credential entry.
+
+HTTP contract/privacy/limits — [[Сервер и протокол#Recent game inspection — Persistence 1C]].
+One bounded body/10-proof metadata SELECT; no private snapshots. Invalid proof gets generic
+invalid; valid quarantined/fenced/unloaded room temporary. 503/429/network failures retain proofs.
+No renewal/activity/socket/timer/game mutation during inspection. Name/color from server.
+Nginx /api/ and Vite proxy route to the existing backend; no deployment architecture change.
+Create/Join remain usable during loading/outage; compact dark cards above the old lobby grid.
+
+Verification: **535 pytest**, including **73 real-PG cases**, **150 web**, TS/production build,
+Docker backend/web, nginx -t and pip check. After final WS changes, live-server web Join and latest-image Chrome Host/Join/Start/auto-refresh/Continue/privacy smoke passed.
+Chrome 154, ordinary two-client Base setup: **10/10 checks**, backend SIGKILL/Continue,
+identical seat/match/engine/deck/bag, successful Roll, automatic refresh, retained-volume
+full down/up/Continue, two rooms/lobby Continue, stale-name correction, held loading/503/retry,
+internal durable close only one entry removed and accepted End in the remaining room.
+Reproduction: `web/e2e/continue-games.cjs`, isolated `catan-persistence-test` Compose project,
+Chrome/Playwright from external temporary test installation. No production stack restart or -v.
+Screenshots/report are temporary test artifacts; no session note/new reference assets.
+
+Median browser→Nginx→PG round trip, 12 samples each: single **8.2ms**, batch5 distinct valid
+proofs **8.4ms**, local Docker Desktop, not load benchmark. Engine/codec/rules/Board3D/WS shape
+unchanged; scenarios not rerun, **348/508 historical**. No new runtime dependencies or migrations.
+No confirmed 1C blocker. Checkpoint `feat: add continue game recovery experience`,
+tag `persistence-phase-1c`; Auth must not start automatically.
+
+Limits: browser-local bearer in localStorage is vulnerable to XSS/theft/storage loss; no nickname
+recovery/accounts/cross-device history. One socket/seat, valid new tab can take over. Current
+pointer is tab-local, while proofs are shared by same-origin tabs. Recent inspection targets
+the site's backend; known manual-server bindings are preserved for that server, not silently
+invalidated elsewhere. Legacy credentials had no endpoint and assume default server. No
+TLS/backup/retention/multi-worker/production load certification; old gameplay P1 unchanged.
 
 ## Persistence Phase 1A — completed 2026-10-06
 
@@ -359,7 +404,7 @@ Password hashing: Argon2id, generated salt and encoded parameters; tune on deplo
 
 ## Continue Game and future history contracts
 
-Home/Menu → Active Games → Continue. Account list uses authenticated user_id from session joined to current active membership; guest list starts from browser bindings `{server_origin,room_id,room_code,token,name_hint}` and validates each credential with server. Browser storage indexes simplify discovery, never establish ownership. Migrate old code+name storage after a successful verified reconnect; do not search/join by nickname. If storage is unavailable/cleared, warn that guest continuity is unavailable; accounts remain recoverable from DB after login.
+Guest Continue 1C is implemented above with no room UUID/pid in browser storage. The following richer account/history contracts remain proposals. Home/Menu → Active Games → Continue. Account list uses authenticated user_id from session joined to current active membership; guest list starts from browser bindings `{server_origin,room_id,room_code,token,name_hint}` and validates each credential with server. Browser storage indexes simplify discovery, never establish ownership. Migrate old code+name storage after a successful verified reconnect; do not search/join by nickname. If storage is unavailable/cleared, warn that guest continuity is unavailable; accounts remain recoverable from DB after login.
 
 Proposed safe active-game DTO: room_id/code, map_id/name, membership capacity and current participant count, live connected count, match_no, status, public current-turn name, started_at/last_activity_at, can_continue/recovery_status. Example: “ABCD12 · Base Standard · 3/4 participants · 2 online · turn Player2”. No seed, resources, bank, private choices/deck/bag or full snapshot. Reconnect authenticates again and receives ordinary personal room/match snapshots. Pending map settings are not replayed from browser; committed server config wins.
 
@@ -452,9 +497,9 @@ Finished normal results retained indefinitely in v1; full finished snapshots/pri
 
 ## Blockers and recommended next step
 
-Codec prerequisite and durable guest backend gates closed by verified 1A/1B. Existing to_dict/from_dict remains incomplete and must not replace full codec. Continue/auth/history/TLS/backup/load/retention remain separate work; gameplay P1 unchanged.
+Codec, durable guest backend and Continue gates closed by verified 1A/1B/1C. Existing to_dict/from_dict remains incomplete and must not replace full codec. Auth/history/TLS/backup/load/retention remain separate work; gameplay P1 unchanged.
 
-**Next only on a separate user request: Persistence 1C — Continue Game UI**, then optional Auth/Profile stages. Do not start automatically. Checkpoint 1B before extending scope.
+**Next only on a separate user request: optional Auth/Profile stages or another focused task.** Do not start automatically; checkpoint 1C before extending scope.
 
 ## Audit evidence and sources
 

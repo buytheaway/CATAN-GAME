@@ -6,10 +6,11 @@ from contextlib import suppress
 from datetime import datetime, timezone
 from time import perf_counter
 
-from sqlalchemy import select, insert, update, delete, or_
+from sqlalchemy import select, insert, update, delete, or_, and_, func, Integer
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from . import models as m
-from .credentials import utcnow
+from .credentials import utcnow, token_hash, valid_token
+from .inspection import safe_game
 from .errors import PersistenceUnavailable, CommitUncertain
 from .recovery import room_config, match_checkpoint, checksum
 
@@ -23,6 +24,57 @@ class Repository:
     def _fault(self, stage):
         if self._test_fault:
             self._test_fault(stage)
+
+    async def inspect_credentials(self, manager, credentials):
+        """One metadata SELECT, no private snapshot/config/map definition loading."""
+        hashed = [(code, token_hash(raw)) for code, raw in credentials]
+        winner = m.match_players.alias("inspection_winner")
+        count = (select(func.count()).select_from(m.room_players)
+                 .where(m.room_players.c.room_id == m.rooms.c.id, m.room_players.c.status == "active")
+                 .correlate(m.rooms).scalar_subquery())
+        query = select(
+            m.rooms.c.room_code, m.rooms.c.status.label("room_status"), m.rooms.c.max_players,
+            m.rooms.c.updated_at, m.room_players.c.name, m.room_players.c.color, m.seat_tokens.c.token_hash,
+            m.rooms.c.config["map_meta"]["name"].astext.label("map_name"),
+            m.rooms.c.config["rules"]["target_vp"].astext.cast(Integer).label("target_vp"),
+            m.matches.c.status.label("match_status"), count.label("player_count"),
+            winner.c.name.label("winner_name"), winner.c.color.label("winner_color"),
+        ).select_from(m.rooms.join(m.room_players, m.room_players.c.room_id == m.rooms.c.id)
+                      .join(m.seat_tokens, m.seat_tokens.c.room_player_id == m.room_players.c.id)
+                      .outerjoin(m.matches, m.matches.c.id == m.rooms.c.current_match_id)
+                      .outerjoin(winner, winner.c.id == m.matches.c.winner_match_player_id)).where(
+            or_(*(and_(m.rooms.c.room_code == code, m.seat_tokens.c.token_hash == digest) for code, digest in hashed)),
+            m.room_players.c.status == "active", m.room_players.c.current_pid.is_not(None),
+            m.seat_tokens.c.revoked_at.is_(None), m.seat_tokens.c.expires_at > utcnow(),
+            m.rooms.c.status.in_(("lobby", "in_match", "quarantined")), m.rooms.c.closed_at.is_(None),
+            or_(m.rooms.c.expires_at.is_(None), m.rooms.c.expires_at > utcnow()))
+        async with self.db.sessions() as session:
+            rows = (await session.execute(query)).mappings().all()
+        indexed = {(row["room_code"], bytes(row["token_hash"])): row for row in rows}
+        results = []
+        for (code, raw), key in zip(credentials, hashed):
+            row = indexed.get(key)
+            if row is None:
+                results.append({"status": "invalid"})
+                continue
+            room = manager.rooms.get(code)
+            if room is None or room.persistence_blocked or row["room_status"] == "quarantined":
+                results.append({"status": "temporarily_unavailable"})
+                continue
+            async with room.lock:
+                if not any(p.name and valid_token(p, raw) for p in room.players):
+                    # A lifecycle commit may have raced the SELECT; reconnect will revalidate.
+                    results.append({"status": "temporarily_unavailable"})
+                    continue
+                results.append(safe_game(
+                    room_code=code, map_name=row["map_name"], name=row["name"], color=row["color"],
+                    player_count=row["player_count"], max_players=row["max_players"],
+                    connected_count=sum(bool(p.name and p.connected) for p in room.players),
+                    status="game_over" if row["match_status"] == "finished" else
+                           "active" if row["match_status"] == "active" else "lobby",
+                    target_vp=row["target_vp"], updated_at=row["updated_at"],
+                    winner={"name": row["winner_name"], "color": row["winner_color"]} if row["winner_name"] else None))
+        return results
 
     async def save(self, before, candidate, *, snapshot=False, receipt=None, operation=None):
         started = perf_counter()

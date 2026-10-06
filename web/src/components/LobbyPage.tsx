@@ -3,6 +3,7 @@ import { RoomState, ServerError, WSClient } from "../wsClient";
 import { MatchSettings, PlayerColors } from "./RoomSettings";
 import RoomChat from "../game/RoomChat";
 import { colorForPlayer } from "../board/colors";
+import RecentGames from "./RecentGames";
 import "../game/room.css";
 
 export default function LobbyPage({
@@ -46,29 +47,23 @@ export default function LobbyPage({
 
   const onHost = () => {
     client.setName(name);
-    if (client.isOpen()) {
-      client.host(maxPlayers);
-      return;
-    }
+    if (!client.isOpen(url)) client.connect(url, name);
     client.host(maxPlayers);
-    client.connect(url, name);
   };
 
   const onJoin = () => {
     const code = roomCode.trim().toUpperCase();
     if (!code) return;
-    client.loadToken(code, name);
+    client.loadToken(code, name, url);
     client.setName(name);
-    if (client.isOpen()) {
-      client.join(code);
-      return;
-    }
+    if (!client.isOpen(url)) client.connect(url, name);
     client.join(code);
-    client.connect(url, name);
   };
 
   return (
-    <div className="lobby-grid">
+    <div>
+      {!room && <RecentGames client={client} wsDefault={wsDefault} error={error} />}
+      <div className="lobby-grid">
       <div className="panel card">
         <h3>Connection</h3>
         <label className="field">
@@ -181,6 +176,7 @@ export default function LobbyPage({
         ) : (
           <div className="muted">No room yet</div>
         )}
+      </div>
       </div>
     </div>
   );

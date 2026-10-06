@@ -15,13 +15,14 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime
 from typing import Any, Deque, Dict, List, Optional, Set
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from app.persistence.coordinator import Coordinator
 from app.persistence.db import configured_database
 from app.persistence.credentials import utcnow, issue_token, token_hash, valid_token, renewed_expiry
 from app.persistence.errors import PersistenceUnavailable, RecoveryError
 from app.persistence.recovery import clone_room, resume_timer, checksum
+from app.persistence.inspection import MAX_CREDENTIALS, MAX_BODY_BYTES, InspectionLimiter, inspect_memory
 
 from app import net_protocol
 from app import game_events, test_tools
@@ -235,6 +236,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 manager = RoomManager()
 persistence = Coordinator()
+inspection_limiter = InspectionLimiter()
 
 
 @app.get("/health")
@@ -243,6 +245,50 @@ def health():
                          "ready": persistence.ready,
                          "persistence": "postgresql" if persistence.database else "memory"},
                         status_code=200 if persistence.ready else 503)
+
+
+@app.post("/api/reconnect/inspect-many")
+async def inspect_recent_games(request: Request):
+    # Parse manually: FastAPI's default validation response can echo a secret input.
+    headers = {"Cache-Control": "no-store"}
+    def failure(code):
+        return JSONResponse({"status": "temporarily_unavailable" if code in (429, 503) else "invalid_request"},
+                            status_code=code, headers=headers)
+    peer = request.client.host if request.client else "unknown"
+    if not inspection_limiter.allow(peer):
+        return failure(429)
+    if not persistence.ready:
+        return failure(503)
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > MAX_BODY_BYTES:
+            return failure(413)
+        body.extend(chunk)
+    try:
+        data = json.loads(body)
+        entries = data["credentials"]
+        if set(data) != {"credentials"} or not isinstance(entries, list) or not 1 <= len(entries) <= MAX_CREDENTIALS:
+            return failure(400)
+        credentials = []
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) != {"room_code", "reconnect_token"}:
+                return failure(400)
+            code, token = entry["room_code"], entry["reconnect_token"]
+            if (not isinstance(code, str) or not 1 <= len(code) <= 32
+                    or not isinstance(token, str) or not 1 <= len(token) <= 512):
+                return failure(400)
+            code.encode("utf-8"), token.encode("utf-8")
+            credentials.append((code.strip().upper(), token))
+    except (ValueError, KeyError, TypeError, UnicodeError):
+        return failure(400)
+    try:
+        results = (await persistence.repository.inspect_credentials(manager, credentials) if persistence.repository
+                   else await inspect_memory(manager, credentials))
+    except Exception:
+        # No row, query parameters, request body or underlying exception in logs/responses.
+        logging.getLogger(__name__).warning("Recent-game inspection temporarily unavailable")
+        return failure(503)
+    return JSONResponse({"results": results}, headers=headers)
 
 
 CMD_ID_LRU = 256

@@ -1,0 +1,13 @@
+.recent-games { min-width: 0; color: #e6eef4; margin-bottom: 16px; }
+.recent-games-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.recent-games-title h3 { margin: 0; }
+.recent-games-title .btn { background: #183346; border: 1px solid #47647a; color: #d9e5ed; }
+.recent-games-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 12px; }
+.recent-game { background: #102232; border: 1px solid #385268; border-radius: 12px; padding: 16px; min-width: 0; }
+.recent-game-heading { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: baseline; }
+.recent-game-heading span { font-size: 12px; color: #92e2d0; }
+.recent-game p { margin: 10px 0; color: #bcd0dc; font-size: 13px; overflow-wrap: anywhere; }
+.recent-game .recent-map { font-size: 15px; color: #e6eef4; }
+.recent-game .btn { margin-top: 4px; }
+.recent-games .btn:focus-visible { outline: 2px solid #82d4bc; outline-offset: 3px; }
+.guest-recovery-note { color: #bcd0dc; font-size: 12px; margin: 12px 0 0; }
