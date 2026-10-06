@@ -9,6 +9,28 @@ updated: 2026-10-06
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
 
+## ADR-011 — Separate full trusted GameState codec
+
+Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A.** The user authorized codec implementation from [[plans/persistence-auth]]; database/auth/Room recovery are not implemented.
+
+Decision: full private engine persistence has its own `app/persistence/snapshots.py` surface, separate from existing network/offline serialize.to_dict/from_dict/to_player_dict. Envelope snapshot_version=1 / engine_compatibility=1 contains all shared GameState fields, explicit known dataclass construction and stored materialized geometry; it contains no Room/DB metadata. Restore does not execute commands, generate board or shuffle. Required/unknown fields, primitive types, references and versions fail closed; field-coverage guard prevents silent new engine field loss. v1 is immutable after release; future schemas need explicit version compatibility/migration.
+
+Reason: old serializer omits secrets/counters and old-view equality can hide loss. Extending its network projection base with secrets would risk disclosure. Dedicated JSON/type equivalence, independent objects and original command outcomes prove a usable recovery prerequisite without gameplay/network changes.
+
+Consequences: no server caller yet; full payload is never a client projection. All 40 GameState fields/nested models covered; pieces/port ownership/property aliases are derived from saved board/rules rather than duplicated. Non-JSON metadata and oversized/deep payloads are unsupported explicitly. Full pytest 445/445, including 179 codec cases, all map presets and 50 hex; runtime engine/server/frontend unchanged. Phase 1B still must persist Room identity/ownership/seq/bag/timer/chat/events and implement durable commit/recovery. Qt save remains separate and retains its older integer-key bug.
+
+## ADR-010 — Durable room state and optional account identity
+
+Status: **Architecture direction approved by user for staged work — 2026-10-06; only codec Phase 1A implemented.** Audit base `745d749` / `game-ux-2-3`. Database/auth/product policies below are future scope, not runtime guarantees. Full rationale/schema — [[plans/persistence-auth]].
+
+Decision proposed: retain one backend worker, Room/RoomManager and shared Python GameState as committed active runtime; PostgreSQL provides durability. Normalize room/seat/account/match identity, metadata, sessions and safe final results; use a separate versioned full trusted GameState codec plus private Room checkpoint data. Candidate execution → DB transaction/commit → runtime promotion → personal broadcast/ACK. Persist consumed sequence and bounded receipts including final rejection; serialize timer/lifecycle/commands under a room lock and resolve ambiguous commits before retry. No Redis, broker or event-sourced rules engine.
+
+Reason: process-local rooms/tokens/RNG/timers disappear on restart. Current to_dict/from_dict omits private state and cannot be a complete recovery format; adding secrets to its network-projection base is unsafe. Recovered games need both complete engine state and usable durable ownership/replay protection.
+
+Identity proposed: stable RoomPlayer/MatchPlayer UUIDs coexist with current room code, compact pid and room-local match_id. Guest seat uses hashed bearer credential; optional account uses opaque hashed server session and HttpOnly/Secure/SameSite cookie. Account binding requires both session and guest proof, revokes guest credentials and preserves match membership. New authorized connection fences old owner. No mandatory registration or JWT stack.
+
+Consequences proposed: start with codec-only Phase 1A; implement DB/adapters/recovery/guest credentials together in 1B, then Continue UI, Auth and Profile separately. DB failure blocks new mutations; no success ACK before commit, no silent fallback to an older ACKed checkpoint. Hash-only credential storage changes token issuance/reconnect internals; lifecycle controls need future retry identifiers. Downtime timer grace, retention and account takeover policies remain proposals requiring product acceptance. Current plain HTTP Docker needs TLS before production cookie auth. ADR-001/002/005/006/007/008/009 remain accepted constraints; nothing here modifies runtime or protocol now.
+
 ## ADR-009 — Server-owned room policy, independent presentation colors
 
 Status: Accepted; implemented and verified 2026-10-06, Game / Room UX 2.2.

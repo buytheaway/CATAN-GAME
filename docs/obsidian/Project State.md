@@ -5,6 +5,16 @@ updated: 2026-10-06
 
 # Project State
 
+## Persistence Phase 1A — Full Trusted GameState Codec
+
+**Completed — 2026-10-06. READY FOR CHECKPOINT.** Separate `app/persistence/snapshots.py` exposes encode/decode/dumps/loads for full private shared-engine state. Envelope snapshot_version=1 / engine_compatibility=1; all 40 GameState fields and nested dataclasses preserved through JSON, explicit int/tuple/set restoration, materialized board IDs/order, complete private deck/cards/bank/pending/free_roads/counters. Exact shapes/versions/types/references, duplicate keys/IDs and format limits validated; no generation/shuffle/repair/automatic defaults. Details — [[plans/persistence-auth#Persistence Phase 1A — completed 2026-10-06]], [[Состояние игры#Full trusted persistence codec v1]], [[Architecture Decisions#ADR-011 — Separate full trusted GameState codec]].
+
+Full pytest **445/445** passed: 266 checkpoint tests plus **179 codec cases**, including 30 pre-implementation characterizations. All 12 map presets/50-hex custom fixture, Base lifecycle/dev/trade/endgame, ship/move/pirate/gold, command continuation/atomic refusal, deep type equivalence, mutation independence and active/final Hidden-mode privacy verified. Existing to_dict/from_dict remains incomplete; to_player_dict/server/engine runtime were not changed. Qt offline JSON-key issue was audited but not fixed.
+
+Measured 100-sample local median: Base 7,662 bytes / encode 1.250ms / decode 0.842ms; Gold 7,778 / 1.239 / 0.826; 50-hex 16,363 / 2.715 / 1.741. Includes validation/text JSON, excludes DB/fs/network and long-match growth. No new dependencies, Docker/auth/HTTP/WS/React changes. Web/build/scenarios not rerun because those paths/engine were untouched; **348/508 is historical**.
+
+Next separate task: Persistence 1B durable Room adapter/recovery/hashed guest credentials/seq receipts/commit-before-ACK. Room bag/timer/chat/private event feed/ownership/revisions are NOT in this engine codec; restart still loses games until 1B. Codec schema v1 freezes at checkpoint; unknown/new fields need explicit compatibility review. Checkpoint message `feat: add versioned game state persistence codec`, tag `persistence-phase-1a`; not created automatically. Existing `.obsidian` preferences remain outside task.
+
 Last verified: **2026-10-06 — Game UX 2.3 Completed, READY FOR CHECKPOINT.** Полный pytest **266/266**, web **128/128**, TypeScript, production web build и оба Docker images проходят. Docker/nginx + Chrome 154: **27/27 E2E cases**, 103 command attempts, 12 ожидаемых refusals. Scenario suite повторена: **348/508**, прежние 160 failures в восьми сценариях; assertions/rules для них не ослаблялись. Scope/evidence/limits — [[plans/game-ui-redesign#Game UX 2.3 — Playtest Feedback Pass]], [[Design System#Game UX 2.3 — implemented playtest feedback]].
 
 Игроки и timer справа, Log/Chat сворачиваются, Bank виден как animation anchor. Hand — пять мини-карт со stack/count; Knight/Road Building играются прямо из руки, Monopoly/Plenty открывают необходимый picker, VP passive. Trade Tray отправляет existing broadcast offer или maritime trade отдельными кнопками. Discard выбирается картами; новый host-only lobby setting `discard_threshold` default 7, strict hand > threshold, прежняя floor(hand/2), locked после Start и сохраняется при rematch.
