@@ -9,19 +9,31 @@ updated: 2026-10-06
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
 
+## ADR-012 — Durable commit gate and conservative restart
+
+Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1B.** User authorized PostgreSQL durability, stable guest ownership, commit-before-ACK and paused restart policy. Engine/rules remain unchanged.
+
+Decision: one active backend worker/replica keeps committed Room/GameState in RAM; SQLAlchemy 2 async sessions + Alembic + psycopg 3 commit durable aggregates to PostgreSQL. Every command, timer, config/chat mutation, reconnect and lifecycle transition uses the same Room lock. Execute on detached candidate, save head/private runtime/seq/receipt/metadata in one transaction, COMMIT, promote RAM, then personal broadcast/ACK. Failed writes discard candidate. Ambiguous COMMIT requires exact revision/head/receipt lookup; until resolved room is fenced. Never re-roll/re-steal or load an older ACKed head. Final engine RuleError persists consumed seq/receipt only; pre-engine ownership/epoch/gap/no_match failures are unconsumed.
+
+Decision: guest token uses 256-bit secure entropy, DB SHA-256 only, constant-time comparison, 30-day authenticated inactivity expiry, no reconnect rotation. Retained RoomPlayer UUID follows compact rematch pid; excluded/closed members revoked in same transaction. UUID/name/pid/room code are not credentials. Account/session identity remains future work. Start/rematch use additive request_id + expected_match_id, persisted bounded operations; legacy controls without fields remain accepted but cannot express replay-safe rematch intent.
+
+Decision: recovery validates current head and reconstructs exact board/deck/bag/dice/pending/feed/config without generation. Lobby, live and finished rooms load disconnected. Test/closed/expired/abandoned rooms are excluded; corrupt head quarantined, healthy rooms recover independently. Timed matches wait for first valid participant reconnect. For turn/grace, resume remaining = max(20s, min(configured duration, saved UTC deadline minus current UTC)); blocked/stopped preserve meaning. No offline automatic turn chain or automatic mandatory choices.
+
+Consequences: startup Alembic is safe only under the one-worker/replica deployment assumption. Readiness is 503 until DB/schema/recovery ready; failed write/outage blocks mutations, WS emits retryable persistence_unavailable/1013. Recovery reads committed state and forces ordinary verified reconnect after same-process outage. Head + 2 predecessors, receipts 256/participant and operations 256/room are bounded; no retention scheduler, auth/Continue UI, backup or multi-worker coordination. RAM-only dev remains compatible mode; durable Compose never falls back. Verification: full pytest 508, web 130, real PostgreSQL/process/Chrome restart and isolated volume retention/deletion. Details — [[plans/persistence-auth#Persistence Phase 1B — implementation and verification]], [[Deployment]].
+
 ## ADR-011 — Separate full trusted GameState codec
 
-Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A.** The user authorized codec implementation from [[plans/persistence-auth]]; database/auth/Room recovery are not implemented.
+Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A.** Codec remains unchanged in 1B; durable Room adapter now uses it. Auth/Continue remain unimplemented.
 
 Decision: full private engine persistence has its own `app/persistence/snapshots.py` surface, separate from existing network/offline serialize.to_dict/from_dict/to_player_dict. Envelope snapshot_version=1 / engine_compatibility=1 contains all shared GameState fields, explicit known dataclass construction and stored materialized geometry; it contains no Room/DB metadata. Restore does not execute commands, generate board or shuffle. Required/unknown fields, primitive types, references and versions fail closed; field-coverage guard prevents silent new engine field loss. v1 is immutable after release; future schemas need explicit version compatibility/migration.
 
 Reason: old serializer omits secrets/counters and old-view equality can hide loss. Extending its network projection base with secrets would risk disclosure. Dedicated JSON/type equivalence, independent objects and original command outcomes prove a usable recovery prerequisite without gameplay/network changes.
 
-Consequences: no server caller yet; full payload is never a client projection. All 40 GameState fields/nested models covered; pieces/port ownership/property aliases are derived from saved board/rules rather than duplicated. Non-JSON metadata and oversized/deep payloads are unsupported explicitly. Full pytest 445/445, including 179 codec cases, all map presets and 50 hex; runtime engine/server/frontend unchanged. Phase 1B still must persist Room identity/ownership/seq/bag/timer/chat/events and implement durable commit/recovery. Qt save remains separate and retains its older integer-key bug.
+Consequences: full payload is never a client projection; 1B coordinator is its private server caller. All 40 GameState fields/nested models covered; pieces/port ownership/property aliases are derived from saved board/rules rather than duplicated. Non-JSON metadata and oversized/deep payloads are unsupported explicitly. Phase 1A verification: 445/445 pytest, including 179 codec cases, all map presets and 50 hex; at that checkpoint engine/server/frontend were unchanged. Room adapter/commit/recovery are now described in ADR-012. Qt save remains separate and retains its older integer-key bug.
 
 ## ADR-010 — Durable room state and optional account identity
 
-Status: **Architecture direction approved by user for staged work — 2026-10-06; only codec Phase 1A implemented.** Audit base `745d749` / `game-ux-2-3`. Database/auth/product policies below are future scope, not runtime guarantees. Full rationale/schema — [[plans/persistence-auth]].
+Status: **Architecture direction approved by user for staged work — 2026-10-06; codec 1A and durable guest backend 1B implemented.** Audit base `745d749` / `game-ux-2-3`. Account/auth/Continue/history proposals below remain future scope. Current implemented contract — ADR-012; full rationale/schema — [[plans/persistence-auth]].
 
 Decision proposed: retain one backend worker, Room/RoomManager and shared Python GameState as committed active runtime; PostgreSQL provides durability. Normalize room/seat/account/match identity, metadata, sessions and safe final results; use a separate versioned full trusted GameState codec plus private Room checkpoint data. Candidate execution → DB transaction/commit → runtime promotion → personal broadcast/ACK. Persist consumed sequence and bounded receipts including final rejection; serialize timer/lifecycle/commands under a room lock and resolve ambiguous commits before retry. No Redis, broker or event-sourced rules engine.
 
@@ -29,7 +41,7 @@ Reason: process-local rooms/tokens/RNG/timers disappear on restart. Current to_d
 
 Identity proposed: stable RoomPlayer/MatchPlayer UUIDs coexist with current room code, compact pid and room-local match_id. Guest seat uses hashed bearer credential; optional account uses opaque hashed server session and HttpOnly/Secure/SameSite cookie. Account binding requires both session and guest proof, revokes guest credentials and preserves match membership. New authorized connection fences old owner. No mandatory registration or JWT stack.
 
-Consequences proposed: start with codec-only Phase 1A; implement DB/adapters/recovery/guest credentials together in 1B, then Continue UI, Auth and Profile separately. DB failure blocks new mutations; no success ACK before commit, no silent fallback to an older ACKed checkpoint. Hash-only credential storage changes token issuance/reconnect internals; lifecycle controls need future retry identifiers. Downtime timer grace, retention and account takeover policies remain proposals requiring product acceptance. Current plain HTTP Docker needs TLS before production cookie auth. ADR-001/002/005/006/007/008/009 remain accepted constraints; nothing here modifies runtime or protocol now.
+Consequences: codec-only 1A and DB/adapters/recovery/guest credentials 1B are complete; Continue UI, Auth and Profile remain separate proposals. DB failure blocks mutations; no success ACK before commit and no silent fallback to an older ACKed checkpoint. Hash-only credential storage and lifecycle request IDs are implemented; timer grace/guest expiry are accepted in ADR-012. Future room retention/account takeover still require product decisions. Plain HTTP Docker needs TLS before production cookie auth. ADR-001/002/005/006/007/008/009 remain constraints; gameplay is unchanged.
 
 ## ADR-009 — Server-owned room policy, independent presentation colors
 
@@ -39,17 +51,17 @@ Decision: Room owns validated lobby-only settings, unique slot colors, private b
 
 Reason: Transport policy needs Room identity/lifecycle, while shared rules must remain independent of React/WS and be usable offline. Colors do not identify players or order turns. One lifespan scheduler avoids dormant tasks per room; pending/free-road states require explicit user choices. Request confirmation must not be inferred from a presence broadcast.
 
-Consequences: Additive room/snapshot fields with VERSION=1; no engine rewrite/state-management library/new dependencies. Automatic timeout uses existing authoritative executor without consuming client seq. UI only counts down remaining and renders server facts. Visible bank is an explicit privacy tradeoff (ADR-005); private RNG bag/deck stay hidden. In-memory room/chat/RNG/timer state disappears on restart; persistence, multi-worker coordination, mandatory automation and desktop feature parity remain separate work. Details and measured limits — [[Сервер и протокол#Room policy — Game / Room UX 2.2]], [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]].
+Consequences: UX 2.2 added room/snapshot fields with VERSION=1; no engine rewrite/state-management library. Automatic timeout uses existing authoritative executor without consuming client seq. UI counts down remaining and renders server facts. Visible bank is an explicit privacy tradeoff (ADR-005); private RNG bag/deck stay hidden. Phase 1B now persists room/chat/RNG/timer separately from GameState; multi-worker coordination, mandatory automation and desktop feature parity remain separate work. Details — [[Сервер и протокол#Room policy — Game / Room UX 2.2]], ADR-012.
 
 ## ADR-008 — Same-origin Docker deployment, one backend worker
 
 Status: Accepted; implemented and verified 2026-10-04 as Production Infrastructure Phase 1.
 
-Decision: Два Compose-сервиса: Nginx с production React build и FastAPI/Uvicorn с общим Python engine. Browser использует один origin; exact /ws и /health проксируются backend. Наружу опубликован только web. Backend запускается с workers=1, без reload; оба runtime containers работают non-root.
+Decision: Nginx с production React build и FastAPI/Uvicorn с общим Python engine; Phase 1B добавляет третий private PostgreSQL service с named volume. Browser использует один origin; exact /ws и /health проксируются backend. Наружу опубликован только web. Backend запускается с workers=1, без reload; backend/web работают non-root.
 
 Reason: Пользователь запросил production-like запуск одной командой. RoomManager/GameState являются process-local, поэтому несколько workers/replicas разделили бы пользователей одной комнаты между независимыми состояниями.
 
-Consequences: Backend readiness проверяется HTTP healthcheck до запуска web. Production WS URL выводится из страницы; local Vite сохраняет VITE_WS_URL. Base images закреплены digest, server dependencies — точными версиями, frontend использует npm ci. Restart теряет комнаты/партии/tokens; контейнеризация не вводит persistence или account auth. TLS и горизонтальное масштабирование требуют отдельной задачи. Инструкции и доказательства — [[Deployment]] и [[plans/containerization]].
+Consequences: Backend readiness проверяется HTTP healthcheck до запуска web. Production WS URL выводится из страницы; local Vite сохраняет VITE_WS_URL. Base images закреплены digest, server dependencies — точными версиями, frontend использует npm ci. Исходная Infrastructure Phase 1 была RAM-only; Phase 1B сохраняет rooms/matches/guest credentials в PostgreSQL. Account auth не реализован. TLS и горизонтальное масштабирование — отдельная задача. Инструкции — [[Deployment]], исторический план — [[plans/containerization]].
 
 ## ADR-001 — Server-authoritative game state
 

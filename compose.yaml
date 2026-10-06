@@ -1,7 +1,31 @@
 services:
+  postgres:
+    image: postgres:17-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-catan}"
+      POSTGRES_USER: "${POSTGRES_USER:-catan}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-catan-local-only}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 20s
+
   backend:
     environment:
       CATAN_ENABLE_TEST_TOOLS: "${CATAN_ENABLE_TEST_TOOLS:-0}"
+      CATAN_PERSISTENCE_MODE: durable
+      DATABASE_URL: "${DATABASE_URL:-}"
+      CATAN_DATABASE_HOST: postgres
+      POSTGRES_DB: "${POSTGRES_DB:-catan}"
+      POSTGRES_USER: "${POSTGRES_USER:-catan}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-catan-local-only}"
+    depends_on:
+      postgres:
+        condition: service_healthy
     build:
       context: .
       dockerfile: deploy/backend.Dockerfile
@@ -23,3 +47,6 @@ services:
     ports:
       - "${CATAN_WEB_PORT:-80}:8080"
     stop_grace_period: 20s
+
+volumes:
+  postgres_data:

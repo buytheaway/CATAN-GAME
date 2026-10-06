@@ -144,6 +144,7 @@ export class WSClient {
   private roomCode: string | null = null;
   private reconnectToken: string | null = null;
   private pendingReconnectKey: string | null = null;
+  private pendingMatchOperation: { roomCode: string; type: "start_match" | "rematch"; request_id: string; expected_match_id: number } | null = null;
   private reconnectTimer: number | null = null;
   private reconnectDelay = 1000;
   private pendingAction: { type: "host"; maxPlayers: number } | { type: "join"; roomCode: string } | null = null;
@@ -235,6 +236,7 @@ export class WSClient {
   }
 
   host(maxPlayers: number) {
+    this.pendingMatchOperation = null;
     this.resetConfig();
     this.resetMapSelection();
     this.roomState = null;
@@ -257,6 +259,7 @@ export class WSClient {
   }
 
   private sendJoinIntent(roomCode: string) {
+    if (this.pendingMatchOperation?.roomCode !== roomCode) this.pendingMatchOperation = null;
     this.resetConfig();
     this.resetMapSelection();
     if (this.roomState?.room_code !== roomCode) this.roomState = null;
@@ -276,14 +279,22 @@ export class WSClient {
       this.onLog?.("Wait for room configuration confirmation");
       return;
     }
-    this.send({ type: "start_match" });
+    this.sendMatchOperation("start_match");
   }
 
   rematch() {
-    this.send({ type: "rematch" });
+    this.sendMatchOperation("rematch");
+  }
+
+  private sendMatchOperation(type: "start_match" | "rematch") {
+    if (!this.isOpen() || !this.roomCode || this.pendingMatchOperation) return;
+    this.pendingMatchOperation = { roomCode: this.roomCode, type, request_id: genId(), expected_match_id: this.matchId };
+    const { roomCode: _room, ...payload } = this.pendingMatchOperation;
+    this.send(payload);
   }
 
   leaveRoom() {
+    this.pendingMatchOperation = null;
     this.resetConfig();
     this.send({ type: "leave_room" });
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
@@ -455,6 +466,14 @@ export class WSClient {
       this.seq = Math.max(this.seq, this.lastSeqApplied);
       this.youPid = data.pid;
       this.persistToken();
+      const operation = this.pendingMatchOperation;
+      if (operation?.roomCode === data.room_code) {
+        if (data.match_id > operation.expected_match_id) this.pendingMatchOperation = null;
+        else {
+          const { roomCode: _room, ...payload } = operation;
+          this.send(payload); // Same request ID and epoch after an interrupted durable operation.
+        }
+      }
       this.replayPending();
       return;
     }
@@ -479,6 +498,8 @@ export class WSClient {
       return;
     }
     if (data.type === "error") {
+      if (data.detail?.request_id === this.pendingMatchOperation?.request_id && !data.detail?.retryable)
+        this.pendingMatchOperation = null;
       this.finishConfig(data.detail?.request_id);
       if (this.mapInFlight && data.detail?.request_type === "set_map") this.finishMapSelection();
       if (this.pendingReconnectKey && (data.code === "forbidden" || data.code === "not_found")) {

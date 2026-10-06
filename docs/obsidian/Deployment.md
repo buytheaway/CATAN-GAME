@@ -1,13 +1,13 @@
 ---
 tags: [catan, deployment, docker]
-updated: 2026-10-04
+updated: 2026-10-06
 ---
 
 # Deployment
 
 [[Project State]] · [[Точки входа]] · [[Сервер и протокол]] · [[Architecture Decisions]] · [[plans/containerization]]
 
-Production Infrastructure Phase 1 добавляет Docker Compose к существующему local development. Проверено 2026-10-04 на Docker Desktop Linux containers, Windows host. Это production-like запуск без TLS и persistence, не готовый публичный internet deployment.
+Production Infrastructure Phase 1 добавила Docker Compose; Persistence 1B добавляет durable PostgreSQL и startup recovery. Проверено 2026-10-06 на Docker Desktop Linux containers, Windows host. Это production-like запуск с persistence, без TLS/accounts, не готовый публичный internet deployment.
 
 ## Local development
 
@@ -30,6 +30,8 @@ npm run dev
 
 Desktop по-прежнему использует свои requirements и RUN_*.bat. requirements-server.txt не устанавливает PySide или тесты. Существующий [tools/run_lan.ps1](../../tools/run_lan.ps1) остаётся способом локального запуска.
 
+Без DATABASE_URL local dev использует memory mode; явный CATAN_PERSISTENCE_MODE=memory не допускает игнорировать заданный DB URL. Durable mode требует postgresql+psycopg URL либо полный POSTGRES_USER/PASSWORD/DB + CATAN_DATABASE_HOST. При DB outage durable mode не переключается в RAM. `python -m app.server_mp` на Windows явно использует SelectorEventLoop для psycopg; прямой Uvicorn CLI с durable DB требует `--loop app.persistence.db:selector_event_loop`. Linux Docker CMD не меняется. Основание — [Psycopg async/Windows](https://www.psycopg.org/psycopg3/docs/advanced/async.html).
+
 ## Docker production-like
 
 Из корня, при работающем Docker Engine / Docker Desktop в Linux containers mode:
@@ -39,6 +41,10 @@ docker compose up --build
 ```
 
 Открыть **http://localhost**. Для второго устройства в той же сети — http://<LAN-IP host>, если доступ разрешён сетевыми настройками host. WebSocket URL вводить вручную не требуется.
+
+Compose всегда задаёт durable mode. [.env.example](../../.env.example) содержит local-only DB defaults; реальный root .env ignored и исключён из build context. POSTGRES_DB/USER/PASSWORD передаются Postgres и backend через env; URL.create безопасно обрабатывает символы пароля. Optional DATABASE_URL имеет приоритет и должен использовать percent-encoded password. Ничего из credentials не попадает в frontend bundle.
+
+Backend ждёт healthy PostgreSQL, выполняет Alembic upgrade head, затем validates/loads recoverable Room checkpoints. Web ждёт readiness backend. Повторный up не сбрасывает schema/state. Не запускать второй backend worker/replica или migration от каждого запроса. RAM rooms старого running image не импортируются автоматически; controlled drain/upgrade — отдельный rollout.
 
 Запуск в фоне с проверкой готовности:
 
@@ -53,6 +59,8 @@ docker compose logs -f
 ```sh
 docker compose down
 ```
+
+`postgres_data` named volume сохраняется при down и backend/PostgreSQL restart. `down -v` удаляет durable данные; это отдельное явное destructive действие, не штатный restart/обновление. Volume не заменяет backup. Политика восстановления — [[Сервер и протокол#Durable command and recovery flow — Persistence 1B]].
 
 Если порт 80 занят, задать CATAN_WEB_PORT, например в PowerShell:
 
@@ -73,20 +81,23 @@ flowchart LR
     N -->|"/health → HTTP"| A
     A --> E[Shared Python engine]
     A --> R[RoomManager in memory]
+    A -->|"SQLAlchemy async / committed heads"| P[PostgreSQL :5432 private]
+    P --> V[postgres_data named volume]
 ```
 
 | Service / route | Поведение |
 | --- | --- |
 | web | Единственный опубликованный host port: 80, override CATAN_WEB_PORT |
 | backend | Порт 8000 доступен внутри Compose network; ports mapping отсутствует |
+| postgres | Private 5432 в Compose network, без host ports; named volume, pg_isready healthcheck |
 | / | React production build, SPA fallback на index.html |
 | /assets/ | Реальные static files; отсутствующий asset возвращает 404 |
 | /ws | Только exact route; HTTP/1.1, Upgrade/Connection headers, 3600s proxy read/send timeout |
-| /health | Проксирует GET backend /health → 200 {"status":"ok"} |
+| /health | 200 {status:ok,ready:true,persistence:postgresql}; DB/schema/recovery unavailable → 503/ready:false |
 
 Frontend не использует другие backend HTTP API. Автоматические FastAPI /docs /redoc /openapi.json наружу через Nginx не проксируются. Nginx использует Docker DNS для backend, внешний hostname не задан.
 
-backend healthcheck обращается к 127.0.0.1:8000/health через Python stdlib. web зависит от service_healthy, а не только от факта создания контейнера. Health проверяет ответ процесса, не создаёт комнат и не выполняет сетевых/игровых проверок.
+backend healthcheck обращается к 127.0.0.1:8000/health через Python stdlib. web зависит от service_healthy, а не только от факта создания контейнера. Readiness включает DB/schema/recovery, не создаёт комнат и не выполняет gameplay. DB monitor проверяет доступность и разрешает fenced writes через committed head, не через повторное выполнение.
 
 ## WebSocket configuration
 
@@ -103,17 +114,17 @@ TLS в Compose не добавлен; HTTPS deployment и trust forwarded header
 
 | Файл | Назначение |
 | --- | --- |
-| [compose.yaml](../../compose.yaml) | Два сервиса, сеть, web host port, readiness и stop grace period |
+| [compose.yaml](../../compose.yaml) | Три сервиса, private DB/volume, web host port, readiness и stop grace period |
 | [backend.Dockerfile](../../deploy/backend.Dockerfile) | Official Python 3.12 slim-bookworm, non-root uid 10001, один Uvicorn worker |
 | [web.Dockerfile](../../deploy/web.Dockerfile) | Official Node 24 Alpine → npm ci/build → official Nginx Alpine, non-root nginx uid 101 |
 | [nginx.conf](../../deploy/nginx.conf) | Static/SPA, /ws и /health proxy; pid в /tmp |
 | [.dockerignore](../../.dockerignore) | Allowlist необходимых исходников/config/maps; excludes env, credentials, docs/tests, caches, node_modules и desktop/legacy |
-| [requirements-server.txt](../../requirements-server.txt) | 14 точно закреплённых прямых/транзитивных server runtime dependencies |
+| [requirements-server.txt](../../requirements-server.txt) | Точно закреплённые server + SQLAlchemy/Alembic/psycopg/support dependencies, отдельные от desktop/tests |
 | [package-lock.json](../../web/package-lock.json) | npm ci input; дополнены пропущенные зависимости, уже объявленные package.json |
 
-Все три base images закреплены OCI digest; обновляются осознанно вместе с проверкой сборки. Backend копирует только package init, server/protocol/resource_path, engine/*.py и 12 JSON-карт. PySide, pytest, desktop SVG и Node не нужны backend runtime. В web runtime нет Node/node_modules/исходников, только Nginx и dist.
+Base images, включая PostgreSQL 17-bookworm, закреплены OCI digest; обновляются осознанно. Backend копирует server/protocol/room_options/game_events/test_tools, engine/maps, persistence codec/DB adapter и Alembic/migrations. PySide, pytest, desktop SVG и Node не нужны backend runtime. В web runtime нет Node/node_modules/исходников, только Nginx и dist.
 
-Размеры финальных images по docker image ls на проверенной машине: **backend 215 MB, web 93 MB**. Основной размер задают official base images и Python packages; Node build stage не входит в финальный web image. Это показание Docker Desktop disk usage, не оценка размера скачивания по сети.
+Проверенные 2026-10-06 image inspect Size: **backend 65.4 MB, web 26.4 MB**. Node build stage не входит в финальный web image. Исторический docker image ls из Infrastructure Phase 1 сообщал 215/93 MB; это другая метрика Docker Desktop, не размер скачивания по сети.
 
 Исходный package-lock не соответствовал package.json: npm ci в чистом image находил отсутствующие ESLint/TypeScript ESLint dependencies. Lockfile синхронизирован; добавлены 251 package entries, версии всех ранее зафиксированных пакетов сохранены. package.json и framework/tooling не менялись.
 
@@ -125,7 +136,31 @@ TLS в Compose не добавлен; HTTPS deployment и trust forwarded header
 
 Nginx также запускается exec-form как non-root, STOPSIGNAL SIGQUIT. worker_shutdown_timeout=10s ограничивает ожидание живых WebSocket; Compose stop_grace_period=20s у обоих сервисов. При остановке активное WS может закрыться без WebSocket close frame, что клиент обрабатывает существующим reconnect flow.
 
-## Verification — 2026-10-04
+## Persistence integration tests
+
+Изолированный stack — [tests/persistence.compose.yaml](../../tests/persistence.compose.yaml), project `catan-persistence-test`, web 127.0.0.1:18081 и тестовый DB port 127.0.0.1:15432. Production compose PostgreSQL port не публикует. Не использовать production room/volume для failure/deletion tests.
+
+```powershell
+docker compose -p catan-persistence-test -f compose.yaml -f tests/persistence.compose.yaml up --build -d --wait
+docker compose -p catan-persistence-test -f compose.yaml -f tests/persistence.compose.yaml exec postgres psql -U catan -d catan -c "CREATE DATABASE catan_persistence_test;"
+$env:CATAN_TEST_DATABASE_URL = 'postgresql+psycopg://catan:catan-local-only@127.0.0.1:15432/catan_persistence_test'
+python -B -m pytest -p no:cacheprovider
+```
+
+CREATE DATABASE нужен один раз для свежего test volume. [test_persistence_postgres.py](../../tests/test_persistence_postgres.py) требует явный *_test URL, без него DB cases skipped; иные DB names rejected. Только в disposable test DB migration case делает downgrade/reupgrade. Обычный Docker backend использует catan, не эту pytest DB.
+
+[persistence-restart.cjs](../../web/e2e/persistence-restart.cjs) запускается из repo root с внешним Playwright + installed Chrome; NODE_PATH указывает на его node_modules. `node web/e2e/persistence-restart.cjs` проверяет ordinary UI + isolated Docker restarts и down без -v; reports/screenshots идут в TEMP, без raw persistence payload. Удаление volume доступно только отдельным explicit CATAN_PERSISTENCE_DELETE_TEST_VOLUME=1: runner проверяет exact volume name и Compose project label. Default suite не удаляет volume. Это не команда для normal production stack.
+
+## Persistence verification — 2026-10-06
+
+- Full pytest **508 passed**, включая 63 cases с real PostgreSQL JSONB/FK/locking, reversible Alembic migration, full private state/lifecycle/rollback/corruption, lost ACK/ambiguous COMMIT, stable/revoked credentials и killed separate backend process/real WS.
+- Web **130 passed**, TypeScript, production web build, Docker backend/web build и local/image pip check. Existing Dice prepared Chrome flow — 5 accepted commands, no JS errors. Engine/rules/maps/codec/renderers untouched; scenarios not rerun, 348/508 remains historical.
+- Chrome **154.0.8037.98**, два обычных клиента через actual Nginx/FastAPI/PostgreSQL: Base Standard, Balanced/Hidden/60s/white-orange, natural setup/Roll/resource-funded paid road/chat/refresh; backend SIGKILL then action and second restart. Board/turn/own hands/VP/dice/chat/settings/colors and private state/deck/bag/seq digests stable; Hidden bank/foreign hands remain protected. Recovered board screenshot inspected.
+- PostgreSQL stop/start without volume deletion: no premature success/tick, retryable failure, pending Roll commits exactly once after DB returns. Full Compose down/up without -v restores same match; separately inspected isolated down -v/up yields 0 rooms. Normal running production stack/data not modified.
+- Startup with unavailable DB: readiness 503, retryable persistence_unavailable and WS 1013; no memory fallback. Current-head corruption quarantines only affected room and never rolls back to older ACKed snapshot.
+- Median durable command overhead about 22–23ms, encode 2.10–2.35ms + SQL 19.68–20.50ms; 12 warm local samples/command. Detailed method/limits — [[plans/persistence-auth#Verification and performance — 2026-10-06]]. No production load/TLS/backup/ARM certification.
+
+## Historical infrastructure verification — 2026-10-04
 
 - docker compose build и up -d --wait завершились успешно; backend healthy перед стартом web.
 - Реальный headless Chrome, два независимых browser contexts: HTML/CSS/JS загружены через Nginx, WS у обоих ws://localhost/ws, Host → Join → Start Match, 19 тайлов у обоих клиентов.
@@ -139,9 +174,10 @@ Nginx также запускается exec-form как non-root, STOPSIGNAL SI
 
 ## Known limitations
 
-- Backend restart/recreation теряет все комнаты, партии и reconnect tokens. Volumes/save hacks не добавлялись; persistence — отдельный этап.
+- Local memory mode всё ещё теряет rooms при restart; durable Compose восстанавливает committed state. Older RAM-only running games не появляются в DB автоматически.
 - Нет горизонтального масштабирования, TLS, accounts/auth, rate limiting или публичного production security review.
-- Проверен Linux/amd64 на Docker Desktop и два локальных браузерных контекста. Полная партия, нагрузка, ARM и отдельные LAN-устройства не проверялись.
+- Один backend worker/replica; нет accounts/Continue UI, automatic retention scheduler или backup system. Hash-only guest tokens не восстанавливаются по имени при потере browser proof.
+- Проверен Linux/amd64 Docker Desktop и локальные browser contexts/Windows backend process. Полная естественная партия, нагрузка, ARM и отдельные LAN-устройства не проверялись.
 - npm audit сообщал 18 advisories в dev/build dependency tree; npm audit --omit=dev показал 0. Они не устранялись обновлением tooling в рамках контейнеризации; Node build dependencies не входят в Nginx runtime image.
 
 Официальные основания конфигурации: [Nginx WebSocket proxy](https://nginx.org/en/docs/http/websocket.html), [Compose startup/readiness](https://docs.docker.com/compose/how-tos/startup-order/).

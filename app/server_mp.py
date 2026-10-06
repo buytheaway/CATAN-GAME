@@ -8,12 +8,20 @@ import secrets
 import string
 import time
 import uuid
+import logging
 from contextlib import asynccontextmanager, suppress
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
+from datetime import datetime
 from typing import Any, Deque, Dict, List, Optional, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
+from app.persistence.coordinator import Coordinator
+from app.persistence.db import configured_database
+from app.persistence.credentials import utcnow, issue_token, token_hash, valid_token, renewed_expiry
+from app.persistence.errors import PersistenceUnavailable, RecoveryError
+from app.persistence.recovery import clone_room, resume_timer, checksum
 
 from app import net_protocol
 from app import game_events, test_tools
@@ -42,12 +50,17 @@ class PlayerSlot:
     name: str = ""
     color: Optional[str] = None
     connected: bool = False
-    reconnect_token: Optional[str] = None
+    reconnect_token: Optional[str] = field(default=None, repr=False)
     last_seq_applied: int = 0
     seen_cmd_ids: Deque[str] = field(default_factory=deque)
     seen_cmd_set: Set[str] = field(default_factory=set)
     active_ws: Optional[WebSocket] = field(default=None, repr=False, compare=False)
     chat_times: Deque[float] = field(default_factory=deque, repr=False)
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    match_player_id: Optional[uuid.UUID] = None
+    token_hash: Optional[bytes] = field(default=None, repr=False)
+    token_expires_at: Optional[datetime] = None
+    token_revoked_at: Optional[datetime] = None
 
 
 @dataclass
@@ -89,20 +102,30 @@ class Room:
     event_serial: int = 0
     game: Optional[GameState] = None
     last_activity_ts: float = field(default_factory=lambda: time.time())
+    id: uuid.UUID = field(default_factory=uuid.uuid4)
+    match_uuid: Optional[uuid.UUID] = None
+    durable_revision: int = 0
+    created_at: datetime = field(default_factory=utcnow)
+    closed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
+    persistence_blocked: bool = False
+    timer_paused: bool = False
 
 
 class RoomManager:
     def __init__(self):
         self.rooms: Dict[str, Room] = {}
         self.connections: Dict[WebSocket, ClientConn] = {}
+        self.create_lock = asyncio.Lock()
 
     def _gen_code(self) -> str:
         while True:
             code = "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-            if code not in self.rooms:
+            if code not in self.rooms and code not in persistence.reserved_codes:
                 return code
 
-    def create_room(self, name: str, max_players: int) -> Room:
+    def create_room(self, name: str, max_players: int, *, register: bool = True) -> Room:
         code = self._gen_code()
         players = [PlayerSlot(pid=i) for i in range(max_players)]
         room = Room(room_code=code, max_players=max_players, host_pid=0, players=players)
@@ -112,7 +135,8 @@ class RoomManager:
         rules_raw = get_preset_map(room.selected_map_id).get("rules", {})
         room.selected_rules_config = vars(parse_rules_config(rules_raw))
         room.selected_map_data = None
-        self.rooms[code] = room
+        if register:
+            self.rooms[code] = room
         self._assign_player(room, 0, name, connected=True)
         return room
 
@@ -124,7 +148,9 @@ class RoomManager:
             used = {p.color for p in room.players if p.name and p is not slot}
             slot.color = next(color for color in COLORS if color not in used)
         if not slot.reconnect_token:
-            slot.reconnect_token = uuid.uuid4().hex
+            slot.reconnect_token = issue_token()
+            slot.token_hash = token_hash(slot.reconnect_token)
+            slot.token_expires_at = renewed_expiry()
 
     def join_room(self, room_code: str, name: str) -> Optional[Room]:
         if not isinstance(room_code, str):
@@ -182,25 +208,41 @@ class RoomManager:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    global persistence
+    persistence = Coordinator(configured_database())
+    try:
+        await persistence.initialize(manager)
+    except Exception:
+        persistence.ready = False
+        logging.getLogger(__name__).error("Database/schema/recovery unavailable; readiness disabled")
     # One bounded scheduler for the process; no dormant task per room.
     task = asyncio.create_task(_timer_loop(), name="room-turn-timers")
+    recovery_task = asyncio.create_task(_persistence_monitor(), name="persistence-readiness")
     try:
         yield
     finally:
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        recovery_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await recovery_task
         for room in manager.rooms.values():
             room.timer = None
+        await persistence.close()
 
 
 app = FastAPI(lifespan=lifespan)
 manager = RoomManager()
+persistence = Coordinator()
 
 
 @app.get("/health")
-def health() -> Dict[str, str]:
-    return {"status": "ok"}
+def health():
+    return JSONResponse({"status": "ok" if persistence.ready else "unavailable",
+                         "ready": persistence.ready,
+                         "persistence": "postgresql" if persistence.database else "memory"},
+                        status_code=200 if persistence.ready else 503)
 
 
 CMD_ID_LRU = 256
@@ -221,6 +263,8 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
     state["roll_count"] = room.roll_count
     state["room_settings"] = room.settings.public(game.rules_config.target_vp)
     state["turn_timer"] = room.timer.public(time.monotonic(), time.time()) if room.timer else None
+    if state["turn_timer"] and room.timer_paused:
+        state["turn_timer"].update(stage="stopped", remaining_ms=0, paused=True)
     state["game_events"] = game_events.project(room, pid)
     state["test_mode"] = room.test_mode
     state["test_tools"] = TEST_TOOLS_ENABLED and room.test_mode and pid == room.host_pid
@@ -236,7 +280,7 @@ def _legal_moves(g: GameState, pid: int) -> Dict[str, Any]:
 
 
 async def _send(ws: WebSocket, obj: Dict) -> None:
-    await ws.send_text(json.dumps(obj))
+    await asyncio.wait_for(ws.send_text(json.dumps(obj)), timeout=2)
 
 
 async def _broadcast(room: Room, obj: Dict) -> None:
@@ -319,7 +363,7 @@ def _rematch_host_pid(room: Room) -> Optional[int]:
     return next((p.pid for p in room.players if p.name and p.connected), None)
 
 
-def _start_match(room: Room) -> None:
+def _start_match(room: Room, *, rebind: bool = True) -> None:
     participants = [p for p in room.players if p.name and p.connected]
     host_pid = _rematch_host_pid(room)
     if len(participants) < 2 or host_pid not in [p.pid for p in participants]:
@@ -349,15 +393,17 @@ def _start_match(room: Room) -> None:
     # Do not tie the secret development deck to the map's reproducible seed.
     random.SystemRandom().shuffle(game.dev_deck)
     room.host_pid = mapping[host_pid]
-    for conn in manager.connections.values():
-        if conn.room_code == room.room_code:
-            conn.pid = mapping.get(conn.pid)
-            if conn.pid is None:
-                conn.room_code = None
+    if rebind:
+        for conn in manager.connections.values():
+            if conn.room_code == room.room_code:
+                conn.pid = mapping.get(conn.pid)
+                if conn.pid is None:
+                    conn.room_code = None
     room.players = participants
     room.game = game
     room.seed = seed
     room.match_id += 1
+    room.match_uuid = uuid.uuid4()
     room.tick = 0
     room.dice = None
     room.roll_count = 0
@@ -366,9 +412,11 @@ def _start_match(room: Room) -> None:
     room.next_test_dice = None
     room.dice_bag = []
     room.timer = None
+    room.timer_paused = False
     room.config_revision += 1
     for pid, slot in enumerate(room.players):
         slot.pid = pid
+        slot.match_player_id = uuid.uuid4()
         slot.last_seq_applied = 0
         slot.seen_cmd_ids.clear()
         slot.seen_cmd_set.clear()
@@ -437,8 +485,15 @@ def _roll_dice() -> tuple[int, int]:
 
 
 async def _start_and_notify(room: Room) -> None:
-    _start_match(room)
-    _sync_timer(room)
+    async with room.lock:
+        candidate = clone_room(room)
+        _start_match(candidate, rebind=False)
+        _sync_timer(candidate)
+        await _commit(room, candidate, snapshot=True)
+        await _notify_start(room)
+
+
+async def _notify_start(room: Room) -> None:
     await _send_room_state(room)
     for ws, conn in list(manager.connections.items()):
         if conn.room_code == room.room_code and conn.pid is not None:
@@ -447,6 +502,8 @@ async def _start_and_notify(room: Room) -> None:
 
 
 def _sync_timer(room: Room) -> None:
+    if room.timer_paused:
+        return
     g = room.game
     if not g or g.game_over or g.phase != "main" or not room.settings.turn_timer:
         room.timer = None
@@ -455,11 +512,24 @@ def _sync_timer(room: Room) -> None:
 
 
 async def _process_room_timer(room: Room) -> None:
+    async with room.lock:
+        await _process_room_timer_locked(room)
+
+
+async def _process_room_timer_locked(room: Room) -> None:
     if manager.rooms.get(room.room_code) is not room:
         return
-    _sync_timer(room)
-    timer, g = room.timer, room.game
+    if not persistence.ready or room.persistence_blocked or room.timer_paused:
+        return
+    if room.timer is None and (not room.game or not room.settings.turn_timer
+                              or room.game.game_over or room.game.phase != "main"):
+        return
+    candidate = clone_room(room)
+    _sync_timer(candidate)
+    timer, g = candidate.timer, candidate.game
     if not timer or not g or time.monotonic() < timer.deadline:
+        if candidate.timer != room.timer:
+            await _commit(room, candidate, snapshot=bool(candidate.game))
         return
     if timer.stage == "stopped":
         return
@@ -469,16 +539,18 @@ async def _process_room_timer(room: Room) -> None:
             return
         timer.stage = "blocked"
     else:
-        error = _apply_cmd(room, g.turn, {"type": "end_turn" if g.rolled else "roll"})
+        error = _apply_cmd(candidate, g.turn, {"type": "end_turn" if g.rolled else "roll"})
         if error:
             # Stop retrying an unsafe/unknown state until a real command resolves it.
             timer.stage = "stopped"
+            await _commit(room, candidate, snapshot=True)
             return
-        if room.game.turn == timer.pid:
-            room.timer = TurnTimer.start(g.turn, 20, time.monotonic(), time.time(), "grace")
-        _sync_timer(room)
-    room.tick += 1
-    room.last_activity_ts = time.time()
+        if candidate.game.turn == timer.pid:
+            candidate.timer = TurnTimer.start(g.turn, 20, time.monotonic(), time.time(), "grace")
+        _sync_timer(candidate)
+    candidate.tick += 1
+    candidate.last_activity_ts = time.time()
+    await _commit(room, candidate, snapshot=True)
     await _send_match_state(room)
 
 
@@ -488,9 +560,93 @@ async def _timer_loop() -> None:
         await asyncio.sleep(.25)
         for room in list(manager.rooms.values()):
             try:
-                await asyncio.wait_for(_process_room_timer(room), timeout=2)
+                # Never cancel an in-flight COMMIT merely because publication is slow.
+                await _process_room_timer(room)
+            except PersistenceUnavailable:
+                pass
             except Exception:
-                logging.getLogger(__name__).exception("Turn timer update failed for %s", room.room_code)
+                logging.getLogger(__name__).error("Turn timer update failed: room_id=%s", room.id)
+
+
+def _promote(room: Room, candidate: Room) -> None:
+    if room.game is not None and candidate.game is not None and room.match_uuid == candidate.match_uuid:
+        # Preserve domain references held by local tools/tests, but only AFTER commit.
+        for f in fields(GameState):
+            setattr(room.game, f.name, getattr(candidate.game, f.name))
+        candidate.game = room.game
+    old = {p.id: p for p in room.players}
+    conn_ids = {ws: room.players[c.pid].id for ws, c in manager.connections.items()
+                if c.room_code == room.room_code and c.pid is not None and 0 <= c.pid < len(room.players)}
+    retained = []
+    for new in candidate.players:
+        slot = old.get(new.id, new)
+        if new.reconnect_token is None and slot.token_hash == new.token_hash:
+            new.reconnect_token = slot.reconnect_token
+        for f in fields(PlayerSlot):
+            if f.name not in {"active_ws", "connected"}:
+                setattr(slot, f.name, getattr(new, f.name))
+        retained.append(slot)
+    for f in fields(Room):
+        if f.name not in {"lock", "players"}:
+            setattr(room, f.name, getattr(candidate, f.name))
+    room.players = retained
+    mapping = {p.id: p.pid for p in retained}
+    for ws, member_id in conn_ids.items():
+        conn = manager.connections[ws]
+        conn.pid = mapping.get(member_id)
+        if conn.pid is None or room.status == "closed":
+            conn.room_code = None
+            conn.pid = None
+
+
+async def _commit(room: Room, candidate: Room, **kwargs) -> None:
+    await persistence.commit(room, candidate, **kwargs)
+    _promote(room, candidate)
+
+
+async def _persistence_monitor() -> None:
+    initialized = persistence.ready
+    while True:
+        await asyncio.sleep(1)
+        if not persistence.database:
+            continue
+        try:
+            if not initialized:
+                await persistence.initialize(manager)
+                initialized = True
+            await persistence.database.ping()
+            for room in list(manager.rooms.values()):
+                if room.persistence_blocked:
+                    async with room.lock:
+                        try:
+                            recovered = await persistence.resolve(room)
+                            _promote(room, recovered)
+                            # Revalidate credentials and deliver the resolved head through ordinary reconnect.
+                            # This also resumes a paused timer after a same-process DB outage.
+                            for slot in room.players:
+                                if slot.active_ws is not None:
+                                    with suppress(Exception):
+                                        await asyncio.wait_for(slot.active_ws.close(code=1013), timeout=2)
+                        except RecoveryError:
+                            await _broadcast(room, net_protocol.error_message("recovery_error", "Room checkpoint quarantined"))
+                            manager.destroy_room(room.room_code)
+            persistence.ready = True
+        except Exception:
+            persistence.ready = False
+            for room in manager.rooms.values():
+                room.persistence_blocked = True
+
+
+async def close_room(code: str) -> None:
+    """Internal lifecycle API; close/revoke atomically, no new client/UI route."""
+    room = manager.rooms.get(code)
+    if not room:
+        return
+    async with room.lock:
+        candidate = clone_room(room)
+        candidate.status, candidate.closed_at, candidate.timer = "closed", utcnow(), None
+        await _commit(room, candidate)
+        manager.destroy_room(code)
 
 
 def _set_room_settings(room: Room, pid: int, patch: Dict[str, Any]) -> None:
@@ -544,6 +700,215 @@ def _remember_cmd_id(slot: PlayerSlot, cmd_id: str) -> None:
     slot.seen_cmd_set.add(cmd_id)
 
 
+def _set_map(room: Room, pid: int, data: Dict) -> None:
+    if pid != room.host_pid:
+        raise RuleError("forbidden", "Only host can set map")
+    if room.status != "lobby":
+        raise RuleError("invalid", "Cannot change map after start")
+    source, map_id = data.get("map_data"), data.get("map_id") or data.get("id")
+    if isinstance(source, dict):
+        try:
+            map_loader.validate_map_data(source)
+        except Exception as exc:
+            raise RuleError("invalid", f"Invalid map_data: {exc}") from exc
+        name = str(source.get("name", "custom"))
+        map_id = map_id if isinstance(map_id, str) and map_id else name
+        meta = {"id": map_id, "name": name, "description": str(source.get("description", ""))}
+        room.selected_map_data = source
+    else:
+        meta = get_preset_meta(map_id) if isinstance(map_id, str) else None
+        if not meta:
+            raise RuleError("invalid", "Unknown map_id")
+        source = get_preset_map(map_id)
+        room.selected_map_data = None
+    rules_raw = source.get("rules", {})
+    room.selected_rules_config = vars(parse_rules_config(rules_raw if isinstance(rules_raw, dict) else {}))
+    room.selected_map_id, room.selected_map_meta = map_id, dict(meta)
+    if room.settings.target_vp is not None:
+        room.selected_rules_config["target_vp"] = room.settings.target_vp
+    room.selected_rules_config["discard_threshold"] = room.settings.discard_threshold
+    room.map_revision += 1
+    room.config_revision += 1
+
+
+def _owns(conn: ClientConn, room: Room) -> bool:
+    return (conn.room_code == room.room_code and conn.pid is not None
+            and 0 <= conn.pid < len(room.players)
+            and room.players[conn.pid].active_ws is conn.ws
+            and room.players[conn.pid].token_expires_at is not None
+            and room.players[conn.pid].token_revoked_at is None
+            and room.players[conn.pid].token_expires_at > utcnow())
+
+
+async def _dispatch(conn: ClientConn, data: Dict) -> None:
+    ws, kind = conn.ws, data["type"]
+    if kind == "hello":
+        conn.name = data["name"]
+        await _send(ws, {"type": "hello", "version": net_protocol.VERSION,
+                         "test_tools_available": TEST_TOOLS_ENABLED})
+        return
+    if not persistence.ready:
+        raise PersistenceUnavailable("Database/recovery temporarily unavailable")
+    if kind == "create_room":
+        async with manager.create_lock:
+            room = manager.create_room(data["name"].strip(), data.get("max_players", 4), register=False)
+            await persistence.commit(None, room)
+            manager.rooms[room.room_code] = room
+            manager.bind_player(conn, room, 0)
+            await _send(ws, net_protocol.room_state_message(room))
+            await _send_reconnect_token(ws, room, 0)
+        return
+    code = data.get("room_code", "").strip().upper() if kind in ("join_room", "reconnect") else conn.room_code
+    room = manager.rooms.get(code or "")
+    if not room:
+        if code in persistence.quarantined_codes:
+            raise PersistenceUnavailable("Room recovery quarantined; server attention required")
+        if kind in ("set_settings", "set_color", "chat", "enable_test_mode"):
+            raise RuleError("forbidden", "Room membership required")
+        raise RuleError("not_found", "Room not found")
+    async with room.lock:
+        if room.persistence_blocked:
+            raise PersistenceUnavailable("Room persistence temporarily blocked")
+        if kind == "join_room":
+            name = data["name"].strip()
+            if room.status != "lobby" or any(p.name == name for p in room.players):
+                raise RuleError("not_found", "Room not found or full")
+            pid = next((p.pid for p in room.players if not p.name), None)
+            if pid is None:
+                raise RuleError("not_found", "Room not found or full")
+            candidate = clone_room(room)
+            manager._assign_player(candidate, pid, name, connected=True)
+            candidate.config_revision += 1
+            candidate.last_activity_ts = time.time()
+            await _commit(room, candidate)
+            manager.bind_player(conn, room, pid)
+            await _send(ws, net_protocol.room_state_message(room))
+            await _send_reconnect_token(ws, room, pid)
+            await _send_room_state(room)
+            return
+        if kind == "reconnect":
+            raw = data["reconnect_token"]
+            pid = next((p.pid for p in room.players if p.name and valid_token(p, raw)), None)
+            if pid is None:
+                raise RuleError("forbidden", "Invalid reconnect token")
+            candidate = clone_room(room)
+            candidate.players[pid].reconnect_token = raw  # Presented proof, never a DB field.
+            candidate.players[pid].token_expires_at = renewed_expiry()
+            candidate.last_activity_ts = time.time()
+            resumed = resume_timer(candidate)
+            await _commit(room, candidate, snapshot=resumed)
+            manager.bind_player(conn, room, pid)
+            await _send(ws, net_protocol.room_state_message(room))
+            await _send_reconnect_token(ws, room, pid)
+            await _send_match_state_to(ws, room)
+            return
+        if not _owns(conn, room):
+            raise RuleError("forbidden", "Room membership required")
+        if kind == "leave_room":
+            candidate = clone_room(room)
+            candidate.last_activity_ts = time.time()
+            await _commit(room, candidate)
+            manager.leave_room(conn)
+            await _send_room_state(room)
+            conn.room_code, conn.pid = None, None
+            return
+        if kind == "cmd":
+            await _process_room_timer_locked(room)
+            if not _owns(conn, room):
+                raise RuleError("forbidden", "Room membership required")
+            if data.get("room_code") is not None and data["room_code"] != room.room_code:
+                raise RuleError("invalid", "room_code mismatch")
+            if data["match_id"] != room.match_id:
+                raise RuleError("invalid", "match_id mismatch")
+            if room.game is None:
+                raise RuleError("no_match", "Match not started")
+            slot, seq, cmd_id = room.players[conn.pid], data["seq"], data["cmd_id"]
+            digest = checksum(data["cmd"])
+            if cmd_id in slot.seen_cmd_set or seq <= slot.last_seq_applied:
+                if persistence.repository:
+                    known = await persistence.repository.receipt(slot.match_player_id, seq, cmd_id)
+                    if known and known["cmd_id"] == cmd_id and bytes(known["payload_hash"]) != digest:
+                        raise RuleError("invalid", "cmd_id payload conflict")
+                await _send_match_state_to(ws, room)
+                await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=False, duplicate=True)
+                return
+            if seq > slot.last_seq_applied + 1:
+                raise RuleError("out_of_order", "Out of order seq", {"expected_seq": slot.last_seq_applied + 1})
+            candidate = clone_room(room)
+            error = _apply_cmd(candidate, conn.pid, data["cmd"])
+            if error:
+                candidate = clone_room(room)  # Reject discards all domain effects; only transport outcome commits.
+            player = candidate.players[conn.pid]
+            player.last_seq_applied = seq
+            player.token_expires_at = renewed_expiry()
+            _remember_cmd_id(player, cmd_id)
+            candidate.last_activity_ts = time.time()
+            if not error:
+                _sync_timer(candidate)
+                candidate.tick += 1
+            receipt = {"match_player_id": player.match_player_id, "seq": seq, "cmd_id": cmd_id,
+                       "payload_hash": digest, "outcome": "rejected" if error else "accepted",
+                       "error_code": error["code"] if error else None}
+            await _commit(room, candidate, snapshot=not error, receipt=receipt)
+            if error:
+                await _send(ws, error)
+            else:
+                await _send_match_state(room)
+            await _send_cmd_ack(ws, cmd_id, seq, room.players[conn.pid].last_seq_applied, applied=not error)
+            return
+        operation = None
+        request_id = data.get("request_id")
+        if kind in ("start_match", "rematch", "set_settings", "set_color") and request_id:
+            digest = checksum(data)
+            known = await persistence.repository.operation(room.id, request_id) if persistence.repository else None
+            if known:
+                if known["room_player_id"] != room.players[conn.pid].id or bytes(known["payload_hash"]) != digest:
+                    raise RuleError("invalid", "request_id conflict")
+                await _send_room_state(room, request_id)
+                if kind in ("start_match", "rematch"):
+                    await _send_reconnect_token(ws, room, conn.pid)
+                    await _send_match_state_to(ws, room)
+                return
+            operation = {"request_id": request_id, "room_player_id": room.players[conn.pid].id,
+                         "kind": kind, "payload_hash": digest, "expected_epoch": room.match_id}
+        candidate = clone_room(room)
+        if kind in ("start_match", "rematch"):
+            if data.get("expected_match_id", room.match_id) != room.match_id:
+                raise RuleError("invalid", "Stale match operation")
+            if conn.pid != (room.host_pid if kind == "start_match" else _rematch_host_pid(room)):
+                raise RuleError("forbidden", "Only host can start/rematch")
+            if kind == "start_match" and room.status != "lobby":
+                raise RuleError("invalid", "Match already started; use rematch")
+            _start_match(candidate, rebind=False)
+            _sync_timer(candidate)
+        elif kind == "set_map":
+            _set_map(candidate, conn.pid, data)
+        elif kind == "set_settings":
+            _set_room_settings(candidate, conn.pid, data["settings"])
+        elif kind == "set_color":
+            _set_player_color(candidate, conn.pid, data["color"])
+        elif kind == "chat":
+            _append_chat(candidate, conn.pid, data["text"])
+        elif kind == "enable_test_mode":
+            if not TEST_TOOLS_ENABLED or conn.pid != room.host_pid or room.status != "lobby":
+                raise RuleError("forbidden", "Only host on a test-enabled server may enable a lobby test room")
+            candidate.test_mode = True
+            candidate.config_revision += 1
+        else:
+            raise RuleError("unknown", "Unknown operation")
+        candidate.last_activity_ts = time.time()
+        actor_id = room.players[conn.pid].id
+        next(p for p in candidate.players if p.id == actor_id).token_expires_at = renewed_expiry()
+        await _commit(room, candidate, snapshot=kind in ("start_match", "rematch"), operation=operation)
+        if kind in ("start_match", "rematch"):
+            await _notify_start(room)
+        elif kind == "chat":
+            await _broadcast(room, {"type": "chat_state", "room_code": room.room_code,
+                                   "chat_revision": room.chat_revision, "chat_history": list(room.chat_history)})
+        else:
+            await _send_room_state(room, request_id)
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
@@ -551,258 +916,50 @@ async def websocket_endpoint(ws: WebSocket):
     manager.connections[ws] = conn
     try:
         while True:
-            msg = await ws.receive_text()
+            raw = await ws.receive_text()
+            data = None
             try:
-                data = json.loads(msg)
-            except Exception:
+                data = json.loads(raw)
+                json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
+            except (ValueError, TypeError):
                 await _send(ws, net_protocol.error_message("invalid", "Invalid JSON"))
                 continue
-
-            val = net_protocol.validate_client_message(data)
-            if not val.get("ok"):
-                err = val.get("error", {})
-                detail = err.get("detail", {})
-                if isinstance(data, dict) and data.get("type") in ("set_map", "set_settings", "set_color", "chat"):
-                    detail = {**detail, "request_type": data["type"], "request_id": data.get("request_id")}
-                await _send(ws, net_protocol.error_message(err.get("code", "invalid"), err.get("message", "invalid"), detail))
+            validation = net_protocol.validate_client_message(data)
+            detail = {"request_type": data.get("type"), "request_id": data.get("request_id")} if isinstance(data, dict) else {}
+            if not validation.get("ok"):
+                error = validation["error"]
+                await _send(ws, net_protocol.error_message(error["code"], error["message"], {**error.get("detail", {}), **detail}))
                 continue
-
-            mtype = data.get("type")
-            if mtype == "hello":
-                conn.name = data.get("name")
-                await _send(ws, {"type": "hello", "version": net_protocol.VERSION,
-                                 "test_tools_available": TEST_TOOLS_ENABLED})
-                continue
-
-            if mtype == "create_room":
-                room = manager.create_room(data.get("name").strip(), data.get("max_players", 4))
-                manager.bind_player(conn, room, 0)
-                await _send(ws, net_protocol.room_state_message(room))
-                await _send_reconnect_token(ws, room, 0)
-                continue
-
-            if mtype == "join_room":
-                room_code = data.get("room_code")
-                if isinstance(room_code, str):
-                    room_code = room_code.strip().upper()
-                name = data.get("name").strip()
-                room = manager.join_room(room_code, name)
-                if not room:
-                    await _send(ws, net_protocol.error_message("not_found", "Room not found or full"))
-                    continue
-                # bind pid
-                pid = None
-                for slot in room.players:
-                    if slot.name == name:
-                        pid = slot.pid
-                        break
-                manager.bind_player(conn, room, pid)
-                await _send(ws, net_protocol.room_state_message(room))
-                if pid is not None:
-                    await _send_reconnect_token(ws, room, pid)
-                await _send_room_state(room)
-                continue
-
-            if mtype == "reconnect":
-                room_code = data.get("room_code")
-                if isinstance(room_code, str):
-                    room_code = room_code.strip().upper()
-                token = data.get("reconnect_token")
-                room = manager.rooms.get(room_code)
-                if not room:
-                    await _send(ws, net_protocol.error_message("not_found", "Room not found"))
-                    continue
-                pid = None
-                for slot in room.players:
-                    if slot.reconnect_token and secrets.compare_digest(slot.reconnect_token.encode(), token.encode()):
-                        pid = slot.pid
-                        break
-                if pid is None:
-                    await _send(ws, net_protocol.error_message("forbidden", "Invalid reconnect token"))
-                    continue
-                manager.bind_player(conn, room, pid)
-                await _send(ws, net_protocol.room_state_message(room))
-                await _send_reconnect_token(ws, room, pid)
-                if room.status == "in_match":
-                    await _send_match_state_to(ws, room)
-                continue
-
-            if mtype == "leave_room":
-                manager.leave_room(conn)
-                if conn.room_code:
-                    room = manager.rooms.get(conn.room_code)
+            try:
+                await _dispatch(conn, data)
+            except RuleError as exc:
+                await _send(ws, net_protocol.error_message(exc.code, exc.message, {**(exc.details or {}), **detail}))
+            except PersistenceUnavailable:
+                await _send(ws, net_protocol.error_message("persistence_unavailable", "Durable state temporarily unavailable; reconnect to retry",
+                                                          {**detail, "retryable": True}))
+                await ws.close(code=1013)
+                return
+            except Exception:
+                # Database driver errors in receipt/recovery reads are also temporary;
+                # logs deliberately omit SQL values, credential, URL and private state.
+                if persistence.database:
+                    persistence.ready = False
+                    room = manager.rooms.get(conn.room_code or "")
                     if room:
-                        await _send_room_state(room)
-                conn.room_code = None
-                conn.pid = None
-                continue
-
-            if mtype == "start_match":
-                room = manager.rooms.get(conn.room_code or "")
-                if not room:
-                    await _send(ws, net_protocol.error_message("not_found", "Room not found"))
-                    continue
-                if conn.pid != room.host_pid:
-                    await _send(ws, net_protocol.error_message("forbidden", "Only host can start"))
-                    continue
-                if room.status != "lobby":
-                    await _send(ws, net_protocol.error_message("invalid", "Match already started; use rematch"))
-                    continue
-                try:
-                    await _start_and_notify(room)
-                except RuleError as exc:
-                    await _send(ws, net_protocol.error_message(exc.code, exc.message))
-                continue
-
-            if mtype == "set_map":
-                room = manager.rooms.get(conn.room_code or "")
-                if not room:
-                    await _send(ws, net_protocol.error_message("not_found", "Room not found", {"request_type": "set_map"}))
-                    continue
-                if conn.pid != room.host_pid:
-                    await _send(ws, net_protocol.error_message("forbidden", "Only host can set map", {"request_type": "set_map"}))
-                    continue
-                if room.status != "lobby":
-                    await _send(ws, net_protocol.error_message("invalid", "Cannot change map after start", {"request_type": "set_map"}))
-                    continue
-                map_data = data.get("map_data")
-                map_id = data.get("map_id") or data.get("id")
-                if isinstance(map_data, dict):
-                    try:
-                        map_loader.validate_map_data(map_data)
-                    except Exception as exc:
-                        await _send(ws, net_protocol.error_message("invalid", f"Invalid map_data: {exc}", {"request_type": "set_map"}))
-                        continue
-                    room.selected_map_data = map_data
-                    map_name = str(map_data.get("name", "custom"))
-                    if not isinstance(map_id, str) or not map_id:
-                        map_id = map_name
-                    room.selected_map_id = str(map_id)
-                    room.selected_map_meta = {
-                        "id": str(map_id),
-                        "name": map_name,
-                        "description": str(map_data.get("description", "")),
-                    }
-                    rules_raw = map_data.get("rules", {})
-                    room.selected_rules_config = vars(parse_rules_config(rules_raw if isinstance(rules_raw, dict) else {}))
-                else:
-                    if not isinstance(map_id, str):
-                        await _send(ws, net_protocol.error_message("invalid", "map_id required", {"request_type": "set_map"}))
-                        continue
-                    meta = get_preset_meta(map_id)
-                    if not meta:
-                        await _send(ws, net_protocol.error_message("invalid", "Unknown map_id", {"request_type": "set_map"}))
-                        continue
-                    rules_raw = get_preset_map(map_id).get("rules", {})
-                    room.selected_rules_config = vars(parse_rules_config(rules_raw))
-                    room.selected_map_id = map_id
-                    room.selected_map_meta = dict(meta)
-                    room.selected_map_data = None
-                room.map_revision += 1
-                if room.settings.target_vp is not None:
-                    room.selected_rules_config["target_vp"] = room.settings.target_vp
-                room.selected_rules_config["discard_threshold"] = room.settings.discard_threshold
-                room.config_revision += 1
+                        room.persistence_blocked = True
+                    logging.getLogger(__name__).error("Room operation failed (private details omitted)")
+                    await _send(ws, net_protocol.error_message("persistence_unavailable", "Durable operation unavailable", {**detail, "retryable": True}))
+                    await ws.close(code=1013)
+                    return
+                raise
+    except (WebSocketDisconnect, RuntimeError, OSError, asyncio.TimeoutError):
+        pass
+    finally:
+        room = manager.rooms.get(conn.room_code or "")
+        if room:
+            async with room.lock:
+                manager.leave_room(conn)
                 await _send_room_state(room)
-                continue
-
-            if mtype in ("set_settings", "set_color", "chat", "enable_test_mode"):
-                room = manager.rooms.get(conn.room_code or "")
-                detail = {"request_type": mtype, "request_id": data.get("request_id")}
-                if not room or conn.pid is None or room.players[conn.pid].active_ws is not ws:
-                    await _send(ws, net_protocol.error_message("forbidden", "Room membership required", detail))
-                    continue
-                try:
-                    if mtype == "set_settings":
-                        _set_room_settings(room, conn.pid, data["settings"])
-                    elif mtype == "set_color":
-                        _set_player_color(room, conn.pid, data["color"])
-                    elif mtype == "enable_test_mode":
-                        if not TEST_TOOLS_ENABLED or conn.pid != room.host_pid or room.status != "lobby":
-                            raise RuleError("forbidden", "Only host on a test-enabled server may enable a lobby test room")
-                        room.test_mode = True
-                        room.config_revision += 1
-                    else:
-                        _append_chat(room, conn.pid, data["text"])
-                except RuleError as exc:
-                    await _send(ws, net_protocol.error_message(exc.code, exc.message, detail))
-                    continue
-                if mtype == "chat":
-                    await _broadcast(room, {"type": "chat_state", "room_code": room.room_code,
-                                           "chat_revision": room.chat_revision, "chat_history": list(room.chat_history)})
-                else:
-                    await _send_room_state(room, data.get("request_id"))
-                continue
-
-            if mtype == "rematch":
-                room = manager.rooms.get(conn.room_code or "")
-                if not room:
-                    await _send(ws, net_protocol.error_message("not_found", "Room not found"))
-                    continue
-                if conn.pid != _rematch_host_pid(room):
-                    await _send(ws, net_protocol.error_message("forbidden", "Only host can rematch"))
-                    continue
-                try:
-                    await _start_and_notify(room)
-                except RuleError as exc:
-                    await _send(ws, net_protocol.error_message(exc.code, exc.message))
-                continue
-
-            if mtype == "cmd":
-                room = manager.rooms.get(conn.room_code or "")
-                if not room:
-                    await _send(ws, net_protocol.error_message("not_found", "Room not found"))
-                    continue
-                await _process_room_timer(room)
-                if conn.room_code != room.room_code or conn.pid is None or room.players[conn.pid].active_ws is not ws:
-                    await _send(ws, net_protocol.error_message("forbidden", "Room membership required"))
-                    continue
-                if data.get("room_code") is not None and data.get("room_code") != room.room_code:
-                    await _send(ws, net_protocol.error_message("invalid", "room_code mismatch"))
-                    continue
-                if data.get("match_id") != room.match_id:
-                    await _send(ws, net_protocol.error_message("invalid", "match_id mismatch"))
-                    continue
-                if conn.pid is None:
-                    await _send(ws, net_protocol.error_message("invalid", "No player slot assigned"))
-                    continue
-                cmd_id = data.get("cmd_id")
-                seq = int(data.get("seq"))
-                slot = room.players[conn.pid]
-                expected_seq = slot.last_seq_applied + 1
-
-                if cmd_id in slot.seen_cmd_set or seq <= slot.last_seq_applied:
-                    await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=False, duplicate=True)
-                    continue
-                if seq > expected_seq:
-                    await _send(ws, net_protocol.error_message("out_of_order", "Out of order seq", {"expected_seq": expected_seq}))
-                    continue
-
-                err = _apply_cmd(room, conn.pid, data.get("cmd", {}))
-                # This is the last CONSUMED sequence, including rejected game commands.
-                # Both outcomes are final; replay must not retry an old rejected intent.
-                slot.last_seq_applied = seq
-                _remember_cmd_id(slot, cmd_id)
-                if err:
-                    await _send(ws, err)
-                    await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=False)
-                else:
-                    _sync_timer(room)
-                    room.tick += 1
-                    room.last_activity_ts = time.time()
-                    await _send_match_state(room)
-                    await _send_cmd_ack(ws, cmd_id, seq, slot.last_seq_applied, applied=True)
-                continue
-
-    except WebSocketDisconnect:
-        manager.leave_room(conn)
-        if conn.room_code:
-            room = manager.rooms.get(conn.room_code)
-            if room:
-                await _send_room_state(room)
-        manager.connections.pop(ws, None)
-    except Exception:
-        manager.leave_room(conn)
         manager.connections.pop(ws, None)
 
 
@@ -815,7 +972,8 @@ def main():
         port = int(port_raw)
     except ValueError:
         port = 8000
-    uvicorn.run("app.server_mp:app", host=host, port=port, reload=False)
+    loop = "app.persistence.db:selector_event_loop" if os.name == "nt" else "auto"
+    uvicorn.run("app.server_mp:app", host=host, port=port, reload=False, workers=1, loop=loop)
 
 
 if __name__ == "__main__":

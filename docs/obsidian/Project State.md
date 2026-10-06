@@ -5,6 +5,20 @@ updated: 2026-10-06
 
 # Project State
 
+## Persistence Phase 1B — Durable Multiplayer State
+
+**Completed — 2026-10-06. READY FOR CHECKPOINT.** PostgreSQL хранит committed Room/Match, private codec v1, hashed guest credentials, consumed sequence/receipts, точный Balanced bag, UTC timer, config/colors/membership/revisions, последние 50 chat messages и 80 canonical private events. Активная модель остаётся Python Room/GameState в памяти одного backend worker. Durable mutation проходит общий room lock: candidate → SQL transaction/COMMIT → RAM promotion → personal broadcast/ACK. Отказ записи не применяет и не подтверждает candidate; неопределённый COMMIT разрешается чтением head/receipt, без повторного random effect.
+
+Startup выполняет Alembic и восстанавливает lobby, active и finished-awaiting-rematch rooms без build_game/shuffle. Все места сначала disconnected. Старые received guest tokens работают; DB содержит SHA-256, не raw token. Stable Room/RoomPlayer/Match UUID не заменяют room code, compact pid и integer match_id. Retained rematch member сохраняет credential; excluded member retired/revoked. Timer после recovery paused до первого verified reconnect, затем минимум 20s с сохранением pending/blocked/stopped. Closed/expired/abandoned/Test Rooms не загружаются; corrupt head quarantined без fallback на older ACKed state.
+
+Проверено: **508/508 pytest**, включая **63 real-PostgreSQL cases**; **130/130 web**, TypeScript, production web build, Docker backend/web и pip check. Отдельный Windows backend process + реальные WS: kill/restart, same tokens/state/seq, wrong/revoked tokens, old pid mismatch. Chrome 154 + Docker/PostgreSQL/Nginx, два обычных клиента: Base setup → Balanced Roll → naturally funded paid road/chat → refresh → backend SIGKILL → next action → second restart → PostgreSQL stop/start → full down/up без -v. Отдельный explicit isolated down -v подтвердил удаление данных. Проверены Hidden bank/privacy, private deck/bag/state digests и no success during DB outage. Startup без DB: health 503, retryable error + WS 1013, no RAM fallback.
+
+Локальная median durable latency, 12 warm samples на command: Roll 22.23ms, Road 22.47ms, bank Trade 22.70ms, End 22.36ms; encode 2.10–2.35ms, SQL transaction 19.68–20.50ms. Это Docker Desktop PostgreSQL 17.11 / Windows Python 3.13, не production/load benchmark. Engine/rules/maps/codec/network privacy/UI не менялись; scenario suite не повторялась, **348/508 остаётся historical**. Единственный frontend runtime diff — lifecycle retry в WSClient; Board3D/React/CSS не затронуты.
+
+Ограничения: один worker/replica; нет accounts/auth, Continue UI, automatic retention/cleanup и backup system. Refresh требует прежний Join/name/room/token flow. Local dev без DATABASE_URL остаётся memory mode; Compose принудительно durable и не деградирует при outage. Guest token expiry — 30 дней authenticated inactivity. Неполученный issuance token нельзя восстановить по имени. Live RAM rooms старого image не импортируются автоматически; нужен отдельный controlled rollout. Details — [[plans/persistence-auth#Persistence Phase 1B — implementation and verification]], [[Сервер и протокол#Durable command and recovery flow — Persistence 1B]], [[Deployment#Persistence verification — 2026-10-06]], [[Architecture Decisions#ADR-012 — Durable commit gate and conservative restart]].
+
+Предложенный checkpoint: `feat: persist multiplayer games across server restarts`, tag `persistence-phase-1b`; commit/tag автоматически не создавались. Следующие Continue/Auth/Seafarers этапы требуют отдельной задачи. Existing `.obsidian/graph.json` preference change оставлено вне scope.
+
 ## Persistence Phase 1A — Full Trusted GameState Codec
 
 **Completed — 2026-10-06. READY FOR CHECKPOINT.** Separate `app/persistence/snapshots.py` exposes encode/decode/dumps/loads for full private shared-engine state. Envelope snapshot_version=1 / engine_compatibility=1; all 40 GameState fields and nested dataclasses preserved through JSON, explicit int/tuple/set restoration, materialized board IDs/order, complete private deck/cards/bank/pending/free_roads/counters. Exact shapes/versions/types/references, duplicate keys/IDs and format limits validated; no generation/shuffle/repair/automatic defaults. Details — [[plans/persistence-auth#Persistence Phase 1A — completed 2026-10-06]], [[Состояние игры#Full trusted persistence codec v1]], [[Architecture Decisions#ADR-011 — Separate full trusted GameState codec]].
@@ -13,9 +27,9 @@ Full pytest **445/445** passed: 266 checkpoint tests plus **179 codec cases**, i
 
 Measured 100-sample local median: Base 7,662 bytes / encode 1.250ms / decode 0.842ms; Gold 7,778 / 1.239 / 0.826; 50-hex 16,363 / 2.715 / 1.741. Includes validation/text JSON, excludes DB/fs/network and long-match growth. No new dependencies, Docker/auth/HTTP/WS/React changes. Web/build/scenarios not rerun because those paths/engine were untouched; **348/508 is historical**.
 
-Next separate task: Persistence 1B durable Room adapter/recovery/hashed guest credentials/seq receipts/commit-before-ACK. Room bag/timer/chat/private event feed/ownership/revisions are NOT in this engine codec; restart still loses games until 1B. Codec schema v1 freezes at checkpoint; unknown/new fields need explicit compatibility review. Checkpoint message `feat: add versioned game state persistence codec`, tag `persistence-phase-1a`; not created automatically. Existing `.obsidian` preferences remain outside task.
+At the 1A checkpoint Room durability was still absent; it is now implemented separately by 1B above. Room bag/timer/chat/private event feed/ownership/revisions are NOT in this engine codec. Codec schema v1 freezes at checkpoint; unknown/new fields need explicit compatibility review. Checkpoint message `feat: add versioned game state persistence codec`, tag `persistence-phase-1a`; not created automatically. Existing `.obsidian` preferences remain outside task.
 
-Last verified: **2026-10-06 — Game UX 2.3 Completed, READY FOR CHECKPOINT.** Полный pytest **266/266**, web **128/128**, TypeScript, production web build и оба Docker images проходят. Docker/nginx + Chrome 154: **27/27 E2E cases**, 103 command attempts, 12 ожидаемых refusals. Scenario suite повторена: **348/508**, прежние 160 failures в восьми сценариях; assertions/rules для них не ослаблялись. Scope/evidence/limits — [[plans/game-ui-redesign#Game UX 2.3 — Playtest Feedback Pass]], [[Design System#Game UX 2.3 — implemented playtest feedback]].
+Предыдущая verification: **2026-10-06 — Game UX 2.3 Completed, READY FOR CHECKPOINT.** Полный pytest **266/266**, web **128/128**, TypeScript, production web build и оба Docker images проходят. Docker/nginx + Chrome 154: **27/27 E2E cases**, 103 command attempts, 12 ожидаемых refusals. Scenario suite повторена: **348/508**, прежние 160 failures в восьми сценариях; assertions/rules для них не ослаблялись. Scope/evidence/limits — [[plans/game-ui-redesign#Game UX 2.3 — Playtest Feedback Pass]], [[Design System#Game UX 2.3 — implemented playtest feedback]].
 
 Игроки и timer справа, Log/Chat сворачиваются, Bank виден как animation anchor. Hand — пять мини-карт со stack/count; Knight/Road Building играются прямо из руки, Monopoly/Plenty открывают необходимый picker, VP passive. Trade Tray отправляет existing broadcast offer или maritime trade отдельными кнопками. Discard выбирается картами; новый host-only lobby setting `discard_threshold` default 7, strict hand > threshold, прежняя floor(hand/2), locked после Start и сохраняется при rematch.
 
@@ -55,9 +69,9 @@ Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8
 
 ## Current Architecture
 
-Общий Python-движок обслуживает локальный PySide-клиент и FastAPI WebSocket-сервер. React/TypeScript получает снимки партии и отправляет намерения. Комнаты живут в памяти процесса. Qt и browser имеют отдельные представления состояния. Multiplayer теперь использует отдельный player-specific snapshot; trusted/offline to_dict сохранён.
+Общий Python-движок обслуживает локальный PySide-клиент и FastAPI WebSocket-сервер. React/TypeScript получает снимки партии и отправляет намерения. Active Room/GameState живут в памяти одного процесса; PostgreSQL хранит durable committed aggregates для restart recovery. Qt и browser имеют отдельные представления состояния. Multiplayer использует player-specific snapshot, trusted/offline to_dict сохранён, private persistence — отдельный codec v1.
 
-Docker production-like: Browser → Nginx (React dist, /ws, /health) → один FastAPI worker → тот же engine. Только web port опубликован; оба containers non-root, без host mounts. Локальный Python + Vite workflow сохранён. Инструкции — [[Deployment]].
+Docker production-like: Browser → Nginx (React dist, /ws, /health) → один FastAPI worker → shared engine + private PostgreSQL с named volume. Только web port опубликован; backend/web non-root, без host mounts. Alembic и recovery завершаются до readiness. Локальный Python + Vite workflow сохранён. Инструкции — [[Deployment]].
 
 Карта архитектуры уже существует: [[Карта файлов]], [[Точки входа]], [[Сценарий сетевой партии]]. Новый дублирующий Architecture.md не нужен.
 
@@ -109,7 +123,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 | Seafarers rules | Остаются ограничения смешанных/закрытых маршрутов, Longest Trade Route и полноты отдельных сценариев |
 | Остальные Base rules | Требуют отдельного исправления ничьи достижений, победа вне активного хода, детерминированная кража |
 | Road Building lifecycle | Исправлено 2026-10-05: end_turn_cleanup очищает free_roads только после успешной проверки End Turn. 0/1/2 placements, следующий собственный ход, paid road cost, сохранение построек, atomic rejects и персональные server snapshots проверены в tests/test_road_building_lifecycle.py |
-| Сетевой lifecycle | Нет persistence/автоматического room cleanup/общего WS rate limiting; добавлен только chat limit 5/10s, рассылка остаётся последовательной |
+| Сетевой lifecycle | Persistence 1B реализована: locked durable commits, hashed guest ownership, restart recovery и replay protection. Automatic cleanup/общего WS rate limiting нет; chat limit 5/10s, рассылка последовательная |
 
 Статусы таблицы отражают завершённую Phase 1, включая reconnect/pirate fixes и финальные продуктовые решения. Остальные перечисленные P1 остаются открытыми; исторические доказательства и текущая проверка — [[Результаты аудита]].
 

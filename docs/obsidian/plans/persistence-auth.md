@@ -1,7 +1,7 @@
 ---
 tags: [catan, architecture, persistence, auth, plan]
 updated: 2026-10-06
-status: phase-1a-completed
+status: phase-1b-completed
 ---
 
 # Persistence + Auth Architecture v1
@@ -10,7 +10,7 @@ status: phase-1a-completed
 
 ## Status and boundary
 
-Architecture plan audited 2026-10-06 against `745d749` / `game-ux-2-3`, then used as the user-approved direction for Persistence Phase 1A. **Only full GameState codec 1A is implemented.** Database, Room recovery, auth, Continue and Profile remain unimplemented; their rollout/product policies are still future work. Current accepted authority/privacy/consumed-sequence/rematch decisions remain in force. Codec does not change engine, protocol, player views, dependencies or Docker.
+Architecture plan audited 2026-10-06 against `745d749` / `game-ux-2-3`, then used as the user-approved direction for Persistence 1A/1B. **Full GameState codec 1A and durable guest backend 1B are implemented/verified.** Auth, Continue and Profile remain future scope. Current authority/privacy/consumed-sequence/rematch constraints remain in force; engine/rules/codec/player projection unchanged. Historical pre-persistence audit and future account proposals below are labelled separately from the implemented 1B contract.
 
 Goal: one FastAPI worker and one PostgreSQL database; committed active games survive process/container restart, guests can continue using their credential, accounts can later list their games. No Redis, broker, event sourcing, multi-instance coordination, engine rewrite or mandatory registration.
 
@@ -58,9 +58,81 @@ Outside GameState and NOT in codec: room code/internal UUID/status/capacity/host
 
 Database Phase 1B must combine complete engine payload with these durable fields and commit/replay/recovery guarantees. GameState JSON alone cannot restore multiplayer. Next phase requires its own task; suggested checkpoint message `feat: add versioned game state persistence codec`, tag `persistence-phase-1a`.
 
-Current `deploy/backend.Dockerfile` selectively copies server/engine files and does not include `app/persistence/`. It is intentionally untouched because 1A adds no server caller. Phase 1B must include this package when integrating it into the backend image, then verify actual container recovery.
+At checkpoint 1A `deploy/backend.Dockerfile` did not include `app/persistence/` because there was no server caller. Phase 1B now copies this package plus Alembic/migrations and verifies actual container recovery.
 
-## Current lifecycle: verified code
+## Persistence Phase 1B — implementation and verification
+
+**Completed — 2026-10-06. READY FOR CHECKPOINT.** Authorized after `persistence-phase-1a`. Mapping below was written from the Room audit before schema implementation, then checked against implemented code/recovery. Shared engine/rules/network player projection remain unchanged. Accounts/Continue/Profile are not included.
+
+### Runtime to durable mapping
+
+| Runtime field | Durable authority | Recovery |
+| --- | --- | --- |
+| Room.room_code, max_players, status, host_pid | rooms UUID/code/capacity/status; host FK to stable room_players UUID | Rebuild Room and resolve host's current pid; never identify ownership by name/pid. |
+| players[].name/color/pid | room_players identity/display/color/current_pid; match_players match-specific pid | Rebuild named seats and empty lobby capacity; retired members excluded, historical participants retained. |
+| reconnect_token | seat_tokens SHA-256 hash/UTC expiry/revocation | Raw token unavailable in storage; validate presented bearer, same retained credential across restart/rematch. |
+| last_seq_applied, seen_cmd_ids/set | match_players.consumed_seq; last 256 command_receipts per participant | Restore consumed counter and duplicate cache; rejection consumes seq without game mutation. |
+| selected_map_id/meta/data/rules, settings | rooms versioned configuration JSON including complete preset/custom source, nullable target override | Restore committed definition without rereading a changed preset; catalog itself is runtime-only. |
+| map_revision/config_revision/chat_revision | rooms monotonic counters | Preserve existing independent ordering domains across restart. |
+| Room.match_id, tick | rooms current-match FK; matches UUID + room-local epoch/tick | Preserve wire integer epoch; GameState.tick remains a separate codec field. |
+| game, seed | game_snapshots private versioned engine codec v1 + Room checkpoint | Decode only; no build_game, topology generation or deck shuffle. Room seed agrees with engine seed. |
+| dice_algorithm, dice_bag, dice, roll_count | private match checkpoint, exact ordered pairs + version | Restore pairs/order/result/count; no draw/refill. Future Random entropy is not serialized. |
+| timer | private checkpoint UTC deadline/stage/pid; no monotonic timestamp | Paused until authenticated reconnect; turn/grace → max(20s,min(configured duration,UTC remaining)); blocked/stopped preserved. |
+| game_events/event_serial | canonical private match checkpoint, last 80 with explicit integer audience-key restore | Existing game_events.project handles recipient filtering; no global stolen-resource field. |
+| chat_history | rooms JSONB, last 50 original messages | Preserve order/name/color/time/text; chat_times rate window resets. |
+| test_mode/next_test_dice | rooms.is_test + private checkpoint | Test rooms excluded from startup recovery; never normal history. Forced outcome never applied to normal room. |
+| last_activity_ts | rooms last_activity_at/updated_at UTC | Restore timestamp; statuses allow future expiry/close without a cleanup scheduler. |
+| connections/active_ws/connected, locks | Never persisted | All startup sockets absent/seats disconnected; authorized bind fences old owner. |
+
+Implemented: SQLAlchemy async per-operation sessions, Alembic initial reversible migration, isolated real PostgreSQL. Coordinator commits complete candidate under one Room lock (including lifecycle/timer/config/chat), then promotes and publishes. Head plus two diagnostic snapshots; no automatic rollback. Durable revision/head/receipt/operation lookup resolves commit ambiguity; room fenced until resolved. Start/rematch have additive request_id + expected_match_id so a lost response cannot create a second match. Existing controls without these fields remain compatible but cannot express replay-safe rematch intent.
+
+Docker keeps one backend worker and exposes only web; private PostgreSQL/named volume and backend startup migrations precede recovery readiness. Memory mode remains for isolated unit/local development; configured durable mode never falls back. Normal production containers were not used for destructive smoke. Tests ran in `catan-persistence-test`; only its explicitly inspected project-labelled volume was removed in a separate opt-in deletion check.
+
+### Implemented schema and modules
+
+Pinned runtime: SQLAlchemy 2.0.48, Alembic 1.20.0, psycopg[binary] 3.3.6; PostgreSQL 17-bookworm pinned OCI digest, actual 17.11. SQLAlchemy Core Tables with async sessions, no SQLModel and no engine ORM. Supporting dependencies pinned in requirements-server.txt; tested local Python 3.13 and Docker Python 3.12. Windows `python -m app.server_mp` selects an explicit SelectorEventLoop for psycopg; Docker Uvicorn stays Linux/default.
+
+| Table | Current role |
+| --- | --- |
+| rooms | Stable UUID/unique code/status/host/current match/capacity/tick; versioned config JSONB/full map source, revisions, bounded chat and UTC lifecycle/activity |
+| room_players | Stable guest member UUID/display/color/current pid, active/retired membership and activity/removal timestamps |
+| seat_tokens | One member credential: unique SHA-256 hash, creation/expiry/revocation; never plaintext |
+| matches | Stable UUID + unique room/epoch, active/finished/superseded/abandoned/quarantined status, map/settings, snapshot head/winner and start/finish times |
+| match_players | Match membership UUID, stable member FK and match-scoped pid; consumed sequence/final total VP |
+| game_snapshots | Private Room checkpoint wrapping codec v1, compatibility/tick/revision/checksum; current head + 2 per match |
+| command_receipts | Accepted/rejected classification, cmd_id/seq/payload hash/result tick/revision; latest 256 per participant |
+| room_operations | Actor/kind/request ID/payload hash/expected/result epoch; latest 256 per room for Start/Rematch/settings/color |
+
+Composite/deferrable FKs constrain host/current match/head/winner to their room/match; unique active name/color/pid and one active match per room enforced. Initial migration `ab68cc7c6ebb` freezes DDL and explicitly creates/drops cyclic FKs; empty → head → base → head tested on real PostgreSQL. No production create_all.
+
+`db.py` configures engine/pool and fresh AsyncSession per operation; `models.py` schema; `repositories.py` aggregate transaction/read/pruning; `coordinator.py` commit gate/ambiguity/readiness; `recovery.py` clone/config/private checkpoint/strict restore/timer resume; `credentials.py` secure issuance/hash/expiry. Full engine codec remains solely snapshots.py. No per-table generic DI/repository framework.
+
+### Operational decisions and limits
+
+Accepted [[Architecture Decisions#ADR-012 — Durable commit gate and conservative restart]]: 256-bit guest bearer, constant-time hash verification, 30-day authenticated inactivity expiry, retained credential across rematch/compact pid, excluded/closed tokens revoked. DB stores no raw token; a presented valid proof can be returned to its verified connection. Issuance committed but never received by client creates an unrecoverable-by-name guest reservation; accounts/bootstrap request recovery/cleanup not implemented.
+
+Alembic upgrade + validated recovery precede readiness. Lobby/live/finished rooms load disconnected; Test/closed/expired/abandoned excluded. Current corrupt head quarantines without older rollback; healthy rooms remain available. Readiness 503 and retryable WS persistence_unavailable/1013 during DB failure. Failed/ambiguous writes fence room; monitor resolves durable state and uses ordinary verified reconnect after DB returns. Exact deck/bag/pending restored without generation; future Random entropy not stored. Timer downtime policy is finalized below. Chat rate window and sockets are runtime-only.
+
+No automatic room expiry/pruning scheduler or account/session schema. Status/timestamps support future retention. Final results metadata retained; old active rematch becomes superseded, not a fabricated win. Archived matches each keep at most 3 heads, but match/room rows are not time-pruned. No TLS/backup/multi-worker support. Current RAM rooms in an older running image cannot be imported automatically; controlled drain/upgrade is a separate rollout. Qt offline save remains separate.
+
+### Verification and performance — 2026-10-06
+
+Full pytest **508/508**, including **63 real-PostgreSQL cases**; web **130/130**, TypeScript, production web/Docker backend+web builds and pip check passed. PG tests cover reversible migrations/FKs/uniqueness/rollback, Base/private dev/pending/free roads/trade/game_over and Seafarers ship/pirate/gold continuation, exact balanced bag/refill, 5 timer stages, chat/feed bounds/privacy, lifecycle failure atomicity, rejection/duplicate/gap/ownership, lost ACK for Roll/theft/dev, ambiguous COMMIT, concurrent commands/reconnect and corruption isolation. No_match lobby intent rejected before SQL receipt, not allowed to fence DB.
+
+Actual isolated uvicorn process was killed/restarted against real PG with two WS participants: normal setup/Roll, exact personal state, same tokens/consumed sequence, duplicate resync, wrong/revoked token rejection and old pid mismatch. Chrome 154/Docker/Nginx: ordinary Base Standard/Balanced/Hidden/60s timer/colors → natural setup → resource-funded paid road/chat → refresh → SIGKILL backend → action after recovery → second restart → PostgreSQL stop/start with one pending Roll/no premature ACK → full down/up without -v. Exact private GameState/deck/bag digests checked inside backend without exporting payload. Explicit isolated down -v separately proved empty durable DB afterward. Startup with absent DB: health 503/retryable WS1013/no RAM fallback. Existing prepared Dice browser fixture also passed after adapting its initializer to candidate-only start.
+
+| Command | Encode/config/checksum median ms | SQL transaction median ms | Durable median ms | Full handler median ms |
+| --- | --- | --- | --- | --- |
+| Roll | 2.102 | 20.122 | 22.234 | 25.570 |
+| Road | 2.236 | 20.238 | 22.466 | 26.376 |
+| Bank Trade | 2.199 | 20.496 | 22.698 | 26.915 |
+| End Turn | 2.350 | 19.682 | 22.360 | 26.491 |
+
+12 warm local samples each, Docker Desktop PG17.11 / Windows Python3.13, ordinary funded engine fixtures/real SQL/fake sockets; full handler includes clone/execution/personal projection but excludes real browser/network latency. No production load/FPS/backup/ARM certification. Scenario suite not rerun because engine untouched; 348/508 historical baseline. Checkpoint: `feat: persist multiplayer games across server restarts`, `persistence-phase-1b`. Reproduction/isolated commands — [[Deployment#Persistence integration tests]].
+
+## Pre-persistence lifecycle — historical audit at 745d749
+
+The following lifecycle/serializer audit describes the earlier RAM-only checkpoint. Implemented 1B behavior is above; account/auth/Continue sections remain future proposals.
 
 | Step | Code and actual behavior |
 | --- | --- |
@@ -301,13 +373,13 @@ Persist bounded 80-event full internal feed and event_serial inside private matc
 
 Balanced: persist exact remaining ordered dice pairs and `balanced_v1`. Current `room_options.py` refreshes with a new 36-pair shuffled bag when remaining length ≤12; no RNG seed/state can reconstruct secrets.SystemRandom. Restore without drawing/refilling/shuffling. Random mode stores confirmed faces/count/history, not unrealized future entropy. Save complete development deck order and all purchased cards/new flags/hidden VP/bank; restore without new deck creation. Current free_roads must survive restart within its current turn, but successful End Turn still clears unused entitlement by dcadcab.
 
-## Timer downtime policy — product proposal
+## Timer downtime policy — accepted for 1B
 
 Persist UTC deadline/stage/pid on matches; runtime uses monotonic. Recovery computes remaining from saved UTC deadline using current trusted server wall time, then creates a fresh monotonic deadline when resuming. Never serialize monotonic values.
 
-Proposed restart behavior: recovered timed games wait for first authorized participant reconnect; no unattended chains of Roll/End during downtime/startup. Positive saved remaining is resumed with minimum 20s recovery grace; expired deadline gets 20s, not instant automatic action. Internal recovery-waiting status can project existing stopped timer stage until resumed; final wire/UI choice belongs to implementation phase. Previously blocked mandatory choices/free_roads remain blocked; intentionally stopped/failed timer is not silently rearmed. Setup/Off/game_over have no timer. Validate pid/current turn and bound recovered durations. No random mandatory choices. Normal running-server disconnect timer policy stays as today unless separately approved.
+Accepted/implemented 1B: recovered timed games wait for first authorized participant reconnect; no unattended downtime turn chains. Turn/grace resumes with max(20s, min(configured duration, saved UTC deadline minus current UTC)); expired deadline gets 20s. Waiting projects stage stopped / remaining_ms 0 / paused true. Blocked mandatory choices/free_roads remain blocked; stopped timer is not silently rearmed. Setup/Off/game_over have no timer. Validate pid/current turn and UTC. No random mandatory choices. Normal running-server timer policy unchanged.
 
-DB outage gates automatic mutations just like user commands; ambiguous transactions are resolved before timer retries. This downtime behavior and grace need explicit product acceptance before implementation; not retroactively claimed as current behavior.
+DB outage gates automatic mutations just like user commands; ambiguous transactions resolved before timer retries. User finalized this downtime policy for Phase 1B; accepted decision/verification in ADR-012 above.
 
 ## Minimal security controls
 
@@ -325,7 +397,7 @@ DB/backups contain trusted game secrets and account hashes; app-private credenti
 
 ## Future Docker and dependencies
 
-Browser → Nginx → FastAPI → Python runtime + PostgreSQL. Future Compose adds private postgres with named data volume/healthcheck, backend DB secret and startup recovery readiness; only web exposed. One worker remains mandatory. Migration job runs once before accepting traffic; do not independently auto-migrate from every request/worker. Add Nginx `/api/` proxy because current config routes only /ws and /health to backend; otherwise auth URLs become SPA HTML. HTTPS/same-origin and explicit localhost dev mode are prerequisites for cookie auth. Volume is not backup; plan actual backup/restore drills. No Docker changes now.
+Current 1B: Browser → Nginx → FastAPI → Python runtime + private PostgreSQL/named volume/healthcheck. Only web exposed; one worker/replica mandatory, startup Alembic once before durable traffic. Future auth still needs `/api/` proxy (current routes only /ws and /health), HTTPS/cookie policy and backup/restore drills. Volume is not backup. No auth/deployment expansion beyond 1B.
 
 Current server requirements have FastAPI/Uvicorn/websockets/Pydantic but no DB/migrations/password library. Recommend SQLAlchemy 2.x + Alembic + psycopg 3 async driver; choose exact supported pins at implementation. AsyncSession per operation/task, explicit transactions and no shared global session. Direct psycopg is viable but would duplicate mapping/migration management across membership/auth/history; SQLModel adds another model layer without replacing typed engine dataclasses. Do not add both psycopg and asyncpg unnecessarily. Auth Phase adds argon2-cffi only when needed. No dependency modernization in architecture phase.
 
@@ -358,7 +430,7 @@ Do not introduce generic repository interfaces/DI frameworks per table. Room/Pla
 | Auth 1 | Users/passwords/cookie sessions/CSRF/Origin, ownership claim/takeover/logout, account Active Games, TLS/development profile. No mandatory registration/reset/social login. |
 | Profile | Owner-authorized finished history/results; stats/public-profile decisions separately, no private snapshot exposure. |
 
-Before 1B approve proposed timer downtime, expiry/retention and lifecycle retry contract. Checkpoint each only after its own restart/privacy/crash tests; do not label persistence/auth completed from this design document.
+Phase 1B user authorization finalized timer downtime, guest expiry and lifecycle retry; automatic time-based room retention remains proposed. Checkpoint phases only after their own verification; implemented 1B does not imply accounts/auth/Continue complete.
 
 ## Future testing matrix
 
@@ -380,12 +452,12 @@ Finished normal results retained indefinitely in v1; full finished snapshots/pri
 
 ## Blockers and recommended next step
 
-Codec prerequisite is now closed by a separate full v1 surface; existing to_dict/from_dict remains incomplete and must not be substituted for it. Phase 1B gates remain: commit ambiguity handling, lifecycle idempotency absent from current controls, async Room/timer/socket races, downtime timer policy, ownership stability across compact rematch and deployment TLS/readiness/backups.
+Codec prerequisite and durable guest backend gates closed by verified 1A/1B. Existing to_dict/from_dict remains incomplete and must not replace full codec. Continue/auth/history/TLS/backup/load/retention remain separate work; gameplay P1 unchanged.
 
-**Next separate implementation task: Persistence Phase 1B — durable guest backend adapter and real restart/replay recovery**, using the verified codec. Do not start it automatically; auth/Continue UI remain later checkpoints.
+**Next only on a separate user request: Persistence 1C — Continue Game UI**, then optional Auth/Profile stages. Do not start automatically. Checkpoint 1B before extending scope.
 
 ## Audit evidence and sources
 
-Architecture audit read project memory and actual server_mp.py, room_options.py, game_events.py, engine state/serialize/rules, ui_v6 offline save/load, App/wsClient and requirements/deployment configuration. That initial docs-only audit used a synthetic Python -B probe, no runtime checks. Subsequent Phase 1A verification is explicitly recorded above; historical 128 web/348 scenarios remain checkpoint evidence, not new verification.
+Architecture audit read project memory and actual server_mp.py, room_options.py, game_events.py, engine state/serialize/rules, ui_v6 offline save/load, App/wsClient and requirements/deployment configuration. Initial docs-only audit used a synthetic Python -B probe, no runtime checks. Subsequent Phase 1A/1B verification recorded above; historical 128 web/348 scenarios remain checkpoint evidence, not new scenario verification.
 
-Primary documentation checked 2026-10-06: [SQLAlchemy asyncio/session concurrency](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html), [OWASP sessions](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Exact package versions remain an implementation-time decision; no dependencies installed.
+Primary documentation checked 2026-10-06: [SQLAlchemy asyncio/session concurrency](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html), [OWASP sessions](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [OWASP password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [Psycopg async Windows loop requirements](https://www.psycopg.org/psycopg3/docs/advanced/async.html). Exact 1B pins/verification recorded above; OWASP account/session recommendations remain future scope.

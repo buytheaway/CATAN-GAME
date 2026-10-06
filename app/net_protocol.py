@@ -52,6 +52,10 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
         return {"ok": True}
 
     if mtype in ("leave_room", "start_match", "rematch", "enable_test_mode"):
+        if "request_id" in msg and (not isinstance(msg["request_id"], str) or not 1 <= len(msg["request_id"]) <= 128):
+            return _err("invalid", "Invalid request_id")
+        if "expected_match_id" in msg and (type(msg["expected_match_id"]) is not int or msg["expected_match_id"] < 0):
+            return _err("invalid", "Invalid expected_match_id")
         return {"ok": True}
 
     if mtype == "set_map":
@@ -82,7 +86,7 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "match_id required")
         if type(msg.get("seq")) is not int or msg["seq"] <= 0:
             return _err("invalid", "seq required")
-        if not isinstance(msg.get("cmd_id"), str) or not msg["cmd_id"]:
+        if not isinstance(msg.get("cmd_id"), str) or not 1 <= len(msg["cmd_id"]) <= 128:
             return _err("invalid", "cmd_id required")
         if "room_code" in msg and not isinstance(msg.get("room_code"), str):
             return _err("invalid", "room_code must be string")

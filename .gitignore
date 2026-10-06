@@ -19,6 +19,9 @@ tools/reports/*.log
 /web/node_modules/
 /web/dist/
 /web/.env.local
+/.env
+/.env.*
+!/.env.example
 /tools/reports/
 
 # PyInstaller output

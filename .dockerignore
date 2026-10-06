@@ -11,6 +11,14 @@
 !app/server_mp.py
 !app/net_protocol.py
 !app/resource_path.py
+!app/room_options.py
+!app/game_events.py
+!app/test_tools.py
+!app/persistence/
+!app/persistence/*.py
+!alembic.ini
+!migrations/
+!migrations/**
 !app/engine/
 !app/engine/*.py
 !app/assets/

@@ -564,3 +564,44 @@ if (process.env.CATAN_TEST_WS_URL) {
     assert.equal(replacement.youPid, 0);
   });
 }
+
+test("Start and Rematch retry the same request ID/epoch after disconnect, then settle on committed match", () => {
+  const { client, socket } = lobbyClient();
+  socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0,
+                   reconnect_token: "saved", match_id: 0, last_seq_applied: 0 });
+  client.startMatch();
+  const first = socket.sent.at(-1);
+  assert.equal(first.type, "start_match");
+  assert.equal(first.expected_match_id, 0);
+  assert.equal(typeof first.request_id, "string");
+  client.startMatch();
+  assert.equal(socket.sent.filter(m => m.type === "start_match").length, 1);
+  socket.receive({ type: "error", code: "persistence_unavailable", message: "retry",
+                   detail: { request_id: first.request_id, retryable: true } });
+  socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0,
+                   reconnect_token: "saved", match_id: 0, last_seq_applied: 0 });
+  assert.deepEqual(socket.sent.at(-1), first);
+  socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0,
+                   reconnect_token: "saved", match_id: 1, last_seq_applied: 0 });
+  client.rematch();
+  const second = socket.sent.at(-1);
+  assert.equal(second.type, "rematch");
+  assert.equal(second.expected_match_id, 1);
+  assert.notEqual(second.request_id, first.request_id);
+  socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 1,
+                   reconnect_token: "saved", match_id: 2, last_seq_applied: 0 });
+  assert.equal(socket.sent.at(-1), second); // Already committed: no replay into a third game.
+});
+
+test("temporary persistence failure keeps the guest credential, permanent rejection clears it", () => {
+  const { client, socket } = lobbyClient();
+  socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0,
+                   reconnect_token: "saved", match_id: 1, last_seq_applied: 0 });
+  client.join("ROOM");
+  socket.receive({ type: "error", code: "persistence_unavailable", message: "DB down", detail: { retryable: true } });
+  assert(localStorage.getItem("catan_reconnect_ROOM_Alice"));
+  client.join("ROOM");
+  assert.equal(socket.sent.at(-1).reconnect_token, "saved");
+  socket.receive({ type: "error", code: "forbidden", message: "revoked" });
+  assert.equal(localStorage.getItem("catan_reconnect_ROOM_Alice"), null);
+});

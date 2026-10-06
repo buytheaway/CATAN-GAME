@@ -1,0 +1,8 @@
+# Isolated, explicit opt-in test project. Never reuse the normal production volume.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:15432:5432"
+  web:
+    ports: !override
+      - "127.0.0.1:18081:8080"

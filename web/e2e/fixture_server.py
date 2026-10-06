@@ -12,8 +12,8 @@ original_start = server._start_match
 original_apply = server._apply_cmd
 
 
-def initialize(room):
-    original_start(room)
+def initialize(room, *, rebind=True):
+    original_start(room, rebind=rebind)
     if room.match_id != 1 or not room.players[0].name.startswith("fixture-"):
         return
     mode = room.players[0].name.split()[0].removeprefix("fixture-")
