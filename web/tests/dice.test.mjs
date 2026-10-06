@@ -7,7 +7,7 @@ import { Euler, Vector3 } from "three";
 const compiled = await build({ stdin: { contents: 'export * from "./dice";',
   resolveDir: fileURLToPath(new URL("../src/game/", import.meta.url)), loader: "ts" },
   bundle: true, write: false, platform: "node", format: "esm" });
-const { serverDice, isNewRoll, finalDieRotation, diePose, DIE_PIPS, DICE_DURATION_MS } = await import(
+const { serverDice, isNewRoll, finalDieRotation, diePose, DIE_PIPS, DICE_DURATION_MS, diceOpacity } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 
 test("only an exact server pair is accepted; sums, missing and forged values produce no faces", () => {
@@ -40,11 +40,18 @@ test("all six dice orientations settle with the matching numbered face pointing 
 });
 
 test("dice trajectory is finite, deterministic, time limited and never produces another gameplay result", () => {
-  assert.ok(DICE_DURATION_MS >= 700 && DICE_DURATION_MS <= 1200);
+  assert.ok(DICE_DURATION_MS >= 2000 && DICE_DURATION_MS <= 3000);
   for (const face of [1, 2, 3, 4, 5, 6]) for (const p of [0, .2, .5, .8, 1]) {
     const pose = diePose(p, face, 0);
     assert.deepEqual(pose, diePose(p, face, 0));
     assert.ok([...pose.position, ...pose.rotation].every(Number.isFinite));
     assert.deepEqual(Object.keys(pose).sort(), ["position", "rotation"]);
   }
+});
+
+test("dice settle, hold the authoritative face, then fade instead of disappearing", () => {
+  assert.deepEqual(diePose(900 / DICE_DURATION_MS, 5, 1), diePose(2000 / DICE_DURATION_MS, 5, 1));
+  assert.equal(diceOpacity(900), 1); assert.equal(diceOpacity(2099), 1);
+  assert.ok(diceOpacity(2300) > 0 && diceOpacity(2300) < 1);
+  assert.equal(diceOpacity(DICE_DURATION_MS), 0);
 });

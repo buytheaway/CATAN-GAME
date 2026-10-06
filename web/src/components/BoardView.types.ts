@@ -47,6 +47,7 @@ export type Port = [EdgeTuple, string];
 
 export interface RulesConfig {
   target_vp?: number;
+    discard_threshold?: number;
   robber_count?: number;
   enable_gold?: boolean;
   enable_seafarers?: boolean;

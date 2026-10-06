@@ -1,0 +1,781 @@
+{
+  "verified": "2026-10-06",
+  "chrome": "154.0.8037.98",
+  "pytest": {
+    "passed": 266,
+    "failed": 0
+  },
+  "web_tests": {
+    "passed": 128,
+    "failed": 0
+  },
+  "scenario_runs": {
+    "passed": 348,
+    "total": 508,
+    "unchanged_failures": 160
+  },
+  "typecheck": "passed",
+  "production_build": "passed",
+  "docker_images": "passed",
+  "browser_cases": [
+    {
+      "suite": "regression",
+      "name": "bank4-2-",
+      "passed": true,
+      "command_attempts": 2,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "regression",
+      "name": "bank3-2-",
+      "passed": true,
+      "command_attempts": 1,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "bank2-2-",
+      "passed": true,
+      "command_attempts": 1,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "trade-3-offer",
+      "passed": true,
+      "command_attempts": 8,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "buy-2-buy",
+      "passed": true,
+      "command_attempts": 5,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "regression",
+      "name": "knight-3-knight",
+      "passed": true,
+      "command_attempts": 4,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "regression",
+      "name": "road-2-road",
+      "passed": true,
+      "command_attempts": 3,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "plenty-2-plenty",
+      "passed": true,
+      "command_attempts": 2,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "regression",
+      "name": "monopoly-3-monopoly",
+      "passed": true,
+      "command_attempts": 1,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "passive-2-passive",
+      "passed": true,
+      "command_attempts": 0,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "results-2-rematch",
+      "passed": true,
+      "command_attempts": 3,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "regression",
+      "name": "results-3-",
+      "passed": true,
+      "command_attempts": 3,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "regression",
+      "name": "results-2-exit",
+      "passed": true,
+      "command_attempts": 2,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "regression",
+      "name": "setup-2-setup",
+      "passed": true,
+      "command_attempts": 10,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "direct-2-directActions",
+      "passed": true,
+      "command_attempts": 5,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "dice-2-diceUX",
+      "passed": true,
+      "command_attempts": 5,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "gold-2-goldUX",
+      "passed": true,
+      "command_attempts": 4,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "roomux-2-roomUX",
+      "passed": true,
+      "command_attempts": 10,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "regression",
+      "name": "roomuxhidden-2-roomUX",
+      "passed": true,
+      "command_attempts": 9,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "test_flag_on",
+      "name": "normal",
+      "passed": true,
+      "command_attempts": 1,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "test_flag_on",
+      "name": "debugtools",
+      "passed": true,
+      "command_attempts": 10,
+      "expected_rejections": 2
+    },
+    {
+      "suite": "test_flag_on",
+      "name": "production",
+      "passed": true,
+      "command_attempts": 3,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "test_flag_on",
+      "name": "theft",
+      "passed": true,
+      "command_attempts": 2,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "test_flag_on",
+      "name": "discard",
+      "passed": true,
+      "command_attempts": 6,
+      "expected_rejections": 1
+    },
+    {
+      "suite": "test_flag_on",
+      "name": "threshold",
+      "passed": true,
+      "command_attempts": 2,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "test_flag_on",
+      "name": "fifty",
+      "passed": true,
+      "command_attempts": 0,
+      "expected_rejections": 0
+    },
+    {
+      "suite": "test_flag_off",
+      "name": "debugoff",
+      "passed": true,
+      "command_attempts": 1,
+      "expected_rejections": 1
+    }
+  ],
+  "framing": [
+    {
+      "name": "direct-2-directActions",
+      "before": [
+        {
+          "viewport": [
+            1920,
+            1080
+          ],
+          "canvas": [
+            1920,
+            888
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 76,
+            "right": 1920,
+            "bottom": 964
+          },
+          "land": {
+            "left": 592.3476119199157,
+            "right": 1373.2631561341345,
+            "top": 262.56625279384514,
+            "bottom": 880.1779111964044,
+            "width": 780.9155442142188,
+            "height": 617.6116584025592
+          },
+          "visible": {
+            "left": 530.3286796679528,
+            "right": 1422.0110624582487,
+            "top": 228.22329671595267,
+            "bottom": 945.9661556703481,
+            "width": 891.682382790296,
+            "height": 717.7428589543955
+          },
+          "occludedByHud": 0,
+          "calls": 653,
+          "triangles": 18536
+        },
+        {
+          "viewport": [
+            1440,
+            900
+          ],
+          "canvas": [
+            1440,
+            716
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 72,
+            "right": 1440,
+            "bottom": 788
+          },
+          "land": {
+            "left": 423.55956096245455,
+            "right": 1053.2166889550003,
+            "top": 222.4295461716139,
+            "bottom": 720.4137211898936,
+            "width": 629.6571279925458,
+            "height": 497.98417501827976
+          },
+          "visible": {
+            "left": 373.5533047773133,
+            "right": 1092.522433243363,
+            "top": 194.7386041088087,
+            "bottom": 773.4591975900555,
+            "width": 718.9691284660496,
+            "height": 578.7205934812469
+          },
+          "occludedByHud": 0,
+          "calls": 653,
+          "triangles": 18536
+        },
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "canvas": [
+            1280,
+            544
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 68,
+            "right": 1280,
+            "bottom": 612
+          },
+          "land": {
+            "left": 414.7715100049934,
+            "right": 893.1702217758663,
+            "top": 182.29283954938262,
+            "bottom": 560.6495311833828,
+            "width": 478.39871177087286,
+            "height": 378.3566916340002
+          },
+          "visible": {
+            "left": 376.77792988667375,
+            "right": 923.0338040284768,
+            "top": 161.2539115016647,
+            "bottom": 600.9522395097629,
+            "width": 546.255874141803,
+            "height": 439.6983280080982
+          },
+          "occludedByHud": 0,
+          "calls": 653,
+          "triangles": 18536
+        }
+      ],
+      "after": [
+        {
+          "viewport": [
+            1920,
+            1080
+          ],
+          "canvas": [
+            1634,
+            894
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 48,
+            "right": 1634,
+            "bottom": 942
+          },
+          "land": {
+            "left": 334.69301374810743,
+            "right": 1291.011866173739,
+            "top": 109.9003558888264,
+            "bottom": 834.0108524165062,
+            "width": 956.3188524256316,
+            "height": 724.1104965276797
+          },
+          "visible": {
+            "left": 259.8243477396056,
+            "right": 1352.950716493317,
+            "top": 70.40738845099997,
+            "bottom": 917.6420677552607,
+            "width": 1093.1263687537114,
+            "height": 847.2346793042607
+          },
+          "occludedByHud": 0,
+          "calls": 806,
+          "triangles": 22260
+        },
+        {
+          "viewport": [
+            1440,
+            900
+          ],
+          "canvas": [
+            1186,
+            731
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 44,
+            "right": 1186,
+            "bottom": 775
+          },
+          "land": {
+            "left": 201.42550545604604,
+            "right": 983.5037243282288,
+            "top": 94.6142731037271,
+            "bottom": 686.70014889985,
+            "width": 782.0782188721828,
+            "height": 592.0858757961229
+          },
+          "visible": {
+            "left": 140.18760351681362,
+            "right": 1034.2314781921305,
+            "top": 62.32192500859163,
+            "bottom": 755.0831672584959,
+            "width": 894.0438746753168,
+            "height": 692.7612422499043
+          },
+          "occludedByHud": 0,
+          "calls": 803,
+          "triangles": 22044
+        },
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "canvas": [
+            1026,
+            551
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 44,
+            "right": 1026,
+            "bottom": 595
+          },
+          "land": {
+            "left": 215.38692993743464,
+            "right": 804.7806316218151,
+            "top": 82.15111419993661,
+            "bottom": 528.4429302924998,
+            "width": 589.3937016843805,
+            "height": 446.2918160925632
+          },
+          "visible": {
+            "left": 169.24553676945243,
+            "right": 842.945135721145,
+            "top": 57.81037028691386,
+            "bottom": 579.9874489185107,
+            "width": 673.6995989516926,
+            "height": 522.1770786315968
+          },
+          "occludedByHud": 0,
+          "calls": 806,
+          "triangles": 22260
+        }
+      ]
+    },
+    {
+      "name": "gold-2-goldUX",
+      "before": [
+        {
+          "viewport": [
+            1920,
+            1080
+          ],
+          "canvas": [
+            1920,
+            888
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 76,
+            "right": 1920,
+            "bottom": 964
+          },
+          "land": {
+            "left": 592.3476119199157,
+            "right": 1299.4009943933934,
+            "top": 262.56625279384514,
+            "bottom": 880.1779111964044,
+            "width": 707.0533824734777,
+            "height": 617.6116584025592
+          },
+          "visible": {
+            "left": 530.3286796679528,
+            "right": 1422.0110624582487,
+            "top": 228.22329671595267,
+            "bottom": 945.9661556703481,
+            "width": 891.682382790296,
+            "height": 717.7428589543955
+          },
+          "occludedByHud": 0,
+          "calls": 568,
+          "triangles": 16518
+        },
+        {
+          "viewport": [
+            1440,
+            900
+          ],
+          "canvas": [
+            1440,
+            716
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 72,
+            "right": 1440,
+            "bottom": 788
+          },
+          "land": {
+            "left": 423.55956096245455,
+            "right": 993.6611621460244,
+            "top": 222.4295461716139,
+            "bottom": 720.4137211898936,
+            "width": 570.1016011835698,
+            "height": 497.98417501827976
+          },
+          "visible": {
+            "left": 373.5533047773133,
+            "right": 1092.522433243363,
+            "top": 194.7386041088087,
+            "bottom": 773.4591975900555,
+            "width": 718.9691284660496,
+            "height": 578.7205934812469
+          },
+          "occludedByHud": 0,
+          "calls": 568,
+          "triangles": 16518
+        },
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "canvas": [
+            1280,
+            544
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 68,
+            "right": 1280,
+            "bottom": 612
+          },
+          "land": {
+            "left": 414.7715100049934,
+            "right": 847.9213298986555,
+            "top": 182.29283954938262,
+            "bottom": 560.6495311833828,
+            "width": 433.1498198936621,
+            "height": 378.3566916340002
+          },
+          "visible": {
+            "left": 376.77792988667375,
+            "right": 923.0338040284768,
+            "top": 161.2539115016647,
+            "bottom": 600.9522395097629,
+            "width": 546.255874141803,
+            "height": 439.6983280080982
+          },
+          "occludedByHud": 0,
+          "calls": 568,
+          "triangles": 16518
+        }
+      ],
+      "after": [
+        {
+          "viewport": [
+            1920,
+            1080
+          ],
+          "canvas": [
+            1634,
+            894
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 48,
+            "right": 1634,
+            "bottom": 942
+          },
+          "land": {
+            "left": 334.69301374810743,
+            "right": 1203.2864475775702,
+            "top": 109.9003558888264,
+            "bottom": 834.0108524165062,
+            "width": 868.5934338294628,
+            "height": 724.1104965276797
+          },
+          "visible": {
+            "left": 259.8243477396056,
+            "right": 1352.950716493317,
+            "top": 71.7678500237719,
+            "bottom": 917.6420677552607,
+            "width": 1093.1263687537114,
+            "height": 845.8742177314888
+          },
+          "occludedByHud": 0,
+          "calls": 703,
+          "triangles": 19746
+        },
+        {
+          "viewport": [
+            1440,
+            900
+          ],
+          "canvas": [
+            1186,
+            731
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 44,
+            "right": 1186,
+            "bottom": 775
+          },
+          "land": {
+            "left": 201.42550545604604,
+            "right": 911.9976674129324,
+            "top": 94.6142731037271,
+            "bottom": 686.70014889985,
+            "width": 710.5721619568864,
+            "height": 592.0858757961229
+          },
+          "visible": {
+            "left": 140.18760351681362,
+            "right": 1034.2314781921305,
+            "top": 63.43433821854275,
+            "bottom": 755.0831672584959,
+            "width": 894.0438746753168,
+            "height": 691.6488290399532
+          },
+          "occludedByHud": 0,
+          "calls": 700,
+          "triangles": 19530
+        },
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "canvas": [
+            1026,
+            551
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 44,
+            "right": 1026,
+            "bottom": 595
+          },
+          "land": {
+            "left": 215.38692993743464,
+            "right": 750.684410555522,
+            "top": 82.15111419993661,
+            "bottom": 528.4429302924998,
+            "width": 535.2974806180874,
+            "height": 446.2918160925632
+          },
+          "visible": {
+            "left": 169.24553676945243,
+            "right": 842.945135721145,
+            "top": 58.64886505939409,
+            "bottom": 579.9874489185107,
+            "width": 673.6995989516926,
+            "height": 521.3385838591166
+          },
+          "occludedByHud": 0,
+          "calls": 703,
+          "triangles": 19746
+        }
+      ]
+    },
+    {
+      "name": "fifty",
+      "before": [],
+      "after": [
+        {
+          "viewport": [
+            1920,
+            1080
+          ],
+          "canvas": [
+            1634,
+            894
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 48,
+            "right": 1634,
+            "bottom": 942
+          },
+          "land": {
+            "left": 63.18673727182208,
+            "right": 1589.9046800654178,
+            "top": 193.62818122253742,
+            "bottom": 790.8299144304044,
+            "width": 1526.7179427935957,
+            "height": 597.2017332078669
+          },
+          "visible": {
+            "left": 33.62051599640151,
+            "right": 1600.972237972685,
+            "top": 166.5632899529043,
+            "bottom": 806.9574765893004,
+            "width": 1567.3517219762834,
+            "height": 640.3941866363962
+          },
+          "occludedByHud": 0,
+          "calls": 1485,
+          "triangles": 42620
+        },
+        {
+          "viewport": [
+            1440,
+            900
+          ],
+          "canvas": [
+            1186,
+            731
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 44,
+            "right": 1186,
+            "bottom": 775
+          },
+          "land": {
+            "left": 40.195606515524936,
+            "right": 1154.606782904205,
+            "top": 185.67047374263552,
+            "bottom": 621.6152592253262,
+            "width": 1114.41117638868,
+            "height": 435.9447854826907
+          },
+          "visible": {
+            "left": 19.523602453027717,
+            "right": 1161.3351282350925,
+            "top": 165.78190786981952,
+            "bottom": 633.4660433036368,
+            "width": 1141.8115257820648,
+            "height": 467.68413543381723
+          },
+          "occludedByHud": 0,
+          "calls": 1483,
+          "triangles": 42476
+        },
+        {
+          "viewport": [
+            1280,
+            720
+          ],
+          "canvas": [
+            1026,
+            551
+          ],
+          "canvasBounds": {
+            "left": 0,
+            "top": 44,
+            "right": 1026,
+            "bottom": 595
+          },
+          "land": {
+            "left": 40.47692667076768,
+            "right": 998.2225989786983,
+            "top": 130.9827765623719,
+            "bottom": 505.6360166405957,
+            "width": 957.7456723079306,
+            "height": 374.6532400782238
+          },
+          "visible": {
+            "left": 21.802192200951406,
+            "right": 1005.3632923801889,
+            "top": 114.02368825551939,
+            "bottom": 515.7408121419303,
+            "width": 983.5611001792375,
+            "height": 401.7171238864109
+          },
+          "occludedByHud": 0,
+          "calls": 1484,
+          "triangles": 42548
+        }
+      ]
+    }
+  ],
+  "idle_extra_frames": {
+    "base": 0,
+    "gold_haven": 0,
+    "fifty_hex_fixture": 0
+  },
+  "fifty_unmount_memory": {
+    "geometries": 0,
+    "textures": 0
+  },
+  "limits": [
+    "Prepared rare states use test-only fixtures and genuine WebSocket commands.",
+    "No full natural match, mobile, low-end FPS or load certification.",
+    "Visible bank intentionally permits deduction in two-player rooms.",
+    "Existing eight legacy scenario failures remain; no assertions weakened."
+  ],
+  "ordinary_production_smoke": {
+    "origin": "http://localhost",
+    "test_tools_flag": 0,
+    "clients": 2,
+    "flow": "real setup → Roll → 2D/3D → End Turn",
+    "passed": true,
+    "command_attempts": 10
+  }
+}

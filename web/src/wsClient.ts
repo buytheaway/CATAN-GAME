@@ -2,7 +2,13 @@ import type { GameState } from "./components/BoardView.types";
 
 export type RoomSettings = {
   dice_mode: "random" | "balanced"; starting_player: "random" | "host";
-  turn_timer: 0 | 30 | 60 | 90 | 120; bank_visibility: "visible" | "hidden"; target_vp: number;
+  turn_timer: 0 | 30 | 60 | 90 | 120; bank_visibility: "visible" | "hidden"; target_vp: number; discard_threshold?: number;
+};
+export type GameplayEvent = {
+  id: number; tick: number; at_ms: number; type: string; actor_pid: number;
+  player_pid?: number; victim_pid?: number; quantity?: number; resource?: string;
+  resources?: Record<string, number>; paid?: Record<string, number>; gained?: Record<string, number>;
+  dice?: number[]; total?: number; card?: string; tile?: number; from_tile?: number; action?: string;
 };
 export type ChatMessage = { id: number; name: string; color: string | null; text: string; sent_at_ms: number };
 export type TurnTimerState = {
@@ -21,6 +27,7 @@ export type RoomState = {
   chat_history?: ChatMessage[];
   chat_revision?: number;
   host_pid: number;
+  test_mode?: boolean;
   players: { pid: number; name: string; connected: boolean; color?: string | null }[];
   max_players: number;
   status: "lobby" | "in_match";
@@ -70,6 +77,9 @@ export type MatchState = {
     bank?: Record<string, number>;
     room_settings?: RoomSettings;
     turn_timer?: TurnTimerState | null;
+    game_events?: GameplayEvent[];
+    test_mode?: boolean;
+    test_tools?: boolean;
     game_over?: boolean;
     winner_pid?: number | null;
     free_roads?: Record<string, number>;
@@ -109,7 +119,8 @@ export type CmdAck = {
   duplicate: boolean;
 };
 
-export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck | ChatState;
+export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck | ChatState
+  | { type: "hello"; version: number; test_tools_available?: boolean };
 
 type MapSelection = { mapId: string; payload: Record<string, any> };
 
@@ -143,6 +154,12 @@ export class WSClient {
   public youPid: number | null = null;
   public roomState: RoomState | null = null;
   public matchState: MatchState | null = null;
+  public testToolsAvailable = false;
+  onCapabilities?: () => void;
+  enableTestMode() {
+    if (this.testToolsAvailable && this.isOpen() && this.roomState?.status === "lobby" && this.youPid === this.roomState.host_pid)
+      this.send({ type: "enable_test_mode" });
+  }
 
   private pendingCmds = new Map<string, { seq: number; payload: any }>();
   private matchKey: string | null = null;
@@ -393,6 +410,11 @@ export class WSClient {
       data = JSON.parse(raw);
     } catch {
       this.onLog?.("Invalid JSON from server");
+      return;
+    }
+    if (data.type === "hello") {
+      this.testToolsAvailable = data.test_tools_available === true;
+      this.onCapabilities?.();
       return;
     }
     if (data.type === "room_state") {

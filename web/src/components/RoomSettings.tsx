@@ -3,11 +3,14 @@ import { ROOM_COLORS } from "../board/colors";
 
 export function MatchSettings({ client, room, connected }: { client: WSClient; room: RoomState; connected: boolean }) {
   const settings = { dice_mode: "random", starting_player: "random", turn_timer: 0, bank_visibility: "visible",
-    target_vp: room.map_rules?.target_vp ?? 10, ...room.settings, ...client.pendingSettings };
+    target_vp: room.map_rules?.target_vp ?? 10, discard_threshold: 7, ...room.settings, ...client.pendingSettings };
   const disabled = !connected || room.status !== "lobby" || client.youPid !== room.host_pid;
   return <fieldset className="room-settings" disabled={disabled}>
     <legend>Match settings {disabled ? "· read only" : "· host"}</legend>
     <div className="room-settings-grid">
+      <label className="field"><span>Discard threshold</span><select value={settings.discard_threshold}
+        onChange={e => client.setSettings({ discard_threshold: Number(e.target.value) })}>
+        {Array.from({ length: 50 }, (_, i) => i + 1).map(value => <option key={value} value={value}>{value} cards</option>)}</select></label>
       <label className="field"><span>Dice mode</span><select value={settings.dice_mode}
         onChange={e => client.setSettings({ dice_mode: e.target.value as "random" | "balanced" })}>
         <option value="random">Random</option><option value="balanced">Balanced</option></select></label>

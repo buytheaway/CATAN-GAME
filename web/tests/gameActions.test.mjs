@@ -25,11 +25,11 @@ test("displayed maritime ratio uses only owned port endpoints, best resource rat
 test("hand clicks create a local trade draft, cap Give at actual own counts and preserve the snapshot", () => {
   const hand = Object.freeze({ wood: 2, brick: 1 });
   const first = ui.addHandResource(null, "wood", hand);
-  assert.deepEqual(first, { give: { wood: 1 }, want: {}, target: "everyone" });
+  assert.deepEqual(first, { give: { wood: 1 }, want: {} });
   const second = ui.addHandResource(first, "wood", hand);
   assert.deepEqual(ui.addHandResource(second, "wood", hand).give, { wood: 2 });
-  const both = ui.addHandResource({ ...second, target: "1", want: { ore: 2 } }, "brick", hand);
-  assert.deepEqual(both, { give: { wood: 2, brick: 1 }, want: { ore: 2 }, target: "1" });
+  const both = ui.addHandResource({ ...second, want: { ore: 2 } }, "brick", hand);
+  assert.deepEqual(both, { give: { wood: 2, brick: 1 }, want: { ore: 2 } });
   assert.deepEqual(ui.changeResource(both.give, "brick", -1), { wood: 2 });
   assert.deepEqual(ui.changeResource({}, "ore", -1), {});
   assert.deepEqual(first.give, { wood: 1 }); assert.deepEqual(hand, { wood: 2, brick: 1 });
@@ -38,7 +38,7 @@ test("hand clicks create a local trade draft, cap Give at actual own counts and 
 test("bank draft accepts exact 4/3/2 ratios and multi-card batches but rejects malformed combinations", () => {
   for (const [rate, ports] of [[4, []], [3, [[[12, 13], "3:1"]]], [2, [[[12, 13], "2:1:wood"]]]]) {
     const s = state({ ports }); s.players[0].res.wood = 12;
-    const draft = { target: "bank", give: { wood: rate * 2 }, want: { ore: 2 } };
+    const draft = { give: { wood: rate * 2 }, want: { ore: 2 } };
     assert.equal(ui.bankDraftReason(s, 0, draft), null);
     assert.deepEqual(ui.bankDraftCommand(draft), { type: "trade_bank", give: "wood", get: "ore", get_qty: 2 });
     for (const change of [{ give: {} }, { want: {} }, { give: { wood: rate + 1 } }, { want: { wood: 2 } },

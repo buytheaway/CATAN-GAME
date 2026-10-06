@@ -3,20 +3,25 @@ import type { MatchState, RoomState, ServerError, WSClient } from "../wsClient";
 import BoardRenderer from "./BoardRenderer";
 import BoardControls from "../board/BoardControls";
 import { useBoardInteraction } from "../board/useBoardInteraction";
-import { BankSummary, ContextPrompt, GameTopBar, ResourceHand } from "../game/GameHUD";
+import { BankSummary, ContextPrompt, GameTopBar, PlayerStrip, ResourceHand } from "../game/GameHUD";
 import GameOverlay from "../game/GameOverlay";
 import GameIcon from "../game/GameIcon";
 import { RESOURCES, turnActions, type GameSnapshot } from "../game/presentation";
 import TradePanel, { IncomingTrades, TradeOffers } from "../game/TradePanel";
 import DevelopmentPanel, { DevelopmentHand } from "../game/DevelopmentCards";
 import Endgame from "../game/Endgame";
-import { addHandResource, addressedOffers, buyDevReason, phaseReason, type DevType, type Resource, type TradeDraft } from "../game/actions";
+import { addHandResource, addressedOffers, buyDevReason, devPlayReason, phaseReason, type DevType, type Resource, type TradeDraft } from "../game/actions";
 import { useGameCommand } from "../game/useGameCommand";
 import ActionButton from "../game/ActionButton";
 import DiceHUD, { useDicePresentation } from "../game/DiceHUD";
 import "../game/game.css";
 import RoomChat from "../game/RoomChat";
 import "../game/room.css";
+import GameEvents from "../game/GameEvents";
+import CardFlights from "../game/CardFlights";
+import DiscardPicker from "../game/DiscardPicker";
+import TestTools from "../game/TestTools";
+import "../game/playtest.css";
 
 export default function GamePage({ client, match, room, status, log, error, onBackToLobby }: {
   client: WSClient; match: MatchState; room: RoomState | null; status: string; log: string[]; error: ServerError | null;
@@ -34,10 +39,9 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const mapMeta = state.map_meta || room?.map_meta || {};
   const mapId = state.map_id || room?.map_id || "";
   const rules = state.rules_config || {};
-  const [discard, setDiscard] = useState<Record<string, number>>({});
   const [goldRes, setGoldRes] = useState<string>(RESOURCES[0]);
   const [goldQty, setGoldQty] = useState(1);
-  const [drawer, setDrawer] = useState<"log" | "info" | "dev" | null>(null);
+  const [drawer, setDrawer] = useState<"log" | "info" | "dev" | "test" | null>(null);
   const [logTab, setLogTab] = useState<"log" | "chat">("log");
   const [tradeDraft, setTradeDraft] = useState<TradeDraft | null>(null);
   const [selectedDev, setSelectedDev] = useState<DevType | null>(null);
@@ -72,7 +76,6 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const blocked = request.waiting || interaction.selection.waiting || status !== "connected";
   const purchaseReason = buyDevReason(state, youPid);
   const tradeDisabled = blocked || !!phaseReason(state, youPid);
-  const tradeTargets = room ? room.players.filter(p => p.name && p.connected) : state.players;
   const ownOffers = (state.trade_offers ?? []).filter(o => o.from_pid === youPid && o.status === "active");
   const handTrade = (resource: Resource) => {
     if (tradeDisabled || !res[resource]) return;
@@ -80,7 +83,13 @@ export default function GamePage({ client, match, room, status, log, error, onBa
     setTradeDraft(current => addHandResource(current, resource, res));
   };
   const openDev = (type: DevType | null) => {
-    setSelectedDev(type); setTradeDraft(null); interaction.onSelectAction(null); setDrawer("dev");
+    if (!type || blocked) return;
+    setTradeDraft(null); interaction.onSelectAction(null);
+    if (type === "knight" || type === "road_building") {
+      if (!devPlayReason(state, youPid, type)) request.submit({ type: "play_dev", card: type });
+      return;
+    }
+    setSelectedDev(type); setDrawer("dev");
   };
 
   return <main className="game-shell">
@@ -94,16 +103,35 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       {error && <div className="game-error error" role="alert">{error.message}</div>}
       {status !== "connected" && <div className="connection-notice" role="status">Connection: {status}</div>}
     </section>
+    <aside className="game-sidebar" aria-label="Table sidebar">
+      <section className="sidebar-players"><div className="hud-caption">Players</div><PlayerStrip state={state} pid={youPid} /></section>
+      <section className="sidebar-activity" id="game-log">
+        <button className="activity-toggle" aria-expanded={drawer === "log"} onClick={() => setDrawer(current => current === "log" ? null : "log")}>Game Log / Chat</button>
+        {drawer === "log" && <>
+          <div className="activity-tabs" role="tablist" aria-label="Room activity">
+            <button role="tab" aria-selected={logTab === "log"} className="game-button" onClick={() => setLogTab("log")}>Game Log</button>
+            <button role="tab" aria-selected={logTab === "chat"} className="game-button" onClick={() => setLogTab("chat")}>Chat</button>
+          </div>
+          <div role="tabpanel" aria-label={logTab === "log" ? "Game Log" : "Chat"}>
+            {logTab === "log" ? <><GameEvents state={state} /><details className="transport-details"><summary>Connection details</summary><pre className="game-log">{log.slice(-20).join("\n")}</pre></details></>
+              : <RoomChat messages={room?.chat_history ?? []} send={text => client.sendChat(text)} disabled={status !== "connected"} />}
+          </div>
+        </>}
+      </section>
+      <BankSummary available={state.bank_available} counts={state.room_settings?.bank_visibility === "visible" ? state.bank : undefined} />
+      {state.test_tools && <button className="game-button test-tools-button" disabled={blocked} onClick={() => setDrawer("test")}>Test Tools</button>}
+    </aside>
+    <CardFlights events={state.game_events ?? []} matchKey={matchKey} pid={youPid} connected={status === "connected"} reduced={dice.reduced} />
     <footer className="game-bottom-hud">
       <div className="personal-hands">
         {tradeDraft && !mandatoryChoice && !state.game_over && <TradePanel state={state} pid={youPid}
-          draft={tradeDraft} onChange={setTradeDraft} targets={tradeTargets} submit={request.submit}
+          draft={tradeDraft} onChange={setTradeDraft} submit={request.submit}
           waiting={blocked} error={error} onClose={closeTrade} />}
         {!tradeDraft && !drawer && !mandatoryChoice && !state.pending_action && !state.game_over && ownOffers.length > 0 &&
           <div className="own-offer-summary" aria-label="Your open offers"><TradeOffers state={{ ...state, trade_offers: ownOffers }}
             pid={youPid} waiting={blocked} submit={request.submit} /></div>}
         <ResourceHand resources={res} onResource={handTrade} disabled={tradeDisabled} />
-        <DevelopmentHand state={state} pid={youPid} onCard={openDev} /></div>
+        <DevelopmentHand state={state} pid={youPid} onCard={openDev} disabled={blocked} /></div>
       <section className="action-dock" aria-label="Actions">
         <div className="hud-caption">{state.phase === "setup" ? "Starting placements" : "Your actions"}
         </div>
@@ -125,26 +153,14 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       </section>
     </footer>
 
-    {(drawer === "log" || drawer === "info") && !mandatoryChoice && !state.game_over && <GameOverlay key={drawer} id={`game-${drawer}`}
-      title={drawer === "log" ? "Event log" : "Game info"} onClose={closeDrawer}>
-      {drawer === "log" ? <>
-        <div className="activity-tabs" role="tablist" aria-label="Room activity">
-          <button role="tab" aria-selected={logTab === "log"} aria-controls="activity-panel" className="game-button"
-            onClick={() => setLogTab("log")}>Game Log</button>
-          <button role="tab" aria-selected={logTab === "chat"} aria-controls="activity-panel" className="game-button"
-            onClick={() => setLogTab("chat")}>Chat</button>
-        </div>
-        <div id="activity-panel" role="tabpanel" aria-label={logTab === "log" ? "Game Log" : "Chat"}>
-          {logTab === "log" ? <pre className="game-log">{log.length ? log.join("\n") : "No events yet."}</pre>
-            : <RoomChat messages={room?.chat_history ?? []} send={text => client.sendChat(text)} disabled={status !== "connected"} />}
-        </div>
-        <BankSummary available={state.bank_available} counts={state.room_settings?.bank_visibility === "visible" ? state.bank : undefined} /></> : <>
+    {drawer === "info" && !mandatoryChoice && !state.game_over && <GameOverlay id="game-info" title="Game info" onClose={closeDrawer}>
         <div className="info-map"><strong>{mapMeta.name || mapId || "Current map"}</strong>
           {mapMeta.description && <p>{mapMeta.description}</p>}</div>
         <dl className="game-info-list">
           <dt>Room</dt><dd>{match.room_code}</dd><dt>Match</dt><dd>{match.match_id}</dd>
           <dt>Tick</dt><dd>{match.tick}</dd><dt>Phase</dt><dd>{state.phase}</dd>
           <dt>Pending</dt><dd>{pending}</dd><dt>Connection</dt><dd>{status}</dd>
+          <dt>Discard threshold</dt><dd>{rules.discard_threshold ?? 7} cards</dd>
           <dt>Goal</dt><dd>{rules.target_vp ?? 10} VP</dd>
           <dt>Dice</dt><dd>{state.room_settings?.dice_mode === "balanced" ? "Balanced" : "Random"}</dd>
           <dt>Starting player</dt><dd>{state.room_settings?.starting_player === "host" ? "Host" : "Random"}</dd>
@@ -156,7 +172,6 @@ export default function GamePage({ client, match, room, status, log, error, onBa
           <dt>Gold</dt><dd>{rules.enable_gold ? "On" : "Off"}</dd>
           <dt>Move ship</dt><dd>{rules.enable_move_ship ? "On" : "Off"}</dd>
         </dl>
-      </>}
     </GameOverlay>}
 
     {drawer === "dev" && !mandatoryChoice && !state.game_over && <DevelopmentPanel key={`${matchKey}:${selectedDev ?? "all"}`}
@@ -180,15 +195,9 @@ export default function GamePage({ client, match, room, status, log, error, onBa
         type: "choose_gold", res: goldRes, qty: Number(goldQty),
       })}>Choose</button>
     </GameOverlay>}
-    {needDiscard && <GameOverlay id="discard-choice" title={`Discard Required: ${required[String(youPid)]}`} modal>
-      <p>Select the cards to return to the bank.</p>
-      <div className="discard-fields">{Object.keys(res).map(k => <label key={k} className="field">
-        <span>{k}</span><input type="number" min={0} max={res[k]} value={discard[k] ?? 0}
-          onChange={e => setDiscard({ ...discard, [k]: Number(e.target.value) })} />
-      </label>)}</div>
-      <button className="game-button primary-action" onClick={() => client.sendCmd({
-        type: "discard", discards: discard,
-      })}>Submit Discard</button>
-    </GameOverlay>}
+    {needDiscard && <DiscardPicker key={`${matchKey}:discard:${state.roll_count}`} hand={res} required={required[String(youPid)]}
+      waiting={blocked} submit={request.submit} error={error} />}
+    {drawer === "test" && state.test_tools && !mandatoryChoice && !state.game_over &&
+      <TestTools state={state} waiting={blocked} submit={request.submit} onClose={closeDrawer} error={error} />}
   </main>;
 }

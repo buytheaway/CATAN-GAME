@@ -86,7 +86,7 @@ test("HUD countdown interpolates authoritative remaining time and clamps at zero
 test("timer and authoritative colors appear only beside the current player in the compact HUD", () => {
   const state = { players: room.players.map(p => ({ ...p, vp: 2, resource_count: 3, dev_count: 0 })),
     turn: 1, turn_timer: { ...timer, pid: 1 }, rules_config: { target_vp: 12 } };
-  const view = render(GameTopBar, { state, pid: 0, roomCode: "ROOM", drawer: null, onInfo() {}, onLog() {} });
+  const view = render(loaded.exports.PlayerStrip, { state, pid: 0 });
   assert.equal(view.elements.filter(e => e.className?.startsWith("turn-timer")).length, 1);
   assert.match(view.html, /--player-color:#f2f4f8/);
   assert.match(view.html, /00:47/);
@@ -110,7 +110,7 @@ test("collapsible bank shows authoritative counts when supplied and only availab
   const visible = render(BankSummary, { available, counts: { wood: 15, brick: 0, sheep: 12, wheat: 9, ore: 14 } });
   assert.match(visible.html, /aria-label="wood: 15"/);
   assert.match(visible.html, /Development deck hidden/);
-  assert.doesNotMatch(visible.html, /<details[^>]* open/);
+  assert.match(visible.html, /<details[^>]* open/);
   const hidden = render(BankSummary, { available });
   assert.match(hidden.html, /quantities are hidden/);
   assert.doesNotMatch(hidden.html, /wood: 15/);

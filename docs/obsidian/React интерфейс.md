@@ -4,6 +4,24 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Game UX 2.3 — current playtest feedback flow
+
+Verified **2026-10-06**: 128 web tests, 266 pytest, TypeScript/production/Docker builds, 27 real Chrome cases. SVG/shared controller/Ship/matching-ACK пути сохранены. Актуальная композиция ниже заменяет прежние top strip, target select, modal-first play и numeric discard; секции 2.2/2.1/Phase 2 описывают исторические этапы.
+
+[GamePage](../../web/src/components/GamePage.tsx) держит один snapshot, board controller и local TradeDraft. GameTopBar теперь только brand/goal/info/log, ContextPrompt визуально в свободном центре header; right aside содержит PlayerStrip (public color/name/VP/card/dev counts/turn/timer), collapsible GameLog/RoomChat и BankSummary (open default). Чужая рука не нужна для sidebar. ResourceHand — фиксированные пять ResourceCard со stack/count, own DevelopmentHand рядом.
+
+Hand click → local Give/Want tray. **Bank** отправляет existing trade_bank только при допустимом displayed ratio; **Offer to Players** отправляет existing trade_offer_create/to_pid=null. Target dropdown отсутствует, offer accept/decline/cancel прежние. Draft не списывает hand; matching ACK закрывает/retry сохраняет input/error. Knight/Road Building click → request.submit(play_dev) → прежние server pending/free_roads → shared board controller. Monopoly/Plenty открывают только необходимый picker; VP — passive info, newly bought/action unavailable — disabled с reason. Чужие card types не передаются.
+
+[DiscardPicker](../../web/src/game/DiscardPicker.tsx) получает только own res/required, локально выбирает карты и удаляет выбор, показывает selected/required; Confirm только при точной сумме. Отправляет прежний discard command, server error оставляет retry. [MatchSettings](../../web/src/components/RoomSettings.tsx) показывает host-controlled threshold; participant read-only, match locked. RulesConfig default 7, >threshold и floor(hand/2) исполняет engine.
+
+[GameLog](../../web/src/game/GameEvents.tsx) читает recipient-filtered `state.game_events`, App transport log остаётся в collapsed Connection details, Chat отдельно. [CardFlights](../../web/src/game/CardFlights.tsx) читает только confirmed event details, отслеживает match/id/connection, пропускает initial/reconnect/rematch history. Bank↔hand для production/trade/discard/buy; theft victim→thief. Own exact faces, observer generic backs; никакого client delta theft inference. DOM animations конечные (900ms, production после settle), max 30 glyphs, timers cleaned, reduced motion skip.
+
+DiceRoll3D: 600ms roll +300ms settle, hold до 2100ms, fade до 2500ms, затем compact exact DiceHUD; конечные transforms/invalidate без React frame state/physics. Robber — 420ms old→new movement, reduced instant. Static DecorativeOcean не имеет game IDs/targets и не меняет camera game bounds. TerrainHints — dispatcher независимых terrain visuals в board3d/terrain/. Port3D сохраняет оба vertex IDs. Camera auto-fit использует projected real footprint, размер viewport и offsets; 2D renderer и payloads не менялись.
+
+[TestTools](../../web/src/game/TestTools.tsx) получает personalized test_tools=true только host явно enabled lobby room на test-enabled server; named ActionSubmit/ACK/feedback, только main. На OFF/normal room кнопки и команды запрещены. No accounts/raw editor. Live socket automatic token reconnect уже существовал; page refresh хранит token, ordinary Join восстанавливает матч, нового identity flow нет.
+
+Evidence/limits — [[Design System#Game UX 2.3 — implemented playtest feedback]], [[plans/game-ui-redesign#Game UX 2.3 — Playtest Feedback Pass]].
+
 [[Web клиент]] · [[Состояние игры]] · [[Стили и визуальные границы]] · [[Design System]]
 
 Last verified **2026-10-06 — Game / Room UX 2.2**: 119 web tests, 234 pytest, TypeScript/production/Docker builds и 19 Chrome cases. Двухклиентские настройки/цвета/Balanced/countdown/Visible и Hidden bank/chat/refresh/rematch проходят. Результаты ниже относятся к прежним этапам; текущие limits — [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]].
@@ -52,10 +70,10 @@ Game UI Redesign Phase 1 verified 2026-10-05: 73 web tests, TypeScript, producti
 | --- | --- | --- | --- |
 | [App](../../web/src/App.tsx) | main.tsx | Нет | client, room, match, status, log, error |
 | [LobbyPage](../../web/src/components/LobbyPage.tsx) | App | client, room, status, wsDefault, error | URL, имя, код, maxPlayers, pendingMapId, customLabel; отображаемый mapId = pending или room.map_id |
-| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error, onBackToLobby | Прежний useBoardInteraction; discard/gold fields; drawer=log/info/dev/null, logTab=game/chat, controlled tradeDraft, selectedDev, dismissedOffers, useGameCommand waiting и useDicePresentation |
+| [GamePage](../../web/src/components/GamePage.tsx) | App | client, match, room, status, log, error, onBackToLobby | Прежний useBoardInteraction; gold fields / separate DiscardPicker; drawer=log/info/dev/test/null, logTab=game/chat, controlled tradeDraft, selectedDev, dismissedOffers, useGameCommand waiting и useDicePresentation |
 | [TradePanel / IncomingTrades](../../web/src/game/TradePanel.tsx) | GamePage | state, pid, draft/onChange/connected targets, submit, waiting, error, onClose; incoming также offers | TradePanel — controlled nonmodal tray; Give/Want/target в GamePage, balances/offers только из snapshot |
 | [ActionButton](../../web/src/game/ActionButton.tsx) | BoardControls / GamePage | action, label, resources, disabled/selected/free/reason, onClick | Только hover/focus cost preview из costs.ts |
-| [DiceHUD](../../web/src/game/DiceHUD.tsx) | GamePage | exact faces, finite roll visual, legacy total | useDicePresentation хранит previous match/counter, reduced-motion preference и 1030ms cleanup timer; результат не вычисляет |
+| [DiceHUD](../../web/src/game/DiceHUD.tsx) | GamePage | exact faces, finite roll visual, legacy total | useDicePresentation хранит previous match/counter, reduced-motion preference и 2580ms cleanup timer; результат не вычисляет |
 | [DevelopmentHand / DevelopmentPanel](../../web/src/game/DevelopmentCards.tsx) | GamePage | state, pid; hand onCard, panel selected/submit/waiting/error/onClose/onBoardPlay | selected type, Year of Plenty counts, Monopoly resource; own cards/new из snapshot |
 | [Endgame](../../web/src/game/Endgame.tsx) | GamePage при game_over | state, pid, room, connected, matchKey, error, onRematch/onLobby | Только ожидание rematch; winner/scores/pids не вычисляются локально |
 | [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | state + interaction + diceRoll | mode=2d/3d, default 3d; lazy/failure boundary |
@@ -79,10 +97,10 @@ App показывает LobbyPage без match и GamePage при его нал
 | Ресурсы | ResourceHand / ResourceCard | find(player.pid=youPid).res; пять cards, отсутствующее значение = 0; click создаёт/увеличивает local Give draft, руку не списывает |
 | Roll / End Turn | GamePage | canRoll/canEnd; отправляют roll/end_turn |
 | Gold Choice | GamePage | pending_gold[youPid], goldRes, goldQty; choose_gold |
-| Discard | GamePage | discard_required[youPid], res, введённый discard; discard-команда |
-| Игроки матча | GameTopBar | public pid/name/color/vp/resource_count/dev_count/turn и optional turn_timer; без чтения чужой руки |
+| Discard | DiscardPicker | discard_required[youPid], own res, local card selection; прежняя discard-команда |
+| Игроки матча | PlayerStrip | public pid/name/color/vp/resource_count/dev_count/turn и optional turn_timer; без чтения чужой руки |
 | Ошибки | LobbyPage и GamePage | error.message |
-| Журнал / банк | GameOverlay / BankSummary | log из App / server room chat; bank_available и optional Visible bank counts, закрытый drawer; engine event feed не добавлен |
+| Журнал / банк | GameLog / RoomChat / BankSummary | personalized game_events, отдельный чат/connection log; bank_available и optional Visible counts, open bank / collapsible log |
 | Trade | TradePanel / IncomingTrades / TradeOffers | own res, ports/occupied_v, bank_available, public offers, players/turn/rolled/pending; bank/create/accept/decline/cancel |
 | Development cards | GamePage ActionButton / DevelopmentHand / DevelopmentPanel | Dock buy_dev; own dev_cards/new, dev_played_turn/free_roads, bank_available и turn/pending для private play/inspect/pickers |
 | Dice | DiceHUD / DiceRoll3D | Только server dice и roll_count; last_roll — legacy total, не источник выдуманных граней |
@@ -156,49 +174,34 @@ Build palette показывает только инструменты с сущ
 
 ## Текущее дерево
 
-Названия без угловых скобок — JSX-блоки, не самостоятельные компоненты.
-
 ```text
-<App>
-├── Если нет match: CATAN LAN Web + <LobbyPage> (без redesign)
-│   ├── Connection / Host / Join / preset / custom JSON
-│   └── Room / <MatchSettings> / players / <PlayerColors> / Start / <RoomChat>
-└── Если есть match: <GamePage> → .game-shell
-    ├── <GameTopBar>
-    │   ├── Compact brand / room
-    │   ├── Players strip: name / color / public VP & counts / Turn / <TurnTimer>
-    │   └── Goal / Game info / Event log buttons
-    ├── Board stage
-    │   ├── <ContextPrompt>
-    │   ├── <BoardRenderer> + compact 2D/3D selector
-    │   │   ├── 2D: <BoardView> → прежний SVG / targets / callbacks
-    │   │   └── 3D default: lazy <Board3D>, Suspense / failure boundary
-    │   │       ├── Compact Reset Camera
-    │   │       └── <Canvas> / CameraRig / lights / VisualResources
-    │   │           ├── HexTile3D → TerrainHints / NumberToken3D
-    │   │           ├── Pieces3D / Port3D
-    │   │           ├── Coastline / finite DiceRoll3D (confirmed faces only)
-    │   │           └── InteractionOverlay3D → targets / ghosts
-    │   └── Error / disconnected feedback
+App
+├── LobbyPage → connection / map / MatchSettings / PlayerColors / RoomChat
+│   └── Enable Test Room (only host, flag ON, lobby)
+└── GamePage → one snapshot / useBoardInteraction / useGameCommand
+    ├── GameTopBar → brand / goal / info / event button
+    ├── ContextPrompt → header center, pointer-events none
+    ├── BoardRenderer → compact 2D/3D/reset
+    │   ├── BoardView → original SVG + shared callbacks
+    │   └── Board3D / Canvas / CameraRig / VisualResources
+    │       ├── DecorativeOcean / Coastline (static, no game IDs)
+    │       ├── HexTile3D → TerrainHints → terrain/*Visual + NumberToken3D
+    │       ├── Pieces3D / Port3D / finite DiceRoll3D
+    │       └── InteractionOverlay3D → same legal / targets / ghosts
+    ├── Right sidebar
+    │   ├── PlayerStrip → public players / TurnTimer
+    │   ├── Collapsible GameLog / RoomChat + connection details
+    │   ├── BankSummary → real visible counts or hidden backs/availability
+    │   └── Test Tools button (authorized test host only)
     ├── Bottom HUD
-    │   ├── Personal hands
-    │   │   ├── <TradePanel> → controlled Trade Tray, when opened from hand
-    │   │   ├── <TradeOffers> → own active offers / cancel, when present
-    │   │   ├── <ResourceHand> → five clickable own <ResourceCard>
-    │   │   └── <DevelopmentHand> → own types / counts / playable state
-    │   └── Action dock
-    │       ├── <DiceHUD> → exact two faces, always visible
-    │       ├── Roll / one-click Dev Card buy / End Turn (ordinary turn)
-    │       └── <BoardControls>
-    │           ├── Setup Settlement or Road; main direct Road / Settlement / City
-    │           ├── Ship only if enabled; contextual Move Ship
-    │           ├── Robber / Pirate / Cancel (contextual)
-    │           └── <GameOverlay> victim chooser, when needed
-    ├── <GameOverlay> Game info / Event log drawer, when opened
-    │   ├── Game Log (existing log) / <RoomChat> tabs
-    │   └── <BankSummary> (collapsed; counts only when Visible)
-    ├── <IncomingTrades> → compact received offers, when not dismissed
-    ├── <DevelopmentPanel> → own cards / Play / resource pickers (no buy)
-    ├── <Endgame> → server winner / final VP / rematch / lobby
-    └── <GameOverlay> Gold Choice / Discard, when required
+    │   ├── TradePanel / TradeOffers (when opened/present)
+    │   ├── ResourceHand → five stack ResourceCard
+    │   ├── DevelopmentHand → direct play / necessary picker / passive VP
+    │   └── DiceHUD / Roll / Dev Card buy / End / shared BoardControls
+    ├── CardFlights → personalized events, finite CSS, no state mutations
+    ├── GameOverlay Info / victim chooser / gold choice
+    ├── DiscardPicker → mandatory own-card selection
+    ├── IncomingTrades / DevelopmentPanel (Monopoly/Plenty/VP only)
+    ├── TestTools → named validated commands (authorized test host only)
+    └── Endgame → winner / final VP / rematch / leave
 ```

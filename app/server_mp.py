@@ -16,6 +16,7 @@ from typing import Any, Deque, Dict, List, Optional, Set
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from app import net_protocol
+from app import game_events, test_tools
 from app.engine import (
     DEFAULT_PRESET_ID,
     GameState,
@@ -82,6 +83,10 @@ class Room:
     seed: int = 0
     dice: Optional[tuple[int, int]] = None
     roll_count: int = 0
+    test_mode: bool = False
+    next_test_dice: Optional[tuple[int, int]] = field(default=None, repr=False)
+    game_events: List[Dict[str, Any]] = field(default_factory=list, repr=False)
+    event_serial: int = 0
     game: Optional[GameState] = None
     last_activity_ts: float = field(default_factory=lambda: time.time())
 
@@ -199,6 +204,7 @@ def health() -> Dict[str, str]:
 
 
 CMD_ID_LRU = 256
+TEST_TOOLS_ENABLED = os.getenv("CATAN_ENABLE_TEST_TOOLS", "0") == "1"
 MULTIPLAYER_COMMANDS = frozenset({
     "place_settlement", "place_road", "upgrade_city", "build_ship", "move_ship",
     "roll", "discard", "choose_gold", "move_robber", "move_pirate",
@@ -215,6 +221,9 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
     state["roll_count"] = room.roll_count
     state["room_settings"] = room.settings.public(game.rules_config.target_vp)
     state["turn_timer"] = room.timer.public(time.monotonic(), time.time()) if room.timer else None
+    state["game_events"] = game_events.project(room, pid)
+    state["test_mode"] = room.test_mode
+    state["test_tools"] = TEST_TOOLS_ENABLED and room.test_mode and pid == room.host_pid
     for player in state["players"]:
         player["color"] = room.players[player["pid"]].color
     if room.settings.bank_visibility == "visible":
@@ -335,6 +344,8 @@ def _start_match(room: Room) -> None:
     if room.settings.target_vp is not None:
         game.rules_config.target_vp = room.settings.target_vp
         game.rules["target_vp"] = room.settings.target_vp
+    game.rules_config.discard_threshold = room.settings.discard_threshold
+    game.rules["discard_threshold"] = room.settings.discard_threshold
     # Do not tie the secret development deck to the map's reproducible seed.
     random.SystemRandom().shuffle(game.dev_deck)
     room.host_pid = mapping[host_pid]
@@ -350,6 +361,9 @@ def _start_match(room: Room) -> None:
     room.tick = 0
     room.dice = None
     room.roll_count = 0
+    room.game_events = []
+    room.event_serial = 0
+    room.next_test_dice = None
     room.dice_bag = []
     room.timer = None
     room.config_revision += 1
@@ -369,6 +383,18 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     ctype = cmd.get("type")
     if not isinstance(ctype, str):
         return net_protocol.error_message("invalid", "cmd.type required")
+    if ctype == "test_action":
+        if not TEST_TOOLS_ENABLED or not room.test_mode or pid != room.host_pid:
+            return net_protocol.error_message("forbidden", "Test tools are unavailable for this room/player")
+        before = game_events.resources_before(g)
+        try:
+            action, target, events = test_tools.execute(room, cmd)
+        except RuleError as exc:
+            return net_protocol.error_message(exc.code, exc.message, exc.details)
+        game_events.record(room, "debug", pid, action=action, player_pid=target)
+        if action == "trigger_seven":
+            game_events.committed(room, g.turn, {"type": "roll"}, events, before, g.robber_tile, g.pirate_tile)
+        return None
     if ctype not in MULTIPLAYER_COMMANDS:
         return net_protocol.error_message("forbidden", "Command is not available in multiplayer")
     if ctype == "discard" and not isinstance(cmd.get("discards"), dict):
@@ -379,23 +405,29 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     if ctype == "roll":
         if set(cmd) != {"type"}:
             return net_protocol.error_message("invalid", "Send only the roll intention")
-        if room.settings.dice_mode == "balanced":
+        if TEST_TOOLS_ENABLED and room.test_mode and room.next_test_dice is not None:
+            dice = room.next_test_dice
+        elif room.settings.dice_mode == "balanced":
             next_bag = room.dice_bag if len(room.dice_bag) > 12 else shuffled_bag()
             dice = next_bag[-1]
         else:
             dice = _roll_dice()
         cmd = {"type": "roll", "roll": sum(dice)}
 
+    before = game_events.resources_before(g)
+    old_robber, old_pirate = g.robber_tile, g.pirate_tile
     try:
-        apply_cmd(g, pid, cmd)
+        _, events = apply_cmd(g, pid, cmd)
     except RuleError as exc:
         return net_protocol.error_message(exc.code, exc.message, exc.details)
     if dice is not None:
         # Public presentation metadata is committed only with an accepted roll.
         room.dice = dice
         room.roll_count += 1
+        room.next_test_dice = None
         if next_bag is not None:
             room.dice_bag = next_bag[:-1]
+    game_events.committed(room, pid, cmd, events, before, old_robber, old_pirate)
     return None
 
 
@@ -471,6 +503,7 @@ def _set_room_settings(room: Room, pid: int, patch: Dict[str, Any]) -> None:
     except ValueError as exc:
         raise RuleError("invalid", str(exc)) from exc
     room.settings = updated
+    room.selected_rules_config = {**room.selected_rules_config, "discard_threshold": updated.discard_threshold}
     if updated.target_vp is not None:
         room.selected_rules_config = {**room.selected_rules_config, "target_vp": updated.target_vp}
     room.config_revision += 1
@@ -537,7 +570,8 @@ async def websocket_endpoint(ws: WebSocket):
             mtype = data.get("type")
             if mtype == "hello":
                 conn.name = data.get("name")
-                await _send(ws, {"type": "hello", "version": net_protocol.VERSION})
+                await _send(ws, {"type": "hello", "version": net_protocol.VERSION,
+                                 "test_tools_available": TEST_TOOLS_ENABLED})
                 continue
 
             if mtype == "create_room":
@@ -667,11 +701,12 @@ async def websocket_endpoint(ws: WebSocket):
                 room.map_revision += 1
                 if room.settings.target_vp is not None:
                     room.selected_rules_config["target_vp"] = room.settings.target_vp
+                room.selected_rules_config["discard_threshold"] = room.settings.discard_threshold
                 room.config_revision += 1
                 await _send_room_state(room)
                 continue
 
-            if mtype in ("set_settings", "set_color", "chat"):
+            if mtype in ("set_settings", "set_color", "chat", "enable_test_mode"):
                 room = manager.rooms.get(conn.room_code or "")
                 detail = {"request_type": mtype, "request_id": data.get("request_id")}
                 if not room or conn.pid is None or room.players[conn.pid].active_ws is not ws:
@@ -682,6 +717,11 @@ async def websocket_endpoint(ws: WebSocket):
                         _set_room_settings(room, conn.pid, data["settings"])
                     elif mtype == "set_color":
                         _set_player_color(room, conn.pid, data["color"])
+                    elif mtype == "enable_test_mode":
+                        if not TEST_TOOLS_ENABLED or conn.pid != room.host_pid or room.status != "lobby":
+                            raise RuleError("forbidden", "Only host on a test-enabled server may enable a lobby test room")
+                        room.test_mode = True
+                        room.config_revision += 1
                     else:
                         _append_chat(room, conn.pid, data["text"])
                 except RuleError as exc:

@@ -6,6 +6,7 @@ services:
       - .:/fixtures:ro
     environment:
       PYTHONPATH: /fixtures:/app
+      CATAN_ENABLE_TEST_TOOLS: "${CATAN_ENABLE_TEST_TOOLS:-0}"
     command: [python, -m, uvicorn, fixture_server:app, --host, 0.0.0.0, --port, "8000", --workers, "1"]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).close()"]

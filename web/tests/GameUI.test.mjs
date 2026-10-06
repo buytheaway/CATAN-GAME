@@ -19,6 +19,7 @@ const compiled = await build({
     export {default as ActionButton} from "./game/ActionButton";
     export {default as BoardControls} from "./board/BoardControls";
     export {default as DiceHUD} from "./game/DiceHUD";
+    export {default as DiscardPicker} from "./game/DiscardPicker";
     export {default as Endgame} from "./game/Endgame";
     export {createBoardInteraction,emptySelection} from "./board/interaction";`,
     resolveDir: fileURLToPath(new URL("../src/", import.meta.url)), loader: "tsx" },
@@ -96,7 +97,7 @@ test("player strip renders public scores/counts and never renders opponents' hid
   const state = snapshot();
   state.players[1].res = { PRIVATE_RES_SENTINEL: 41 };
   state.players[1].dev_cards = [{ type: "PRIVATE_VP_SENTINEL", new: false }];
-  const view = render(GameTopBar, { state, pid: 0, roomCode: "ROOM", drawer: null, onInfo() {}, onLog() {} });
+  const view = render(loaded.exports.PlayerStrip, { state, pid: 0 });
   assert.match(view.html, /Alice/); assert.match(view.html, /Bob/);
   assert.match(view.html, /9 resource cards/); assert.match(view.html, /2 development cards/);
   assert.match(view.html, /aria-current="true"/);
@@ -193,7 +194,7 @@ test("bank and player offer buttons keep the existing payloads and rejection mes
   const panel = render(TradePanel, { ...props, draft: { give: { wood: 4 }, want: { ore: 1 }, target: "bank" },
     onChange() {}, targets: [], onClose() {}, error: { message: "Bank has not enough resources" } });
   assert.match(panel.html, /Bank has not enough resources/);
-  panel.button("Trade with bank").onClick();
+  panel.button("Bank").onClick();
   assert.deepEqual(sent.pop(), { type: "trade_bank", give: "wood", get: "ore", get_qty: 1 });
   state.trade_offers = [{ offer_id: 17, from_pid: 0, to_pid: 1, give: { wood: 2 }, get: { ore: 1 }, status: "active" }];
   const recipient = render(TradeOffers, { ...props, pid: 1 });
@@ -250,7 +251,7 @@ test("resource hand delegates repeated card clicks without mutating snapshot res
   assert.deepEqual(resources, { wood: 2, brick: 0 });
 });
 
-test("Trade Tray adds and removes Give/Want cards and preserves targeted multi-resource terms", () => {
+test("Trade Tray adds and removes Give/Want cards and broadcasts multi-resource terms", () => {
   const { TradePanel } = loaded.exports;
   const state = snapshot({ rolled: true });
   let changed; const sent = [];
@@ -262,8 +263,8 @@ test("Trade Tray adds and removes Give/Want cards and preserves targeted multi-r
   view.button("Want ore").onClick(); assert.deepEqual(changed.want, { ore: 2, wheat: 1 });
   view.button("Remove wanted wheat").onClick(); assert.deepEqual(changed.want, { ore: 1 });
   view.button("Remove give wood").onClick(); assert.deepEqual(changed.give, { wood: 1, sheep: 1 });
-  view.button("Send offer").onClick();
-  assert.deepEqual(sent, [{ type: "trade_offer_create", give: { wood: 2, sheep: 1 }, get: { wheat: 1, ore: 1 }, to_pid: 1 }]);
+  view.button("Offer to Players").onClick();
+  assert.deepEqual(sent, [{ type: "trade_offer_create", give: { wood: 2, sheep: 1 }, get: { wheat: 1, ore: 1 }, to_pid: null }]);
   assert.deepEqual(draft.give, { wood: 2, sheep: 1 });
 });
 
@@ -276,10 +277,10 @@ test("bank tray renders actual owned-port ratios and disables incomplete or unav
     const draft = { give: { wood: ratio }, want: { ore: 1 }, target: "bank" };
     const view = render(TradePanel, { ...props, draft });
     assert.match(view.html, new RegExp(`aria-label="Trade ratio ${ratio}:1"`));
-    assert.equal(view.button("Trade with bank").disabled, false);
-    assert.equal(render(TradePanel, { ...props, draft: { ...draft, give: { wood: ratio - 1 } } }).button("Trade with bank").disabled, true);
+    assert.equal(view.button("Bank").disabled, false);
+    assert.equal(render(TradePanel, { ...props, draft: { ...draft, give: { wood: ratio - 1 } } }).button("Bank").disabled, true);
     state.bank_available.ore = false;
-    assert.equal(render(TradePanel, { ...props, draft }).button("Trade with bank").disabled, true);
+    assert.equal(render(TradePanel, { ...props, draft }).button("Bank").disabled, true);
   }
 });
 
@@ -313,4 +314,35 @@ test("results use server winner/final scores and delegate rematch/exit without c
   assert.equal(view.button("Rematch").disabled, false);
   view.button("Rematch").onClick(); view.button("Back to Lobby").onClick();
   assert.equal(rematches, 1);assert.equal(exits, 1);assert.equal(state.game_over, true);
+});
+
+test("clicking a playable Knight or Road Building sends its intent directly, once, before roll", () => {
+  for (const [type, label] of [["knight", "Knight"], ["road_building", "Road Building"]]) {
+    const state = snapshot({ dev_played_turn: { "0": false } });
+    state.players[0].dev_cards = [{ type, new: false }];
+    const before = JSON.stringify(state), view = renderGame(state);
+    const card = buttons.find(b => b.className?.includes("dev-mini-card"));
+    assert.match(card["aria-label"], new RegExp(label)); assert.equal(card.disabled, false);
+    card.onClick(); card.onClick();
+    assert.deepEqual(view.sent, [{ type: "play_dev", card: type }]);
+    assert.equal(JSON.stringify(state), before);
+    assert.equal(view.button(`Play ${label}`), undefined);
+  }
+});
+
+test("newly bought dev cards stay visible but disabled with the authoritative reason", () => {
+  const state = snapshot({ rolled: true, dev_played_turn: { "0": false } });
+  state.players[0].dev_cards = [{ type: "knight", new: true }];
+  renderGame(state);
+  const card = buttons.find(b => b.className?.includes("dev-mini-card"));
+  assert.equal(card.disabled, true); assert.match(card.title, /bought|new/i);
+});
+
+test("discard starts with own card counts and disabled confirmation, without numeric inputs", () => {
+  const view = render(loaded.exports.DiscardPicker, { hand: { wood: 3, ore: 1 }, required: 2, waiting: false, submit() {} });
+  assert.equal(view.button("Confirm Discard").disabled, true);
+  assert.equal(view.button("Discard brick").disabled, true);
+  assert.match(view.html, /Selected: 0 \/ 2/);
+  assert.doesNotMatch(view.html, /<input|PRIVATE/);
+  assert.equal(view.button("Remove discard wood").disabled, true);
 });

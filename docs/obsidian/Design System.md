@@ -7,6 +7,39 @@ updated: 2026-10-06
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Game UX 2.3 — implemented playtest feedback
+
+Implemented and verified **2026-10-06**, after game-ux-2-2. Direction remains clean modern tabletop: darker unified scene/HUD, readable tokens, board dominant; no commercial assets/cinematic fantasy or screenshot-art reproduction. Existing historical reference descriptions retain their dates.
+
+- Players moved into compact right strip: same owner colors/public counters, active outline, nearby timer. Top freed for board/context prompt; Log/Chat collapsible, Bank small persistent bottom zone. Header prompt cannot intercept board clicks.
+- Resource hand is five mini-card stacks/count badges, not one DOM card per resource unit. Private dev cards direct-play Knight/roads, only necessary Monopoly/Plenty picker, passive VP info/new disabled reason. UI art uses existing glyphs/basic geometry.
+- One Give/Want tray, separate **Bank** (valid 4/3/2:1 accent) and **Offer to Players**; no player target select. Incoming offers/accept/decline/cancel remain. Discard is a card selector, selected/required and remove controls; no number form. Host threshold setting defaults 7, locks at Start.
+- Bank Visible uses actual snapshot counts, Hidden generic backs plus availability. Confirmed event flights show self exact resource, opponent back; actual theft type only participants, observer generic. No animation determines gameplay or reveals foreign hand.
+- Dice roll/settle ~900ms, visible to 2100ms, fade to 2500ms, compact exact pair/sum stays. Robber clearer dark silhouette and finite 420ms move; reduced motion immediate. Static ocean/shorelines frame Base island, real Seafarers sea stays identifiable. Terrain visuals independently editable with modest shared procedural detail; same original port endpoints and small sailboat/dock.
+- Actual framing uses real map bounds; Base width +22–24%, height +17–19% against UX 2.2 at all required desktop sizes. Port/piece/number readability and shared legal hit targets retained; decorative ocean is not a new tile/model/rules layer.
+- Test Room is a developer fixture capability: env OFF default; explicit lobby opt-in on ON server; Test Tools only active host, warning label, server validates every named action. Not account/admin authentication or a raw editor.
+
+**266 pytest, 128 web, TS/production/Docker pass; 27 Chrome E2E cases.** Scenario suite 348/508, old 160 failures unchanged. Base/Gold/50-hex fixture: idle +0 frames, 2D cleanup; no perpetual ocean motion. Draw calls approximately 806/703/1485 (static), low-end FPS/mobile/natural full match not certified. Dependencies unchanged; lazy Three warning remains. New prompt/top-vertex overlap found and fixed during real clicks; no confirmed remaining UX 2.3 blocker.
+
+Дополнительно обычный production stack на http://localhost с Test Tools OFF прошёл двумя Chrome-клиентами настоящие setup → Roll → 2D/3D → End (10 commands), без fixture initializer. Локальные containers обновлены текущими проверенными images; public deployment не выполнялся.
+
+Actual browser evidence, not concept art or a claim of naturally reached rare states:
+
+| Evidence | State shown |
+| --- | --- |
+| [before-base-1920.png](../design/references/game-ux-2-3/before-base-1920.png) | Pre-change UX 2.2 horizontal HUD and smaller board |
+| [base-1920.png](../design/references/game-ux-2-3/base-1920.png) · [base-1440.png](../design/references/game-ux-2-3/base-1440.png) · [base-1280.png](../design/references/game-ux-2-3/base-1280.png) | Current right strip/hand/dock, larger board and static ocean |
+| [gold-haven-1920.png](../design/references/game-ux-2-3/gold-haven-1920.png) · [fifty-1280.png](../design/references/game-ux-2-3/fifty-1280.png) | Real Gold Haven / test-only shifted 50-hex custom JSON, actual topology/framing |
+| [resource-trade-tray.png](../design/references/game-ux-2-3/resource-trade-tray.png) | Shared card Give/Want, Bank vs broadcast actions |
+| [discard-card-selector.png](../design/references/game-ux-2-3/discard-card-selector.png) | Exact selection and threshold10 discard; prepared hand |
+| [production-self.png](../design/references/game-ux-2-3/production-self.png) · [production-observer.png](../design/references/game-ux-2-3/production-observer.png) | Confirmed bank→player cards / private faces versus backs |
+| [theft-thief.png](../design/references/game-ux-2-3/theft-thief.png) · [theft-observer.png](../design/references/game-ux-2-3/theft-observer.png) | Actual Knight/robber theft, participant-specific log and observer generic event |
+| [roomux-bank-visible.png](../design/references/game-ux-2-3/roomux-bank-visible.png) | Bank Visible, server timer and independent owner colors |
+| [test-tools-near-win.png](../design/references/game-ux-2-3/test-tools-near-win.png) | Explicit Test Room host panel, named validated controls, near-win |
+| [verification.json](../design/references/game-ux-2-3/verification.json) | Sanitized current tests/cases/framing/calls; no tokens/private snapshots |
+
+Current boundaries — [[React интерфейс#Game UX 2.3 — current playtest feedback flow]], [[Сервер и протокол#Game UX 2.3 — personalized events and Test Mode]], [[plans/game-ui-redesign#Game UX 2.3 — Playtest Feedback Pass]].
+
 ## Game / Room UX 2.2 — implemented room policy and HUD
 
 Implemented and verified **2026-10-06**, based on e9db7af. The user separately accepted room settings, unique colors, server timer, chat and optional visible bank. Their concept-only status in the earlier 2.1 reference describes that earlier phase. Current direction remains clean modern tabletop, board primary, compact overlays, no new fantasy/commercial art or dashboard redesign.
@@ -33,7 +66,7 @@ Actual Chrome evidence (not concept art):
 
 Scope/data authority/limits — [[React интерфейс#Game / Room UX 2.2 — settings, colors, timer and chat]] and [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]]. Earlier phase descriptions below are historical.
 
-Status: Clean modern tabletop accepted 2026-10-04. Game / Room UX 2.2 implemented/verified 2026-10-06 after Game UX 2.1. Match uses direct actions, hand trading, server dice/timer, chat and optional public bank; room settings/colors are implemented. Full lobby/menu/general settings/mobile redesign and final cross-screen tokens remain future work. Earlier mockup/phase descriptions and AI images retain their dated historical status.
+Status: Clean modern tabletop accepted 2026-10-04. Game UX 2.3 implemented/verified 2026-10-06 after Game / Room UX 2.2. Current layout/events/Test Room are described above. Match uses direct actions, hand trading, server dice/timer, chat and optional public bank; room settings/colors are implemented. Full lobby/menu/general settings/mobile redesign and final cross-screen tokens remain future work. Earlier mockup/phase descriptions and AI images retain their dated historical status.
 
 ## Game UX 2.1 — implemented direct tabletop UX
 

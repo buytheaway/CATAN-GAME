@@ -7,8 +7,8 @@ import { ActionFeedback, ResourcePicker, type ActionSubmit } from "./TradePanel"
 import GameOverlay from "./GameOverlay";
 import GameIcon from "./GameIcon";
 
-export function DevelopmentHand({ state, pid, onCard }: {
-  state: GameSnapshot; pid: number; onCard: (type: DevType | null) => void;
+export function DevelopmentHand({ state, pid, onCard, disabled = false }: {
+  state: GameSnapshot; pid: number; onCard: (type: DevType | null) => void; disabled?: boolean;
 }) {
   const hand = devHand(state, pid);
   return <section className="development-hand" aria-label="Your development cards">
@@ -17,6 +17,7 @@ export function DevelopmentHand({ state, pid, onCard }: {
       const reason = devPlayReason(state, pid, c.type);
       return <button className={`dev-mini-card ${reason ? "not-playable" : "playable"}`} key={c.type}
         title={reason ?? "Playable"} onClick={() => onCard(c.type)}
+        disabled={disabled || (c.type !== "victory_point" && !!reason)}
         aria-label={`${c.name}: ${c.count}. ${reason ?? "Playable"}`}>
         <GameIcon name={c.icon} /><span>{c.name}</span><b>{c.count}</b>
         <span className="sr-only">{c.fresh} bought this turn</span>
@@ -45,10 +46,10 @@ export default function DevelopmentPanel({ state, pid, selected, submit, waiting
   };
   return <GameOverlay id="development-panel" title="Development cards" modal onClose={onClose}>
     <ActionFeedback error={error} waiting={waiting} />
-    <div className="dev-card-list" aria-label="Own card types">{hand.map(c => <button className="game-button dev-card-choice"
+    {!selected && <div className="dev-card-list" aria-label="Own card types">{hand.map(c => <button className="game-button dev-card-choice"
       key={c.type} aria-pressed={card === c.type} disabled={waiting} onClick={() => setCard(c.type)}>
       <GameIcon name={c.icon} /><span>{c.name}<small>{c.count} held · {c.fresh} new</small></span>
-    </button>)}</div>
+    </button>)}</div>}
     {info && card && <section className="dev-detail" aria-label={info.name}>
       <h5><GameIcon name={info.icon} />{info.name}</h5><p>{info.description}</p>
       {selectedHand && <p>{selectedHand.count - selectedHand.fresh} older · {selectedHand.fresh} bought this turn</p>}

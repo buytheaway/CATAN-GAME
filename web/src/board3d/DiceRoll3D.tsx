@@ -1,7 +1,7 @@
-import { useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Group } from "three";
-import { DIE_PIPS, DICE_DURATION_MS, diePose, type DiceRollVisual } from "../game/dice";
+import { Group, Mesh, Material } from "three";
+import { DIE_PIPS, DICE_DURATION_MS, DICE_SETTLED_MS, DICE_FADE_MS, diceOpacity, diePose, type DiceRollVisual } from "../game/dice";
 import { useVisualResources } from "./VisualResources";
 import type { Point3D } from "./types";
 
@@ -17,11 +17,18 @@ const cubeFaces = [
 
 function Die({ face }: { face: number }) {
   const pool = useVisualResources();
+  // Fade belongs to this animation, never to the shared material pool.
+  const materials = useMemo(() => {
+    const body = pool.standard("#fff7e9").clone(), pips = pool.flat("#172533").clone();
+    body.transparent = pips.transparent = true;
+    return { body, pips };
+  }, [pool]);
+  useEffect(() => () => { materials.body.dispose(); materials.pips.dispose(); }, [materials]);
   return <group userData={{ serverFace: face }}>
-    <mesh geometry={pool.geometry("die")} material={pool.standard("#fff7e9")} castShadow raycast={ignoreRaycast} />
+    <mesh geometry={pool.geometry("die")} material={materials.body} castShadow raycast={ignoreRaycast} />
     {cubeFaces.map(f => <group key={f.face} position={f.position as Point3D} rotation={f.rotation as Point3D}>
       {DIE_PIPS[f.face].map(([x, y]) => <mesh key={`${x}:${y}`} position={[x * .2, y * .2, 0]} scale={.055}
-        raycast={ignoreRaycast} geometry={pool.geometry("disc")} material={pool.flat("#172533")} />)}
+        raycast={ignoreRaycast} geometry={pool.geometry("disc")} material={materials.pips} />)}
     </group>)}
   </group>;
 }
@@ -30,14 +37,23 @@ function Die({ face }: { face: number }) {
 export default function DiceRoll3D({ roll, center }: { roll: DiceRollVisual; center: Point3D }) {
   const group = useRef<Group>(null);
   const invalidate = useThree(s => s.invalidate);
+  useEffect(() => {
+    const timer = window.setTimeout(invalidate, Math.max(0, DICE_FADE_MS - (performance.now() - roll.startedAt)));
+    return () => window.clearTimeout(timer);
+  }, [roll.startedAt, invalidate]);
   useFrame(() => {
     if (!group.current) return;
-    const progress = (performance.now() - roll.startedAt) / DICE_DURATION_MS;
+    const elapsed = performance.now() - roll.startedAt;
+    const progress = elapsed / DICE_DURATION_MS;
     group.current.children.forEach((die, i) => {
       const pose = diePose(progress, roll.faces[i], i);
       die.position.set(...pose.position); die.rotation.set(...pose.rotation);
     });
-    if (progress < 1) invalidate();
+    group.current.traverse(object => { if (object instanceof Mesh) {
+      const material = object.material as Material;
+      material.opacity = diceOpacity(elapsed);
+    } });
+    if (elapsed < DICE_SETTLED_MS || (elapsed >= DICE_FADE_MS && elapsed < DICE_DURATION_MS)) invalidate();
   });
   return <group ref={group} position={[center[0], 0, center[2]]} userData={{ diceRoll: roll.id }}>
     {roll.faces.map((face, i) => <group key={i}><Die face={face} /></group>)}

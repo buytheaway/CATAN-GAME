@@ -1,6 +1,8 @@
 export type DiceFaces = [number, number];
 export type DiceRollVisual = { id: string; faces: DiceFaces; startedAt: number };
-export const DICE_DURATION_MS = 950;
+export const DICE_SETTLED_MS = 900;
+export const DICE_FADE_MS = 2100;
+export const DICE_DURATION_MS = 2500;
 
 export const DIE_PIPS: Record<number, [number, number][]> = {
   1: [[0, 0]],
@@ -30,7 +32,7 @@ export function finalDieRotation(face: number): [number, number, number] {
 
 /** Finite deterministic choreography of a KNOWN face. It never produces a gameplay result. */
 export function diePose(progress: number, face: number, side: number) {
-  const t = Math.max(0, Math.min(1, progress)), remaining = (1 - t) ** 3;
+  const t = Math.max(0, Math.min(1, progress * DICE_DURATION_MS / DICE_SETTLED_MS)), remaining = (1 - t) ** 3;
   const final = finalDieRotation(face);
   return {
     position: [(side ? 1 : -1) * (0.62 + remaining * 1.1),
@@ -39,4 +41,8 @@ export function diePose(progress: number, face: number, side: number) {
     rotation: [final[0] + remaining * Math.PI * 6, final[1] + remaining * Math.PI * 4,
       final[2] + remaining * Math.PI * (side ? -4 : 4)] as [number, number, number],
   };
+}
+
+export function diceOpacity(elapsed: number) {
+  return 1 - Math.max(0, Math.min(1, (elapsed - DICE_FADE_MS) / (DICE_DURATION_MS - DICE_FADE_MS)));
 }

@@ -63,8 +63,8 @@ export function TradeOffers({ state, pid, waiting, submit }: {
   }) : <p>No trade offers yet.</p>}</div>;
 }
 
-export default function TradePanel({ state, pid, draft, onChange, targets, submit, waiting, error, onClose }: {
-  draft: TradeDraft; onChange: (draft: TradeDraft) => void; targets: { pid: number; name: string }[];
+export default function TradePanel({ state, pid, draft, onChange, submit, waiting, error, onClose }: {
+  draft: TradeDraft; onChange: (draft: TradeDraft) => void;
   state: GameSnapshot; pid: number; submit: ActionSubmit; waiting: boolean; error: ServerError | null; onClose: () => void;
 }) {
   useEffect(() => {
@@ -73,27 +73,20 @@ export default function TradePanel({ state, pid, draft, onChange, targets, submi
     document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("keydown", escape); if (previous?.isConnected) previous.focus(); };
   }, [onClose]);
-  const bank = draft.target === "bank";
   const give = RESOURCES.filter(r => (draft.give[r] ?? 0) > 0);
-  const availableTarget = ["everyone", "bank"].includes(draft.target) || targets.some(p => String(p.pid) === draft.target);
-  const reason = !availableTarget ? "This player is disconnected. Choose another target."
-    : bank ? bankDraftReason(state, pid, draft) : offerCreateReason(state, pid, draft.give, draft.want);
+  const bankReason = bankDraftReason(state, pid, draft);
+  const offerReason = offerCreateReason(state, pid, draft.give, draft.want);
   const ratio = give.length === 1 ? maritimeRate(state, pid, give[0]) : null;
-  const send = () => {
+  const send = (bank: boolean) => {
+    const reason = bank ? bankReason : offerReason;
     if (waiting || reason) return;
     submit(bank ? bankDraftCommand(draft) : { type: "trade_offer_create", give: resourcePayload(draft.give),
-      get: resourcePayload(draft.want), to_pid: draft.target === "everyone" ? null : Number(draft.target) }, onClose);
+      get: resourcePayload(draft.want), to_pid: null }, onClose);
   };
   return <section className="trade-tray" id="trade-tray" role="dialog" aria-label="Trade tray" aria-modal="false" aria-busy={waiting}>
-    <div className="tray-heading"><label>Trade with<select aria-label="Offer target" value={draft.target} disabled={waiting}
-      onChange={e => onChange({ ...draft, target: e.target.value })}>
-      <option value="everyone">Everyone</option>
-      {targets.filter(p => p.pid !== pid).map(p => <option value={p.pid} key={p.pid}>{p.name}</option>)}
-      <option value="bank">Bank</option>
-      {!availableTarget && <option value={draft.target}>Disconnected player</option>}
-    </select></label><button className="game-button icon-button" aria-label="Close Trade" onClick={onClose}><GameIcon name="close" /></button></div>
+    <div className="tray-heading"><strong>Trade</strong><button className="game-button icon-button" aria-label="Close Trade" onClick={onClose}><GameIcon name="close" /></button></div>
     <ActionFeedback error={error} waiting={waiting} />
-    <div className="tray-want"><span className="tray-caption">{bank ? "You get" : "You want"}</span>
+    <div className="tray-want"><span className="tray-caption">You want</span>
       <div className="tray-palette">{RESOURCES.map(r => <span className="wanted-option" key={r}>
         <ResourceCard resource={r} count={draft.want[r] ?? 0} variant="option" label={`Want ${r}`}
           disabled={waiting} onClick={() => onChange({ ...draft, want: changeResource(draft.want, r, 1) })} />
@@ -106,11 +99,16 @@ export default function TradePanel({ state, pid, draft, onChange, targets, submi
         label={`Remove give ${r}`} disabled={waiting}
         onClick={() => onChange({ ...draft, give: changeResource(draft.give, r, -1) })} />)}
       {!give.length && <span className="tray-hint">Click cards in your hand to give.</span>}
-      {bank && ratio && <strong className="trade-ratio" aria-label={`Trade ratio ${ratio}:1`}>{ratio}:1</strong>}
-      <button className="game-button primary-action" disabled={waiting || !!reason} onClick={send}>
-        {bank ? "Trade with bank" : "Send offer"}</button>
+      {ratio && <strong className="trade-ratio" aria-label={`Trade ratio ${ratio}:1`}>{ratio}:1</strong>}
     </div></div>
-    {reason && <p className="tray-hint" role="status">{reason}</p>}
+    <div className="trade-explicit-actions">
+      <button className={`game-button${!bankReason ? " primary-action" : ""}`} disabled={waiting || !!bankReason}
+        title={bankReason ?? "Valid maritime trade"} onClick={() => send(true)}>Bank</button>
+      <button className="game-button primary-action" disabled={waiting || !!offerReason}
+        title={offerReason ?? "Broadcast to every other player"} onClick={() => send(false)}>Offer to Players</button>
+    </div>
+    {bankReason && <p className="tray-hint">{bankReason}</p>}
+    {offerReason && <p className="tray-hint" role="status">{offerReason}</p>}
   </section>;
 }
 

@@ -31,6 +31,13 @@ export default function Port3D({ port }: { port: RenderPort }) {
           geometry={pool.geometry("box")} material={pool.standard("#29414c")} />
         <group position={[0, 0.076, 0]}><TokenLabel text={style.label.toUpperCase()} color="#f0e7d3" width={0.55} depth={0.39} /></group>
       </group>
+      <group position={[port.anchor[0], .12, port.anchor[2]]} rotation={[0, port.rotation, 0]} userData={{ decorativeHarbor: true }}>
+        <mesh scale={[.3, .45, .65]} raycast={ignoreRaycast} geometry={pool.geometry("hull")} material={pool.standard(VISUAL.dock)} />
+        <mesh position={[0, .11, 0]} scale={[.018, .23, .018]} raycast={ignoreRaycast}
+          geometry={pool.geometry("box")} material={pool.standard(VISUAL.trunk)} />
+        <mesh position={[.015, .1, 0]} scale={[.35, .35, .35]} raycast={ignoreRaycast}
+          geometry={pool.geometry("sail")} material={pool.standard(VISUAL.ivory)} />
+      </group>
     </group>
   );
 }

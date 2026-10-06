@@ -5,7 +5,7 @@ import type { GameState } from "../components/BoardView.types";
 
 export type Resource = typeof RESOURCES[number];
 export type ResourceCounts = Partial<Record<Resource, number>>;
-export type TradeDraft = { give: ResourceCounts; want: ResourceCounts; target: string };
+export type TradeDraft = { give: ResourceCounts; want: ResourceCounts };
 
 export function shipsEnabled(state: Pick<GameState, "rules_config">) {
   return state.rules_config?.enable_seafarers === true && (state.rules_config.max_ships ?? 15) > 0;
@@ -18,7 +18,7 @@ export function changeResource(counts: ResourceCounts, resource: Resource, delta
 }
 
 export function addHandResource(draft: TradeDraft | null, resource: Resource, hand: Record<string, number>): TradeDraft {
-  const current = draft ?? { give: {}, want: {}, target: "everyone" };
+  const current = draft ?? { give: {}, want: {} };
   return { ...current, give: changeResource(current.give, resource, 1, hand[resource] ?? 0) };
 }
 

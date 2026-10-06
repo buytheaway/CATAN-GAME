@@ -8,14 +8,26 @@ import ResourceCard from "./ResourceCard";
 import type { Resource } from "./actions";
 import TurnTimer from "./TurnTimer";
 
-export function GameTopBar({ state, pid, roomCode, onInfo, onLog, drawer }: {
+export function GameTopBar({ state, roomCode, onInfo, onLog, drawer }: {
   state: GameSnapshot; pid: number; roomCode: string; drawer: string | null; onInfo: () => void; onLog: () => void;
 }) {
   return <header className="game-topbar">
     <div className="game-brand"><strong>CATAN<span> / Online</span></strong>
       <span className="game-room" title={state.map_meta?.name}>{state.map_meta?.name ?? "Room"} · {roomCode}</span></div>
-    <ol className="players-strip" aria-label="Players">
+    <div className="match-summary"><span className="vp-goal">Goal <strong>{state.rules_config?.target_vp ?? 10} VP</strong></span>
+      {state.test_mode && <span className="test-room-warning">TEST ROOM</span>}
+      <button className="game-button icon-button" aria-label="Game info" aria-expanded={drawer === "info"}
+        aria-controls="game-info" onClick={onInfo}><GameIcon name="info" /></button>
+      <button className="game-button icon-button" aria-label="Event log" aria-expanded={drawer === "log"}
+        aria-controls="game-log" onClick={onLog}><GameIcon name="log" /></button>
+    </div>
+  </header>;
+}
+
+export function PlayerStrip({ state, pid }: { state: GameSnapshot; pid: number }) {
+  return <ol className="players-strip" aria-label="Players">
       {state.players.map(p => <li key={p.pid} className={`player-hud${state.turn === p.pid ? " is-current" : ""}`}
+        data-motion-anchor={p.pid}
         style={{ "--player-color": colorForPlayer(p.pid, state.players) } as CSSProperties}
         aria-current={state.turn === p.pid ? "true" : undefined}>
         <span className="player-number">{p.pid + 1}</span>
@@ -27,14 +39,7 @@ export function GameTopBar({ state, pid, roomCode, onInfo, onLog, drawer }: {
         {state.turn === p.pid && <div className="turn-status"><span className="turn-indicator">{p.pid === pid ? "Your turn" : "Turn"}</span>
           <TurnTimer timer={state.turn_timer} /></div>}
       </li>)}
-    </ol>
-    <div className="match-summary"><span className="vp-goal">Goal <strong>{state.rules_config?.target_vp ?? 10} VP</strong></span>
-      <button className="game-button icon-button" aria-label="Game info" aria-expanded={drawer === "info"}
-        aria-controls="game-info" onClick={onInfo}><GameIcon name="info" /></button>
-      <button className="game-button icon-button" aria-label="Event log" aria-expanded={drawer === "log"}
-        aria-controls="game-log" onClick={onLog}><GameIcon name="log" /></button>
-    </div>
-  </header>;
+    </ol>;
 }
 
 export function ContextPrompt({ state, pid, interaction }: { state: GameSnapshot; pid: number; interaction: BoardInteraction }) {
@@ -48,7 +53,7 @@ export function ContextPrompt({ state, pid, interaction }: { state: GameSnapshot
 export function ResourceHand({ resources, onResource, disabled = false }: {
   resources: Record<string, number>; onResource?: (resource: Resource) => void; disabled?: boolean;
 }) {
-  return <section className="resource-hand" aria-label="Your resource hand">
+  return <section className="resource-hand" aria-label="Your resource hand" data-motion-anchor="hand">
     <div className="hud-caption">Your hand</div>
     <div className="resource-cards">{RESOURCES.map(resource => <ResourceCard key={resource}
       resource={resource} count={resources[resource] ?? 0} disabled={disabled || !resources[resource]}
@@ -60,11 +65,11 @@ export function ResourceHand({ resources, onResource, disabled = false }: {
 export function BankSummary({ available, counts }: {
   available: Record<string, boolean> | undefined; counts?: Record<string, number>;
 }) {
-  return <details className="bank-summary"><summary>{counts ? "Bank" : "Bank availability"}</summary>
+  return <details className="bank-summary" open><summary data-motion-anchor="bank">{counts ? "Bank" : "Bank availability"}</summary>
     <div className="bank-resources">{RESOURCES.map(resource => <span key={resource}
       className={`bank-resource resource-${resource}${available?.[resource] ? "" : " is-empty"}`}
       aria-label={`${resource}: ${counts ? counts[resource] ?? 0 : available?.[resource] ? "available" : "unavailable"}`}>
-      <GameIcon name={resource} /><small>{counts ? counts[resource] ?? 0 : available?.[resource] ? "Available" : "Empty"}</small>
+      {counts ? <GameIcon name={resource} /> : <span className="bank-card-back">?</span>}<small>{counts ? counts[resource] ?? 0 : available?.[resource] ? "Available" : "Empty"}</small>
     </span>)}</div>
     <p>{counts ? "Public bank counts · Development deck hidden." : "Exact bank quantities are hidden."}</p>
   </details>;

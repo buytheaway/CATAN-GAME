@@ -1,4 +1,8 @@
 import type { ThreeElements } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useRef } from "react";
+import { Group } from "three";
+import { useReducedMotion } from "../game/motion";
 import { TILE_TOP } from "./coordinates";
 import { playerColor, VISUAL } from "./materials";
 import { useVisualResources } from "./VisualResources";
@@ -65,12 +69,36 @@ export function Ship3D({ ship, ghost = false, color = playerColor(ship.owner) }:
 }
 
 export function Robber3D({ position, tileIndex }: { position: Point3D; tileIndex: number }) {
-  return <group position={[position[0] + 0.48, TILE_TOP, position[2] + 0.1]} userData={{ tileIndex, piece: "robber" }}>
+  const group = useRef<Group>(null);
+  const initial = useRef<Point3D>([position[0] + .48, TILE_TOP, position[2] + .1]);
+  const movement = useRef<{ from: Point3D; to: Point3D; start: number } | null>(null);
+  const reduced = useReducedMotion();
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => {
+    if (!group.current) return;
+    const to: Point3D = [position[0] + .48, TILE_TOP, position[2] + .1];
+    const from = group.current.position.toArray() as Point3D;
+    if (reduced || from.every((v, i) => v === to[i])) { group.current.position.set(...to); movement.current = null; }
+    else movement.current = { from, to, start: performance.now() };
+    invalidate();
+  }, [position[0], position[2], reduced, invalidate]);
+  useFrame(() => {
+    const move = movement.current;
+    if (!move || !group.current) return;
+    const t = Math.min(1, (performance.now() - move.start) / 420), eased = t * t * (3 - 2 * t);
+    group.current.position.set(...move.from.map((v, i) => v + (move.to[i] - v) * eased + (i === 1 ? Math.sin(t * Math.PI) * .25 : 0)) as Point3D);
+    if (t < 1) invalidate(); else movement.current = null;
+  });
+  return <group ref={group} position={initial.current} userData={{ tileIndex, piece: "robber" }}>
     <PieceMesh kind="cylinder" color={VISUAL.robber} position={[0, 0.035, 0]} scale={[0.18, 0.07, 0.18]} />
     <PieceMesh kind="cone" color={VISUAL.robber} position={[0, 0.22, 0]} scale={[0.14, 0.35, 0.14]} />
     <PieceMesh kind="sphere" color={VISUAL.robber} position={[0, 0.42, 0]} scale={[0.115, 0.115, 0.115]} />
     <PieceMesh kind="cylinder" color={VISUAL.tokenSide} position={[0, 0.33, 0]} scale={[0.09, 0.03, 0.09]} />
     <PieceMesh kind="cylinder" color={VISUAL.ink} position={[0, .077, 0]} scale={[.15, .02, .15]} />
+    <PieceMesh kind="cylinder" color="#e3ccb0" position={[0, .01, 0]} scale={[.2, .028, .2]} />
+    <PieceMesh kind="cone" color="#223848" position={[0, .245, -.02]} scale={[.17, .36, .145]} />
+    <PieceMesh kind="cylinder" color="#121e2c" position={[0, .465, 0]} scale={[.165, .034, .165]} />
+    <PieceMesh kind="cone" color="#121e2c" position={[0, .5, 0]} scale={[.125, .11, .125]} />
   </group>;
 }
 

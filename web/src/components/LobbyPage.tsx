@@ -37,8 +37,9 @@ export default function LobbyPage({
   useEffect(() => {
     client.onMapPending = setPendingMapId;
     client.onConfigPending = () => refreshConfig(version => version + 1);
+    client.onCapabilities = () => refreshConfig(version => version + 1);
     setPendingMapId(client.pendingMapId);
-    return () => { client.onMapPending = undefined; client.onConfigPending = undefined; };
+    return () => { client.onMapPending = undefined; client.onConfigPending = undefined; client.onCapabilities = undefined; };
   }, [client]);
 
   useEffect(() => { setCustomLabel("Custom map: none"); }, [room?.room_code]);
@@ -158,6 +159,9 @@ export default function LobbyPage({
               <div className="muted">Map: {room.map_id}{ruleText}</div>
             ) : null}
             <MatchSettings client={client} room={room} connected={status === "connected"} />
+            {room.test_mode ? <p className="test-room-warning">Development test room · debug actions enabled for host</p>
+              : client.testToolsAvailable && isHost && room.status === "lobby" && <button className="btn"
+                disabled={status !== "connected"} onClick={() => client.enableTestMode()}>Enable Test Room</button>}
             <ul>
               {room.players.map((p) => (
                 <li key={p.pid}>

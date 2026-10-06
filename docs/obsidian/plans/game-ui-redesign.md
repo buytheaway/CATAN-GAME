@@ -170,3 +170,49 @@ Validate meaningful pure/React behavior tests, exact server-face/privacy/invalid
 ### Checkpoint Game UX 2.1
 
 READY FOR CHECKPOINT. Proposed commit: `feat: improve direct game actions trade and dice UX`; proposed tag: `game-ux-2-1`. Neither is created automatically. No next phase/gameplay fixes started. Earlier Phase 2 statements about unused free roads describe historical findings; `dcadcab` fixed that lifecycle before this task.
+
+## Game UX 2.3 — Playtest Feedback Pass
+
+Status: Completed — 2026-10-06. READY FOR CHECKPOINT. Base runtime checkpoint game-ux-2-2; HEAD dec2458 additionally contains the user's Obsidian graph settings. Preserve subsequent graph edits.
+
+Pre-change audit: production-like Docker + Chrome 154, 19/19 existing E2E cases and a separate real balanced-roll discard capture. Presentation: horizontal player HUD consumes board space, hand reads as counters, bank is secondary, terrain/sea/dice need a finite visual pass. Interaction: extra dev-card Play confirmation, target selector in trade, numeric discard. Missing data: server discards engine events; theft needs a recipient-filtered authoritative feed. Approved rule configuration: replace hardcoded >7 threshold with configurable >threshold, retaining floor(hand/2). Existing live-socket token reconnect is automatic; no identity redesign.
+
+Affected path: GamePage hand / direct dev / shared board controller / trade / discard → existing WSClient sequence and ACK → server._apply_cmd → shared engine.apply_cmd → player snapshot plus bounded personalized events → App React state → sidebar / hand / animation coordinator / original renderers. Animation never mutates state or determines rules. No raw engine event broadcast: development draw, resource composition and pending choices remain private.
+
+Implementation boundaries: compact right sidebar, card stacks, explicit Bank / Offer to Players (existing broadcast path), card discard and threshold setting; finite dice/robber/card flights; static decorative ocean distinct from gameplay sea; visual-only terrain decomposition and existing-port polish. Camera framing uses real coordinates and viewport. Existing 2D/controller/Ship remain.
+
+Test Tools boundary: CATAN_ENABLE_TEST_TOOLS=1 is required, off by default. Additionally only rooms explicitly enabled by the host in lobby and their current socket-owned host can issue named validated test actions. Normal rooms remain protected even on a test-enabled server. No raw state editor/execution. Invalid debug actions must preserve game, dice, events and timer. Debug events are marked; rematch resets pending forced dice and feed. No accounts, database, public deployment, Seafarers gameplay fixes or map changes.
+
+Verification planned: behavior/privacy/threshold/debug atomicity regression tests; full pytest and scenarios compared with 348/508; web tests, TypeScript and production/Docker builds; real Chrome 2/3 clients, Base/Gold and all desktop sizes, test-on/off, reconnect/rematch, finite animation/reduced motion, idle demand rendering including a 50-hex fixture. Record actual limits and metrics after completion; no session logs.
+
+### Implemented and verified Game UX 2.3 — 2026-10-06
+
+| Pre-change finding | Category | Authorized resolution |
+| --- | --- | --- |
+| Top player HUD, counter hand, hidden bank, small board/abrupt dice | A — presentation | Compact right strip/bank, stacks, larger framing, static ocean, finite motion |
+| Extra Play click, trade target select, numeric discard | B — interaction | Direct private dev flow, Bank/broadcast actions, own-card discard selector |
+| Engine result events discarded before network, missing theft participants/type | C — protocol data | Bounded closed personalized committed feed, never raw engine events |
+| Hardcoded hand >7 | D — approved configurable rule option | Room threshold default 7; unchanged floor(hand/2), host/lock/rematch |
+
+GamePage still uses one board controller and matching-ACK command helper. ResourceCard and DevelopmentHand are compact fixed-size cards; Knight/roads direct, Monopoly/Plenty only necessary picker, passive VP/new-card reason retained. Trade only existing broadcast/maritime paths, accept/decline/cancel preserved. Sidebar Players/Timer + collapsible GameLog/Chat + persistent Bank leaves board dominant. CardFlights consumes authoritative events, never mutates balances or infers private theft. Production self exact, other recipients backs; theft type only thief/victim, DEBUG logs never contain secret card/forced faces.
+
+Backend diff is confined to discard config/metadata plus bounded Room presentation and opt-in named test actions. Engine move events now return actual victim_pid, including implicit victim; theft algorithm is unchanged. Test tools require flag ON + explicitly enabled lobby Test Room + current active host ownership. Named closed schemas run validations on a deepcopy; no raw editor/arbitrary code. Give/remove conserves bank+hands, specific card comes from deck, next dice is private one-shot, force-turn cleans existing lifecycle, near-win/trigger-seven use existing victory/roll functions. Rematch resets feed/id/forced pair while retaining room settings/test flag. Normal rooms reject cheats even on a test-enabled server.
+
+Visual-only terrain dispatcher now has separate Forest/Fields/Pasture/Hills/Mountains/Desert/Gold/Sea components with shared pooled details. Static decorative ocean is distinct from real sea IDs and excluded from game framing/hits; ports retain both original vertices. Camera uses actual projected footprint and viewport. Robber finite 420ms; dice 600+300ms roll/settle, hold to 2100ms, fade to 2500ms, then exact compact pair/sum. Reduced motion skips motions; no permanent water/frame loop. Original SVG/interaction/legal/payloads/Ship remain.
+
+Validation:
+
+- Full pytest **266/266** (234 prior +32 meaningful feedback cases), web **128/128** (119 prior +9), TypeScript and production build pass. New Python cases cover threshold strict boundary/formula/settings/lock/rematch/round-trip, recipient production/theft privacy, hidden dev draw/bounded feed/reset, three Test gate denials, nine malformed named actions preserving full state/metadata and real WS policy. Web covers direct dev click/new reasons, card discard, exact dice linger/fade and pure event privacy/flight/history/dedupe behavior. Existing ownership/reconnect/legal/Road Building suites retained.
+- Scenario suite actually rerun: **348/508**, 160 existing failures in dev_cards_effects/dev_cards_restrictions/largest_army_award/ports_trade_rates/rules_limits/Seafarers_move_ship/Seafarers_pirate_move/Seafarers_ship_build (20 each). Baseline count/categories unchanged; no automatic assertion/rule edits. Must roll before actions still indicates old action-before-roll scenarios, not a threshold regression.
+- Production build: main **226.11 KB /70.89 KB gzip**, lazy Three **892.70 KB /240.21 KB gzip**. Existing chunk warning remains. No new/updated runtime dependencies or deployment architecture.
+- Both Docker images pass. Chrome **154.0.8037.98** through real nginx/WS: **27/27 cases**, 103 command attempts, 12 expected rejections. Existing 19 revalidated, including bank 4/3/2, broadcast lifecycle, all private dev/restrictions, results/compact rematch/sequence, setup, direct builds, exact/repeated/reduced dice, Gold ship/move/pirate and settings/chat/timer/reconnect. Eight additional cases cover OFF rejection, ON normal-room rejection, test host/participant controls and invalid retry, bank→hand production, actual three-client theft/private log/back flights, card discard/retry/threshold10, threshold25 equality and custom shifted 50-hex fixture.
+- Base/Gold/50 checked at **1920×1080, 1440×900, 1280×720**; no horizontal scroll, hand/dock/HUD geometry overlap or clipped game ports/pieces. Base land width grows **22.46%/24.21%/23.20%**, height **17.24%/18.90%/17.96%** against pre-change UX 2.2 (area about 44–48%). These are actual projected geometry metrics on the same preset with independently generated terrain, not a pixel-identical image comparison.
+- Base/Gold/50 idle **+0 frames** after finite motion. Static calls roughly Base 803–806, Gold 700–703, 50 fixture 1483–1485; no FPS/low-end certification. 50 fixture 2D switch leaves **0 geometries/0 textures**. No browser JS/console/WebGL errors. Actual evidence/metrics are [[Design System#Game UX 2.3 — implemented playtest feedback]].
+
+Дополнительно обычный production stack на http://localhost с Test Tools OFF прошёл двумя Chrome-клиентами настоящие setup → Roll → 2D/3D → End (10 commands), без fixture initializer. Локальные containers обновлены текущими проверенными images; public deployment не выполнялся.
+
+New issue found during verification: enlarged board placed the contextual prompt over top settlement vertex 8. Fixed composition locally by moving prompt to free header center with no pointer events; direct real 3D click regression now passes. Test Tools selectors also received explicit accessible labels. Robber/pirate log labels use public terrain/number rather than internal tile IDs. No remaining confirmed blocker in this scope. The naturally completed full match/mobile/low-end/load and Qt feature parity remain unverified; old gameplay P1, deterministic theft, achievements, off-turn victory, save/load, auth/persistence and Seafarers hardening remain separate tasks. Visible bank deliberately permits deductions. Live WS reconnect already automatic; refresh still uses saved token via normal Join, no identity redesign.
+
+### Checkpoint Game UX 2.3
+
+READY FOR CHECKPOINT. Authorized commit: `feat: refine gameplay UX from playtest feedback`; tag: `game-ux-2-3`. User Obsidian graph.json edits are excluded. No auth/persistence/Seafarers/map generator/public deployment or next phase starts automatically.

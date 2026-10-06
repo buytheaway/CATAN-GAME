@@ -32,6 +32,7 @@ def to_dict(g: GameState) -> Dict:
         "rules": dict(getattr(g, "rules", {}) or {}),
         "rules_config": {
             "target_vp": int(getattr(cfg, "target_vp", 10)),
+            "discard_threshold": cfg.discard_threshold,
             "max_roads": int(getattr(cfg, "max_roads", 15)),
             "max_settlements": int(getattr(cfg, "max_settlements", 5)),
             "max_cities": int(getattr(cfg, "max_cities", 4)),
@@ -204,6 +205,7 @@ def from_dict(data: Dict) -> GameState:
     g.rules = dict(data.get("rules", {}) or {})
     rc = data.get("rules_config", {}) or {}
     g.rules_config = RulesConfig(
+        discard_threshold=int(rc.get("discard_threshold", g.rules.get("discard_threshold", 7))),
         target_vp=int(rc.get("target_vp", g.rules.get("target_vp", g.rules.get("victory_points", 10)))),
         max_roads=int(rc.get("max_roads", g.rules.get("max_roads", 15))),
         max_settlements=int(rc.get("max_settlements", g.rules.get("max_settlements", 5))),

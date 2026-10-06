@@ -71,15 +71,18 @@ def initialize(room):
     if mode.startswith("bank"):
         expected = {"bank4": 4, "bank3": 3, "bank2": 2}[mode]
         assert rules.best_trade_rate(g, 0, "wood") == expected
-    if mode in ("roomux", "roomuxhidden"):
+    if mode in ("roomux", "roomuxhidden", "production"):
         for player in g.players:
             player.res = {r: 0 for r in rules.RESOURCES}
         g.bank = {r: 19 for r in rules.RESOURCES}
+        if mode == "production":
+            g.rolled = False
 
 
 def verify_rejection(room, pid, cmd):
     before = deepcopy(room.game)
     dice_before = (room.dice, room.roll_count)
+    events_before = deepcopy((room.game_events, room.event_serial, room.next_test_dice))
     roller = server._roll_dice
     if room.players[0].name.startswith("fixture-dice "):
         server._roll_dice = lambda: (4, 5)
@@ -90,6 +93,7 @@ def verify_rejection(room, pid, cmd):
     if error:
         assert room.game == before, "Rejected command mutated GameState"
         assert (room.dice, room.roll_count) == dice_before, "Rejected command changed dice presentation"
+        assert (room.game_events, room.event_serial, room.next_test_dice) == events_before, "Rejected command changed events/debug metadata"
     return error
 
 

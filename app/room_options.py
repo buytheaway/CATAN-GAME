@@ -20,6 +20,7 @@ class RoomSettings:
     turn_timer: int = 0
     bank_visibility: str = "visible"
     target_vp: int | None = None  # None follows the selected preset.
+    discard_threshold: int = 7
 
     def updated(self, patch: dict[str, Any]) -> RoomSettings:
         validators = {
@@ -28,6 +29,7 @@ class RoomSettings:
             "turn_timer": lambda v: type(v) is int and v in (0, 30, 60, 90, 120),
             "bank_visibility": lambda v: v in ("visible", "hidden"),
             "target_vp": lambda v: type(v) is int and 3 <= v <= 30,
+            "discard_threshold": lambda v: type(v) is int and 1 <= v <= 50,
         }
         if not patch or any(k not in validators or not validators[k](v) for k, v in patch.items()):
             raise ValueError("Invalid room settings")

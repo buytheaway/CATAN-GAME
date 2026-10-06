@@ -341,7 +341,7 @@ def test_live_settings_colors_chat_reconnect_lock_and_balanced_authority(live_se
             initial = await _recv_type(a, "room_state")
             token = await _recv_type(a, "reconnect_token")
             assert initial["settings"] == {"dice_mode": "random", "starting_player": "random", "turn_timer": 0,
-                                            "bank_visibility": "visible", "target_vp": 10}
+                                            "bank_visibility": "visible", "target_vp": 10, "discard_threshold": 7}
             await _send(b, {"type": "join_room", "room_code": initial["room_code"], "name": "Bob"})
             await _recv_type(b, "room_state")
             await _recv_type(b, "reconnect_token")

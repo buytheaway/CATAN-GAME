@@ -5,7 +5,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { chromium } = require('playwright');
 const origin = process.env.CATAN_E2E_ORIGIN || 'http://127.0.0.1:18080';
-const output = process.env.CATAN_E2E_OUTPUT || path.join(os.tmpdir(), 'catan-game-ux-2-2');
+const output = process.env.CATAN_E2E_OUTPUT || path.join(os.tmpdir(), 'catan-game-ux-2-3');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function wait(predicate, label) {
   const deadline = Date.now() + 20000;
@@ -83,9 +83,18 @@ function privacy(clients) {
       assert(!('res' in p)); assert(!('dev_cards' in p));
       assert.equal(typeof p.resource_count, 'number'); assert.equal(typeof p.dev_count, 'number');
     }
+    for (const e of s.game_events ?? []) {
+      assert(!('_private' in e));
+      if (e.type === 'theft' && e.actor_pid !== s.you_pid && e.victim_pid !== s.you_pid) assert(!('resource' in e));
+      if (e.type === 'production' && e.player_pid !== s.you_pid) assert(!('resources' in e));
+      if (['buy_dev','discard','trade_bank','choose_gold'].includes(e.type) && e.actor_pid !== s.you_pid) {
+        assert(!('paid' in e) && !('gained' in e));
+      }
+      if (e.type === 'buy_dev' || e.type === 'debug') assert(!('card' in e));
+    }
   }
 }
-async function room(browser, mode, count = 2, natural = false, mapId = 'base_standard') {
+async function room(browser, mode, count = 2, natural = false, mapId = 'base_standard', options = {}) {
   const clients = [];
   for (const name of ['Alice', 'Bob', 'Cara'].slice(0, count)) clients.push(await newClient(browser, `${natural ? 'natural' : 'fixture-' + mode} ${name}`));
   const a = clients[0];
@@ -121,7 +130,23 @@ async function room(browser, mode, count = 2, natural = false, mapId = 'base_sta
     await a.page.getByRole('button', { name: 'Send', exact: true }).click();
     await wait(() => clients.every(c => c.room.chat_history?.at(-1)?.text === 'hello from the lobby'), 'room chat broadcast before start');
   }
-  if (mapId !== 'base_standard') {
+  if (options.threshold) {
+    await a.page.getByLabel('Discard threshold').selectOption(String(options.threshold));
+    await wait(() => clients.every(c => c.room.settings.discard_threshold === options.threshold), 'confirmed discard threshold');
+    assert.equal(await clients[1].page.getByLabel('Discard threshold').isEnabled(), false);
+  }
+  if (options.testMode) {
+    await a.page.getByRole('button', { name: 'Enable Test Room', exact: true }).click();
+    await wait(() => clients.every(c => c.room.test_mode === true), 'explicit test room');
+  }
+  if (options.visibleBank) {
+    await a.page.getByLabel('Bank resource counts').selectOption('visible');
+    await wait(() => clients.every(c => c.room.settings.bank_visibility === 'visible'), 'visible bank');
+  }
+  if (options.mapData) {
+    await a.page.getByLabel('Custom map (JSON)').setInputFiles({ name: 'fifty-hex-fixture.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(options.mapData)) });
+    await wait(() => clients.every(c => c.room.map_id === options.mapData.name), 'confirmed custom performance fixture');
+  } else if (mapId !== 'base_standard') {
     await a.page.getByLabel('Map preset').selectOption(mapId);
     await wait(() => clients.every(c => c.room.map_id === mapId), 'confirmed preset on both clients');
   }
@@ -151,14 +176,12 @@ async function openDev(c, card) {
   await c.page.locator('.dev-mini-card').filter({ hasText: card }).click();
   const panel = c.page.getByRole('dialog', { name: 'Development cards', exact: true });
   await panel.waitFor();
-  if (card) await panel.locator('.dev-card-choice').filter({ hasText: card }).click();
   return panel;
 }
 async function openTrade(c, players = false) {
   await c.page.locator('.resource-hand button[data-resource="wood"]').click();
   const panel = c.page.getByRole('dialog', { name: 'Trade tray', exact: true });
   await panel.waitFor();
-  if (!players) await panel.getByLabel('Offer target').selectOption('bank');
   return panel;
 }
 async function open3d(c) {
@@ -219,12 +242,12 @@ async function bank(clients, ratio) {
   await evidence(a, 'bank-tray-' + ratio);
   if (ratio === 4) {
     await invalidNext(a, { type: 'trade_bank', give: 'wood', get: 'wood', get_qty: 1 });
-    await action(clients, a, () => panel.getByRole('button', { name: 'Trade with bank' }).click(), 'invalid bank', true);
+    await action(clients, a, () => panel.getByRole('button', { name: 'Bank', exact: true }).click(), 'invalid bank', true);
     assert.deepEqual(own(a).res, before);
     assert.equal(await panel.locator('button[data-resource="ore"]').getAttribute('data-count'), '1');
     assert(await panel.getByRole('alert').isVisible());
   }
-  const cmd = await action(clients, a, () => panel.getByRole('button', { name: 'Trade with bank' }).click(), `bank ${ratio}:1`);
+  const cmd = await action(clients, a, () => panel.getByRole('button', { name: 'Bank', exact: true }).click(), `bank ${ratio}:1`);
   assert.deepEqual(cmd, { type: 'trade_bank', give: 'wood', get: 'ore', get_qty: 1 });
   assert.equal(own(a).res.wood, before.wood - ratio); assert.equal(own(a).res.ore, before.ore + 1);
   await evidence(a, 'bank-' + ratio); assert.equal(await panel.count(), 0);
@@ -238,9 +261,9 @@ async function offer(clients) {
     return panel;
   };
   let panel = await draft();
-  await panel.getByLabel('Offer target').selectOption('1');
+  assert.equal(await panel.getByLabel('Offer target').count(), 0);
   const before = clients.map(c => ({ ...own(c).res }));
-  await action(clients, a, () => panel.getByRole('button', { name: 'Send offer' }).click(), 'target offer');
+  await action(clients, a, () => panel.getByRole('button', { name: 'Offer to Players', exact: true }).click(), 'broadcast offer accepted');
   const incoming = b.page.getByRole('dialog', { name: 'Trade offers', exact: true });
   await incoming.waitFor(); await evidence(b, 'incoming-trade');
   await action(clients, b, () => incoming.getByRole('button', { name: 'Accept', exact: true }).click(), 'accept off-turn');
@@ -248,15 +271,15 @@ async function offer(clients) {
   assert.equal(own(b).res.wood, before[1].wood + 2); assert.equal(own(b).res.ore, before[1].ore - 1);
   assert.equal(a.match.state.trade_offers[0].status, 'accepted');
   panel = await draft();
-  await action(clients, a, () => panel.getByRole('button', { name: 'Send offer' }).click(), 'broadcast offer');
+  await action(clients, a, () => panel.getByRole('button', { name: 'Offer to Players', exact: true }).click(), 'broadcast offer');
   await action(clients, b, () => incoming.getByRole('button', { name: 'Reject', exact: true }).click(), 'reject broadcast');
   assert.equal(a.match.state.trade_offers.at(-1).status, 'declined');
   panel = await draft();
-  await action(clients, a, () => panel.getByRole('button', { name: 'Send offer' }).click(), 'offer to cancel');
+  await action(clients, a, () => panel.getByRole('button', { name: 'Offer to Players', exact: true }).click(), 'offer to cancel');
   await action(clients, a, () => a.page.getByRole('button', { name: 'Cancel offer', exact: true }).click(), 'cancel offer');
   assert.equal(a.match.state.trade_offers.at(-1).status, 'canceled');
   panel = await draft();
-  await action(clients, a, () => panel.getByRole('button', { name: 'Send offer' }).click(), 'offer before end');
+  await action(clients, a, () => panel.getByRole('button', { name: 'Offer to Players', exact: true }).click(), 'offer before end');
   await action(clients, a, () => a.page.getByRole('button', { name: 'End Turn', exact: true }).click(), 'end closes offers');
   assert.equal(a.match.state.trade_offers.at(-1).status, 'canceled');
   assert.equal(await incoming.count(), 0);
@@ -266,27 +289,25 @@ async function buy(clients) {
   await action(clients, a, () => a.page.getByRole('button', { name: 'Dev Card', exact: true }).click(), 'buy card');
   assert.deepEqual(own(a).dev_cards, [{ type: 'knight', new: true }]);
   for (const r of ['ore', 'sheep', 'wheat']) assert.equal(own(a).res[r], before[r] - 1);
-  const panel = await openDev(a, 'Knight');
-  assert(await panel.getByRole('button', { name: 'Play Knight' }).isDisabled());
-  assert((await panel.innerText()).includes('bought this turn'));
+  const fresh = a.page.locator('.dev-mini-card').filter({ hasText: 'Knight' });
+  assert(await fresh.isDisabled()); assert.match(await fresh.getAttribute('title'), /bought|new/i);
+  assert.equal(await a.page.getByRole('dialog', { name: 'Development cards', exact: true }).count(), 0);
   // A malicious attempt uses a real consumed command, and must leave the new card/hand intact.
   const unchanged = JSON.stringify(a.match.state);
   await invalidNext(a, { type: 'play_dev', card: 'knight' });
-  await panel.getByRole('button', { name: 'Close Development cards' }).click();
   await action(clients, a, () => a.page.getByRole('button', { name: 'Dev Card', exact: true }).click(), 'new-card rejection', true);
   assert.equal(JSON.stringify(a.match.state), unchanged);
   await action(clients, a, () => a.page.getByRole('button', { name: 'End Turn', exact: true }).click(), 'age card end');
   await action(clients, b, () => b.page.getByRole('button', { name: 'Roll', exact: true }).click(), 'second player roll');
   await action(clients, b, () => b.page.getByRole('button', { name: 'End Turn', exact: true }).click(), 'next own turn');
   assert.equal(own(a).dev_cards[0].new, false);
-  const next = await openDev(a, 'Knight');
-  assert(await next.getByRole('button', { name: 'Play Knight' }).isEnabled(), 'older card playable before roll');
+  assert(await a.page.locator('.dev-mini-card').filter({ hasText: 'Knight' }).isEnabled(), 'older card playable before roll');
   await evidence(a, 'bought-card-aged');
 }
 async function knight(clients) {
   const a = clients[0]; await open3d(a);
-  const panel = await openDev(a, 'Knight'), count = own(a).dev_cards.length;
-  await action(clients, a, () => panel.getByRole('button', { name: 'Play Knight' }).click(), 'Knight before roll');
+  const count = own(a).dev_cards.length;
+  await action(clients, a, () => a.page.locator('.dev-mini-card').filter({ hasText: 'Knight' }).click(), 'Knight before roll');
   assert.equal(a.match.state.pending_action, 'robber_move'); assert.equal(a.match.state.rolled, false);
   assert.equal(own(a).dev_cards.length, count - 1);
   const legal = a.match.state.legal;
@@ -300,20 +321,16 @@ async function knight(clients) {
     await action(clients, a, () => a.page.getByRole('dialog', { name: 'Choose player' }).getByRole('button', { name, exact: true }).click(), 'Knight victim');
   } else await action(clients, a, () => clickTarget(a, 'tile', tile), 'Knight robber');
   assert.equal(a.match.state.robber_tile, tile); assert.equal(a.match.state.pending_action, null);
-  const dev = await openDev(a, 'Monopoly');
-  assert(await dev.getByRole('button', { name: 'Play Monopoly' }).isDisabled());
-  await dev.getByRole('button', { name: 'Close Development cards' }).click();
+  assert(await a.page.locator('.dev-mini-card').filter({ hasText: 'Monopoly' }).isDisabled());
   await action(clients, a, () => a.page.getByRole('button', { name: 'Roll', exact: true }).click(), 'roll after Knight');
-  const again = await openDev(a, 'Monopoly'), unchanged = JSON.stringify(a.match.state);
+  const unchanged = JSON.stringify(a.match.state);
   await invalidNext(a, { type: 'play_dev', card: 'monopoly', r: 'wood' });
-  await again.getByRole('button', { name: 'Close Development cards' }).click();
   await action(clients, a, () => a.page.getByRole('button', { name: 'Dev Card', exact: true }).click(), 'second-card rejection', true);
   assert.equal(JSON.stringify(a.match.state), unchanged);
 }
 async function road(clients) {
   const a = clients[0]; await open3d(a); const before = { ...own(a).res };
-  const panel = await openDev(a, 'Road Building');
-  await action(clients, a, () => panel.getByRole('button', { name: 'Play Road Building' }).click(), 'Road Building');
+  await action(clients, a, () => a.page.locator('.dev-mini-card').filter({ hasText: 'Road Building' }).click(), 'Road Building');
   for (const step of [1, 2]) {
     assert.equal(a.match.state.free_roads['0'], 3 - step); assert.equal(a.match.state.legal.road_free, true);
     assert((await a.page.locator('.context-prompt').innerText()).includes(`Place road ${step} of 2`));
@@ -459,7 +476,7 @@ async function setup(clients) {
   assert.equal(JSON.stringify(a.match), before); assert.equal(a.sent.length, commands);
   await action(clients, a, () => a.page.getByRole('button', { name: 'End Turn', exact: true }).click(), 'natural end turn');
   await evidence(a, 'setup-roll-2d-3d');
-  await a.page.mouse.move(2, 2); await sleep(1300);
+  await a.page.mouse.move(2, 2); await sleep(2700);
   const frame = await a.page.evaluate(() => window.__scene.getState().gl.info.render.frame);
   await sleep(400); assert.equal(await a.page.evaluate(() => window.__scene.getState().gl.info.render.frame), frame, 'demand rendering idle');
 }
@@ -561,11 +578,14 @@ async function directActions(clients) {
   await a.page.getByRole('button', { name: 'Reset Camera' }).click();
   assert.equal(JSON.stringify(a.match.state), current); assert.equal(a.sent.length, sent);
   await a.page.getByRole('button', { name: 'Event log', exact: true }).click();
-  const log = a.page.getByRole('dialog', { name: 'Event log', exact: true });
-  await log.getByText('Bank availability', { exact: true }).click();
+  const log = a.page.locator('.sidebar-activity');
+  assert(await log.isVisible());
+  await a.page.locator('.bank-summary summary').click();
+  assert.equal(await a.page.locator('.bank-summary').getAttribute('open'), null);
+  await a.page.locator('.bank-summary summary').click();
   for (const resource of ['wood', 'brick', 'sheep', 'wheat', 'ore'])
-    assert.equal(await log.getByLabel(`${resource}: ${a.match.state.bank_available[resource] ? 'available' : 'unavailable'}`).count(), 1);
-  await evidence(a, 'log-bank-drawer'); await log.getByRole('button', { name: 'Close Event log' }).click();
+    assert.equal(await a.page.locator('.bank-summary').getByLabel(`${resource}: ${a.match.state.bank_available[resource] ? 'available' : 'unavailable'}`).count(), 1);
+  await evidence(a, 'log-bank-drawer'); await a.page.getByRole('button', { name: 'Event log', exact: true }).click();
 }
 
 async function diceUX(clients) {
@@ -586,7 +606,7 @@ async function diceUX(clients) {
     if (reduced) { assert.equal(visual.roll, null); assert.equal(visual.hudBusy, 'false'); }
     else { assert.deepEqual(visual.faces, [4, 5]); assert(visual.roll.endsWith(':' + c.match.state.roll_count));
       await evidence(c, 'dice-rolling'); }
-    await sleep(1300); await c.page.mouse.move(1, 1); await sleep(50);
+    await sleep(2700); await c.page.mouse.move(1, 1); await sleep(50);
     const frame = await c.page.evaluate(() => window.__scene.getState().gl.info.render.frame);
     await sleep(250); assert.equal(await c.page.evaluate(() => window.__scene.getState().gl.info.render.frame), frame);
     assert.equal(await c.page.locator('.dice-hud[aria-busy="true"]').count(), 0);
@@ -625,7 +645,7 @@ async function goldUX(clients) {
   const commands = a.sent.length; await clickTarget(a, 'edge', source); assert.equal(a.sent.length, commands);
   await action(clients, a, () => clickTarget(a, 'edge', destination), 'Gold Haven move ship');
   assert.equal(a.match.state.occupied_ships[edgeId(source)], undefined); assert.equal(a.match.state.occupied_ships[edgeId(destination)], 0);
-  const dev = await openDev(a, 'Knight'); await action(clients, a, () => dev.getByRole('button', { name: 'Play Knight' }).click(), 'Gold Haven Knight');
+  await action(clients, a, () => a.page.locator('.dev-mini-card').filter({ hasText: 'Knight' }).click(), 'Gold Haven Knight');
   await a.page.getByRole('button', { name: 'Pirate', exact: true }).click();
   const legal = a.match.state.legal, tile = legal.pirate_tiles.find(i => !legal.pirate_victims[i]?.length);
   assert.notEqual(tile, undefined); await action(clients, a, () => clickTarget(a, 'tile', tile), 'Gold Haven pirate');
@@ -685,7 +705,7 @@ async function roomUX(clients) {
     assert.deepEqual(c.room.chat_history.map(m => m.id), [1, 2, 3]);
     await c.page.getByRole('tab', { name: 'Game Log', exact: true }).click();
     assert.equal(await c.page.getByText('<b>hello from game</b>', { exact: true }).count(), 0);
-    await c.page.locator('.bank-summary summary').click();
+    if(!(await c.page.locator('.bank-summary').getAttribute('open')!==null)) await c.page.locator('.bank-summary summary').click();
     if (c.room.settings.bank_visibility === 'visible') {
       for (const [resource, count] of Object.entries(c.match.state.bank))
         assert.equal(await c.page.locator('.bank-summary').getByLabel(`${resource}: ${count}`, { exact: true }).count(), 1);
@@ -694,7 +714,7 @@ async function roomUX(clients) {
   await evidence(a, 'roomux-bank-' + a.room.settings.bank_visibility);
   await a.page.getByRole('tab', { name: 'Chat', exact: true }).click();
   await evidence(a, 'roomux-chat-' + a.room.settings.bank_visibility);
-  for (const c of clients) await c.page.keyboard.press('Escape');
+  for (const c of clients) await c.page.getByRole('button', { name: 'Event log', exact: true }).click();
   for (let i = 0; i < 4; i++) {
     const current = clients[a.match.state.turn];
     await action(clients, current, () => current.page.getByRole('button', { name: 'Roll', exact: true }).click(), 'balanced roll ' + i);
@@ -707,13 +727,13 @@ async function roomUX(clients) {
       for (const c of clients) {
         const amount = c.match.state.discard_required[c.match.state.you_pid];
         if (!amount) continue;
-        const panel = c.page.getByRole('dialog', { name: `Discard Required: ${amount}`, exact: true });
+        const panel = c.page.getByRole('dialog', { name: `Discard ${amount} cards`, exact: true });
         let left = amount;
         for (const [resource, have] of Object.entries(own(c).res)) {
           const count = Math.min(left, have); left -= count;
-          await panel.getByLabel(resource, { exact: true }).fill(String(count));
+          for(let i=0;i<count;i++) await panel.getByRole('button', {name:`Discard ${resource}`,exact:true}).click();
         }
-        await action(clients, c, () => panel.getByRole('button', { name: 'Submit Discard' }).click(), 'balanced discard');
+        await action(clients, c, () => panel.getByRole('button', { name: 'Confirm Discard' }).click(), 'balanced discard');
       }
     }
     if (a.match.state.pending_action === 'robber_move') {
@@ -794,4 +814,4 @@ async function main() {
   } finally { await fs.writeFile(path.join(output, 'results.json'), JSON.stringify(report, null, 2)); await browser.close(); }
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { room, setup };
+module.exports = { room, setup, action, clickTarget, evidence, layout, boardMetrics, wait, own, privacy, open3d, newClient, invalidNext };

@@ -70,6 +70,7 @@ class AchievementState:
 @dataclass
 class RulesConfig:
     target_vp: int = 10
+    discard_threshold: int = 7
     max_roads: int = 15
     max_settlements: int = 5
     max_cities: int = 4

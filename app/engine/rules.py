@@ -109,6 +109,7 @@ def parse_rules_config(rules: Dict[str, Any]) -> RulesConfig:
         max_ships = 0
     return RulesConfig(
         target_vp=target_vp,
+        discard_threshold=_discard_threshold(rules.get("discard_threshold", 7)),
         max_roads=max_roads,
         max_settlements=max_settlements,
         max_cities=max_cities,
@@ -119,6 +120,12 @@ def parse_rules_config(rules: Dict[str, Any]) -> RulesConfig:
         enable_gold=enable_gold,
         enable_move_ship=enable_move_ship,
     )
+
+
+def _discard_threshold(value: Any) -> int:
+    if type(value) is not int or not 1 <= value <= 50:
+        raise RuleError("invalid", "discard_threshold must be 1..50")
+    return value
 
 
 def build_game(
@@ -681,7 +688,7 @@ def _hand_size(g: GameState, pid: int) -> int:
 
 def _discard_needed(g: GameState, pid: int) -> int:
     total = _hand_size(g, pid)
-    return total // 2 if total > 7 else 0
+    return total // 2 if total > g.rules_config.discard_threshold else 0
 
 
 def _auto_discard(g: GameState, pid: int, need: int) -> Dict[str, int]:
@@ -1201,7 +1208,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         g.pending_action = None
         g.pending_pid = None
         g.pending_victims = []
-        events.append({"type": "move_pirate", "tile": tile, "victim": victim, "stolen": stolen})
+        events.append({"type": "move_pirate", "tile": tile, "victim": victim_pid, "stolen": stolen})
         return g, events
 
     if ctype == "move_robber":
@@ -1227,7 +1234,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         g.pending_action = None
         g.pending_pid = None
         g.pending_victims = []
-        events.append({"type": "move_robber", "tile": tile, "victim": victim, "stolen": stolen})
+        events.append({"type": "move_robber", "tile": tile, "victim": victim_pid, "stolen": stolen})
         return g, events
 
     if ctype == "move_ship":

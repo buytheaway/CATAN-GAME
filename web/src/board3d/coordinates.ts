@@ -95,7 +95,6 @@ export function cameraFrame(bounds: Pick<BoardBounds, "center" | "width" | "dept
   const right = [forward[2] / planar, 0, -forward[0] / planar];
   const up = [-forward[1] * forward[0] / planar, planar, -forward[1] * forward[2] / planar];
   const dot = (a: number[], b: number[]) => a.reduce((sum, v, i) => sum + v * b[i], 0);
-  let distance = 1;
   const points: Point3D[] = [];
   // Rectangle fallback also supports callers which have only bounds.
   for (const x of [-bounds.width / 2, bounds.width / 2]) {
@@ -105,14 +104,18 @@ export function cameraFrame(bounds: Pick<BoardBounds, "center" | "width" | "dept
       }
     }
   }
-  for (const point of footprint?.length ? footprint.map(p =>
-    [p[0] - bounds.center[0], p[1] - TILE_TOP, p[2] - bounds.center[2]]) : points) {
-    distance = Math.max(distance,
-      dot(point, forward) + Math.abs(dot(point, right)) / Math.tan(horizontal),
-      dot(point, forward) + Math.abs(dot(point, up)) / Math.tan(vertical));
-  }
-  distance *= 1.035;
-  const target: Point3D = [bounds.center[0], TILE_TOP, bounds.center[2]];
+  const actual = footprint?.length ? footprint.map(p =>
+    [p[0] - bounds.center[0], p[1] - TILE_TOP, p[2] - bounds.center[2]]) : points;
+  // Balance both sides of each frustum, rather than treating the ground center
+  // as the visual center of a tilted, elevated island. Fit all supplied points.
+  const extent = (axis: number[], tangent: number, sign: number) =>
+    Math.max(...actual.map(p => dot(p, forward) + sign * dot(p, axis) / tangent));
+  const left = extent(right, Math.tan(horizontal), -1), rightExtent = extent(right, Math.tan(horizontal), 1);
+  const bottom = extent(up, Math.tan(vertical), -1), top = extent(up, Math.tan(vertical), 1);
+  const offsetX = (rightExtent - left) * Math.tan(horizontal) / 2;
+  const offsetY = (top - bottom) * Math.tan(vertical) / 2;
+  const distance = Math.max(1, (left + rightExtent) / 2, (top + bottom) / 2) * 1.045;
+  const target = right.map((v, i) => [bounds.center[0], TILE_TOP, bounds.center[2]][i] + v * offsetX + up[i] * offsetY) as Point3D;
   return {
     target, distance,
     position: forward.map((v, i) => target[i] + v * distance) as Point3D,

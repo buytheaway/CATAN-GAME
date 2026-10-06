@@ -7,9 +7,9 @@ export default function ResourceCard({ resource, count = 0, variant = "hand", la
   label?: string; onClick?: () => void; disabled?: boolean;
 }) {
   const className = `resource-card resource-${resource} resource-card--${variant}${variant === "hand" && !count ? " is-empty" : ""}`;
-  const contents = <><span className="resource-count">{variant === "option" && !count ? "+" : count}</span>
+  const contents = <><span className="card-corner">{resource.slice(0, 1).toUpperCase()}</span><span className="resource-count">{variant === "option" && !count ? "+" : count}</span>
     <GameIcon name={resource} /><span className="resource-label">{resource}</span></>;
-  const props = { className, "data-resource": resource, "data-count": count,
+  const props = { className, "data-resource": resource, "data-count": count, "data-stack": count > 2 ? 3 : count,
     "aria-label": label ?? `${resource}: ${count}` };
   return onClick ? <button type="button" {...props} disabled={disabled} onClick={onClick}>{contents}</button>
     : <div {...props}>{contents}</div>;

@@ -81,12 +81,14 @@ test("bounds include offset, asymmetric maps and vertices, without a preset shap
   assert.deepEqual(model.bounds.center, [120, 0, -17.5]);
 });
 
-test("auto-fit adapts to narrow/wide canvases and keeps a translated board as target", () => {
+test("auto-fit adapts to narrow/wide canvases and preserves framing under board translation", () => {
   const bounds = boardBounds([[10, 0, -8], [20, 0, -2]]);
   const wide = cameraFrame(bounds, 2);
   const narrow = cameraFrame(bounds, 0.7);
-  assert.equal(wide.target[0], 15);
-  assert.equal(wide.target[2], -5);
+  const centered = cameraFrame({ ...bounds, center: [0, 0, 0] }, 2);
+  assert.ok(Math.abs(wide.target[0] - centered.target[0] - 15) < 1e-8);
+  assert.ok(Math.abs(wide.target[2] - centered.target[2] + 5) < 1e-8);
+  assert.equal(wide.distance, centered.distance);
   assert.ok(narrow.distance > wide.distance);
   assert.ok(wide.position[1] > wide.target[1]);
   assert.ok(wide.position[2] > wide.target[2]);

@@ -1,19 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { DIE_PIPS, DICE_DURATION_MS, isNewRoll, serverDice, type DiceFaces, type DiceRollVisual } from "./dice";
+import { useReducedMotion } from "./motion";
 
 export function useDicePresentation(key: string, value: unknown, count = 0) {
   const faces = serverDice(value);
-  const [reduced, setReduced] = useState(() => typeof window !== "undefined"
-    && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+  const reduced = useReducedMotion();
   const previous = useRef<{ key: string; count: number } | null>(null);
   const [roll, setRoll] = useState<DiceRollVisual | null>(null);
-  useEffect(() => {
-    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!query) return;
-    const change = () => setReduced(query.matches);
-    change(); query.addEventListener("change", change);
-    return () => query.removeEventListener("change", change);
-  }, []);
   useEffect(() => {
     const animate = isNewRoll(previous.current, key, count);
     previous.current = { key, count };

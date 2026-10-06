@@ -51,7 +51,7 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "reconnect_token required")
         return {"ok": True}
 
-    if mtype in ("leave_room", "start_match", "rematch"):
+    if mtype in ("leave_room", "start_match", "rematch", "enable_test_mode"):
         return {"ok": True}
 
     if mtype == "set_map":
@@ -116,6 +116,7 @@ def room_state_message(room) -> Dict[str, Any]:
         ],
         "max_players": room.max_players,
         "status": room.status,
+        "test_mode": room.test_mode,
     }
     if hasattr(room, "selected_map_id"):
         msg["map_id"] = getattr(room, "selected_map_id")
