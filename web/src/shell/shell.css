@@ -1,5 +1,5 @@
-/* Scoped to the session shell and the portalled account dialog. Match tokens stay separate. */
-:where(.app-shell, .auth-backdrop) {
+/* Shared product tokens; page and compact match layouts remain independently scoped. */
+:where(.app-shell, .auth-backdrop, .game-shell) {
   --shell-bg: #0a1721;
   --shell-surface: #102430;
   --shell-raised: #172e3b;

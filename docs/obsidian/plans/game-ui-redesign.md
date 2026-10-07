@@ -7,6 +7,26 @@ updated: 2026-10-08
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[plans/board3d]]
 
+## Product / UX / Visual Polish — Phase 2
+
+Scope accepted 2026-10-08: active-match presentation around the existing Board3D. **Completed — verified 2026-10-08.** No gameplay, protocol, Blender/GLB, terrain optimization, building-model, audio or Seafarers-rules work.
+
+Pre-change audit: GamePage placed Players above a combined collapsible Game Log / Chat, with Bank at the bottom. Board3D already had static non-game ocean/coast decoration and original port connectors; port readouts were rectangular text plaques. Shared Phase 1 shell tokens were scoped outside the match. Test capability is server-controlled: environment opt-in + explicit lobby Test Room + current host; commands additionally require the active owning connection. Ordinary rooms and participants cannot invoke test actions.
+
+Affected path stays GamePage → existing useBoardInteraction/useGameCommand → WSClient.sendCmd → owning server Room/authoritative executor → personal match_state → App.match → GamePage/BoardRenderer. Chat keeps RoomChat → sendChat → separate chat_state/history; Game Log only renders already-personalized game_events. New scenery never enters this path, the map graph, legal targets or camera fitting.
+
+Implemented: reused shell color/spacing/focus tokens for compact match surfaces/52px header; Bank first, compact public Players/Room presence second, permanently mounted existing RoomChat third, separate bounded optional GameLog. Kept account controls, hand/dock and gameplay controllers. Existing host tools have a distinct amber TEST MODE header entry; participants get a non-production label, Game info explains unavailable modes. No new cheat or authorization path. Drawers stay over the board instead of covering Chat. Narrow footer keeps actions right; Players/Log scroll inside short sidebars. Legacy selector specificity and port dock occlusion were corrected after browser inspection.
+
+Scene: one low-cost static opaque/basic-material ocean plane with a memoized gradient/wave canvas texture and existing coast paths; three neutral procedural boats outside actual tile extent, disabled for Seafarers/real sea/player ships/pirate. Different slow routes mutate Three transforms at most 10Hz without per-frame React state; timer pauses for hidden/reduced motion and cleans up on unmount. Every scenery mesh ignores raycasting. Round port tokens show 3:1 or 2:1 + exact existing shared resource-icon paths; connector endpoints/IDs/rules and camera fitting stay unchanged. No dependency or terrain/piece asset change.
+
+Verification: **187/187 web tests**, TypeScript and production build passed. Nine new behavior groups cover port ratio/glyph/fallback mapping, rendered Bank/Players/permanent Chat/independent Log, public data, test gates, Base/Seafarers policy, actual bounds/routes and real no-hit scenery raycasting. [match-polish.cjs](../../../web/e2e/match-polish.cjs) passed **8 ON + 1 OFF browser acceptance groups**, Chrome 154/current production dist against real existing FastAPI/WS fixtures: natural Base setup/Roll/End/all ports, Chat/plain text/history/draft/Log, refresh/token recovery, paid city-road-settlement, bank/player trades, exact dice/production, three-player theft privacy, Gold Haven real Sea/Gold/ship placement/movement/pirate, camera/reset/2D↔3D and gating including real forbidden ACKs.
+
+Nineteen desktop layout assertions cover Base 1920×1080, 1440×900, 1280×720, 1024×768, 900×800 with Log closed/open, three-player/short-height cases and Gold through 1024×768. No horizontal/sidebar overflow, hidden Chat input, permanent HUD/board occlusion or JS errors. Seven screenshots were captured, inspected and retained in [[Design System#Product / UX / Visual Polish — Phase 2]].
+
+Approximate performance: 20 GPU-completed warm renders after five warmups, 1920×1080/RTX 5050 Laptop. Base median 3.45→3.50ms (1151 calls, triangles 275562→276470); Gold 3.45→4.00ms (1071→1067 calls, triangles 233010→233790). Separate room seeds/fixtures limit causal comparison. No heavy water shader/lighting. Base intentionally invalidates at most 10Hz for boats; Seafarers/reduced/hidden states remain idle. Hidden-tab test uses a controlled visibility event because headless contexts do not naturally background. No low-end/mobile/50-hex FPS or full naturally completed-match claim; lazy Three ~943kB warning remains.
+
+Limits/boundaries: rare funded/dev/coastal/theft states are engine-built fixtures. Successful HTTP/WS game/chat flows are real; only browser static-file routing supplies dist. Fixture auth has no DB (/api/auth/me 503 expected), so auth acceptance is not repeated. Python, protocol/ownership, Docker/deployment and dependencies are untouched; 92 protected runtime/assets and the prior 27 GLB/Blender files match hashes. No pytest/scenarios/Docker build was required for these frontend-only changes. No building models, audio, terrain optimization, Seafarers hardening, profiles/history or map generation started. This completes Phase 2; further work needs a separate task.
+
 ## Product / UX / Visual Polish — Phase 1
 
 Scope accepted 2026-10-07: non-game shell only — Home, Continue/Recent, Host/Join, pre-match Room and account dialog. Reuse this plan; no new planning/session document.

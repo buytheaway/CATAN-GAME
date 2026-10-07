@@ -7,6 +7,36 @@ updated: 2026-10-08
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Product / UX / Visual Polish — Phase 2
+
+**Implemented/verified 2026-10-08; active match only.** Direction stays clean modern digital tabletop. Match now shares Phase 1 navy/sand/seafoam, typography, borders, buttons and focus tokens through `.game-shell`, without the Home/Room PageShell width limit. Compact 52px header: `CATAN.КОЛОНИЗАТОРЫ`, confirmed map/room, real connection state, VP goal and unchanged account access. Board remains the main visual surface; no terrain, ownership palette, camera algorithm or building-model redesign.
+
+Sidebar order is **Bank → compact Players → permanent Chat → optional Game Log**. Bank follows the existing Visible/Hidden policy; dev deck stays hidden. Players show only snapshot-permitted counters, current turn, real Room presence and host. Chat has its own always-mounted history/input; opening Log cannot hide or reset its draft. Log starts closed and grows only to a bounded internal scroll area. At short desktop heights Players also scroll internally. Info/dev/incoming-trade drawers are placed over the board, leaving Chat accessible; existing mandatory/test modal priority is preserved.
+
+Ocean is a restrained deep-blue gradient with subtle static wave strokes and the existing coastline. One opaque basic-material plane avoids reflection/refraction and shader animation. Gameplay Sea GLBs retain their original hex topology/art and remain visually distinct. Three small neutral procedural Base boats follow different slow routes outside actual tile extent. They have no game IDs, raycast, ownership or commands; they are disabled for Seafarers, actual sea/player ships/pirate. Animation is capped at 10Hz, with hidden-tab/reduced-motion pause and unmount cleanup. Terrain GLBs and Blender sources are unchanged.
+
+Ports are round ivory tabletop tokens with colored rims; existing edge/vertex dock branches are retained. Readout is fixed to the normal camera orientation rather than the dock's edge angle. Specialized marks use the exact existing [resourceIcons.ts](../../web/src/game/resourceIcons.ts) paths also consumed by GameIcon; no written resource names or new icon package.
+
+| Port | Readout |
+| --- | --- |
+| Generic | **3:1**, neutral rim |
+| Wood / brick / sheep / wheat / ore | **2:1** + existing tree / bricks / sheep / wheat / ore mark and resource-colored rim |
+
+TEST MODE has a distinct amber header entry for the snapshot-authorized Test Room host; participants see the label without controls. Game info explains server-disabled, lobby opt-in, host-only, disconnected and ended-match states. Server environment flag + Test Room + active owning host remain authoritative. Existing actions only; setup fieldset stays disabled until main phase.
+
+Actual inspected Chrome 154 screenshots, production dist + real isolated FastAPI/WS fixtures, not mockups:
+
+| State | Evidence |
+| --- | --- |
+| Base Standard, normal match | [base-normal-1920.png](../design/references/product-polish-phase-2/base-normal-1920.png) |
+| Permanent populated Chat | [base-chat-1920.png](../design/references/product-polish-phase-2/base-chat-1920.png) |
+| Independent expanded Game Log | [base-log-1920.png](../design/references/product-polish-phase-2/base-log-1920.png) |
+| Test Room host tools / disabled-server explanation | [test-mode-active-1920.png](../design/references/product-polish-phase-2/test-mode-active-1920.png) · [test-mode-unavailable-1920.png](../design/references/product-polish-phase-2/test-mode-unavailable-1920.png) |
+| Seafarers Gold Haven, real Sea/Gold/player ship/pirate | [seafarers-1920.png](../design/references/product-polish-phase-2/seafarers-1920.png) |
+| Narrow desktop, 1024×768 | [base-narrow-1024.png](../design/references/product-polish-phase-2/base-narrow-1024.png) |
+
+187 web tests, TypeScript/build and 9 browser acceptance groups pass. Base widths 1920/1440/1280/1024/900; Gold 1920/1440/1280/1024. Chat/input, expanded Log, board framing and dock stay inside their areas. Port dock occlusion, legacy CSS sidebar override and narrow/short-height density were refined after screenshot review. Approximate warm-frame medians on RTX 5050 Laptop: Base 3.45→3.50ms, Gold 3.45→4.00ms; different room fixtures, not an isolated benchmark. Base now intentionally requests capped idle animation; Seafarers/reduced/hidden Base remain demand-idle. Mobile/low-end/50-hex/full natural-match certification is not claimed. Details — [[plans/game-ui-redesign#Product / UX / Visual Polish — Phase 2]]. Earlier sections retain their checkpoint dates.
+
 ## Product / UX / Visual Polish — Phase 1
 
 **Implemented/verified 2026-10-08; non-game shell only.** Product identity: `Danik Inc. Entertainment` is the secondary studio mark; `CATAN.КОЛОНИЗАТОРЫ` is the primary title. Existing English UI is retained, without an i18n layer. Direction: warm modern digital tabletop with restrained cartographic ambience, system fonts and a serif heading accent. No heavy images, external art or ornamental fantasy surfaces.

@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
+import { RESOURCE_ICON_PATHS } from "./resourceIcons";
 
 // Small native SVG marks: no font, icon package or downloaded image required.
 const marks: Record<string, ReactNode> = {
-    wood: <><path d="m12 3-6 7h3l-4 6h6v5h2v-5h6l-4-6h3z" /></>,
-    brick: <><path d="M3 5h18v5H3zM3 10h18v5H3zM3 15h18v5H3zM12 5v5M8 10v5M16 10v5M12 15v5" /></>,
-    sheep: <><path d="M5 10a3 3 0 0 1 4-3 3 3 0 0 1 6 0 4 4 0 0 1 4 6 5 5 0 0 1-6 4H7a4 4 0 0 1-2-7zM7 17v4M15 17v4" /><path d="m19 9 3 2-2 4h-3" /></>,
-    wheat: <><path d="M12 21V3m0 7L7 6V3l5 4 5-4v3zm0 6-5-4V9l5 4 5-4v3" /></>,
-    ore: <><path d="m5 6 9-3 7 8-5 10-12-2-2-7zM5 6l5 7 11-2M10 13l6 8M10 13l-6 6" /></>,
+    ...Object.fromEntries(Object.entries(RESOURCE_ICON_PATHS).map(([name, paths]) =>
+      [name, paths.map((d, i) => <path key={i} d={d} />)])),
     roll: <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M7 7h.01M17 7h.01M12 12h.01M7 17h.01M17 17h.01" strokeWidth="3" /></>,
     build: <><path d="m3 11 9-8 9 8M5 10v11h14V10M10 21v-7h4v7" /></>,
     settlement: <><path d="m3 11 9-8 9 8M5 10v11h14V10M10 21v-7h4v7" /></>,

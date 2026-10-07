@@ -17,10 +17,10 @@ import DiceHUD, { useDicePresentation } from "../game/DiceHUD";
 import "../game/game.css";
 import RoomChat from "../game/RoomChat";
 import "../game/room.css";
-import GameEvents from "../game/GameEvents";
+import GameLog from "../game/GameLog";
 import CardFlights from "../game/CardFlights";
 import DiscardPicker from "../game/DiscardPicker";
-import TestTools from "../game/TestTools";
+import TestTools, { testModeAccess } from "../game/TestTools";
 import "../game/playtest.css";
 
 export default function GamePage({ client, match, room, status, log, error, onBackToLobby }: {
@@ -41,8 +41,9 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const rules = state.rules_config || {};
   const [goldRes, setGoldRes] = useState<string>(RESOURCES[0]);
   const [goldQty, setGoldQty] = useState(1);
-  const [drawer, setDrawer] = useState<"log" | "info" | "dev" | "test" | null>(null);
-  const [logTab, setLogTab] = useState<"log" | "chat">("log");
+  const [drawer, setDrawer] = useState<"info" | "dev" | "test" | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  const testAccess = testModeAccess(state, status, client.testToolsAvailable);
   const [tradeDraft, setTradeDraft] = useState<TradeDraft | null>(null);
   const [selectedDev, setSelectedDev] = useState<DevType | null>(null);
   const [dismissedOffers, setDismissedOffers] = useState<number[]>([]);
@@ -56,7 +57,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const freeRoads = state.free_roads?.[String(youPid)] ?? 0;
   const previousFree = useRef(0);
   useEffect(() => {
-    setDrawer(null); setTradeDraft(null); setSelectedDev(null); setDismissedOffers([]); previousFree.current = 0;
+    setDrawer(null); setLogOpen(false); setTradeDraft(null); setSelectedDev(null); setDismissedOffers([]); previousFree.current = 0;
   }, [matchKey]);
   useEffect(() => { if (state.pending_action || state.game_over) setDrawer(null); }, [state.pending_action, state.game_over]);
   useEffect(() => {
@@ -93,9 +94,10 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   };
 
   return <main className="game-shell">
-    <GameTopBar state={state} pid={youPid} roomCode={match.room_code} drawer={drawer === "info" || drawer === "log" ? drawer : null}
+    <GameTopBar state={state} pid={youPid} roomCode={match.room_code} drawer={drawer === "info" ? drawer : null}
+      status={status} logOpen={logOpen} testAvailable={testAccess.canUse} waiting={blocked} onTest={() => setDrawer("test")}
       onInfo={() => setDrawer(current => current === "info" ? null : "info")}
-      onLog={() => setDrawer(current => current === "log" ? null : "log")} />
+      onLog={() => setLogOpen(current => !current)} />
     <section className="board-stage" aria-label="Game board">
       <ContextPrompt state={state} pid={youPid} interaction={interaction} />
       <div className="board-command-surface" style={{ height: "100%", pointerEvents: blocked ? "none" : undefined }}
@@ -104,22 +106,12 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       {status !== "connected" && <div className="connection-notice" role="status">Connection: {status}</div>}
     </section>
     <aside className="game-sidebar" aria-label="Table sidebar">
-      <section className="sidebar-players"><div className="hud-caption">Players</div><PlayerStrip state={state} pid={youPid} /></section>
-      <section className="sidebar-activity" id="game-log">
-        <button className="activity-toggle" aria-expanded={drawer === "log"} onClick={() => setDrawer(current => current === "log" ? null : "log")}>Game Log / Chat</button>
-        {drawer === "log" && <>
-          <div className="activity-tabs" role="tablist" aria-label="Room activity">
-            <button role="tab" aria-selected={logTab === "log"} className="game-button" onClick={() => setLogTab("log")}>Game Log</button>
-            <button role="tab" aria-selected={logTab === "chat"} className="game-button" onClick={() => setLogTab("chat")}>Chat</button>
-          </div>
-          <div role="tabpanel" aria-label={logTab === "log" ? "Game Log" : "Chat"}>
-            {logTab === "log" ? <><GameEvents state={state} /><details className="transport-details"><summary>Connection details</summary><pre className="game-log">{log.slice(-20).join("\n")}</pre></details></>
-              : <RoomChat messages={room?.chat_history ?? []} send={text => client.sendChat(text)} disabled={status !== "connected"} />}
-          </div>
-        </>}
-      </section>
       <BankSummary available={state.bank_available} counts={state.room_settings?.bank_visibility === "visible" ? state.bank : undefined} />
-      {state.test_tools && <button className="game-button test-tools-button" disabled={blocked} onClick={() => setDrawer("test")}>Test Tools</button>}
+      <section className="sidebar-players" aria-label="Table players"><div className="hud-caption">Players<span>{state.players.length} at the table</span></div>
+        <PlayerStrip state={state} pid={youPid} room={room} /></section>
+      <section className="sidebar-chat" aria-label="Match chat"><div className="hud-caption">Chat<span>Room messages</span></div>
+        <RoomChat messages={room?.chat_history ?? []} send={text => client.sendChat(text)} disabled={status !== "connected"} /></section>
+      <GameLog state={state} transport={log} open={logOpen} onToggle={() => setLogOpen(current => !current)} />
     </aside>
     <CardFlights events={state.game_events ?? []} matchKey={matchKey} pid={youPid} connected={status === "connected"} reduced={dice.reduced} />
     <footer className="game-bottom-hud">
@@ -172,6 +164,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
           <dt>Gold</dt><dd>{rules.enable_gold ? "On" : "Off"}</dd>
           <dt>Move ship</dt><dd>{rules.enable_move_ship ? "On" : "Off"}</dd>
         </dl>
+        <p className={`test-mode-help${testAccess.enabled ? " test-room-warning" : ""}`}>{testAccess.description}</p>
     </GameOverlay>}
 
     {drawer === "dev" && !mandatoryChoice && !state.game_over && <DevelopmentPanel key={`${matchKey}:${selectedDev ?? "all"}`}
@@ -197,7 +190,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
     </GameOverlay>}
     {needDiscard && <DiscardPicker key={`${matchKey}:discard:${state.roll_count}`} hand={res} required={required[String(youPid)]}
       waiting={blocked} submit={request.submit} error={error} />}
-    {drawer === "test" && state.test_tools && !mandatoryChoice && !state.game_over &&
+    {drawer === "test" && testAccess.canUse && !mandatoryChoice && !state.game_over &&
       <TestTools state={state} waiting={blocked} submit={request.submit} onClose={closeDrawer} error={error} />}
   </main>;
 }

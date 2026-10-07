@@ -4,6 +4,34 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Active match polish — 2026-10-08
+
+Product / UX / Visual Polish Phase 2 is completed. [GamePage.tsx](../../web/src/components/GamePage.tsx) retains the same match/room/client props and useBoardInteraction/useGameCommand. Build/roll/trade/dev/pending path remains UI → original controller/WSClient → owning Room/executor → personalized snapshot → App.match → GamePage/BoardRenderer. No network/engine rule model is duplicated in presentation.
+
+Current composition:
+
+```text
+GamePage (.game-shell, shared Phase 1 tokens)
+├── GameTopBar (brand/map/room/goal/connection/account/Test Mode)
+├── Board stage: ContextPrompt + unchanged BoardRenderer selector
+│   ├── BoardView (existing SVG)
+│   └── Board3D
+│       ├── DecorativeOcean + Base-only AmbientShips
+│       ├── existing HexTile3D / TerrainHexVisual / pieces / targets
+│       └── Port3D connectors + PortReadout3D
+├── Sidebar: BankSummary → PlayerStrip → RoomChat → GameLog
+├── Bottom: ResourceHand / DevelopmentHand + existing action dock
+└── Existing mandatory/victim/trade/dev/info/test overlays
+```
+
+[GameLog.tsx](../../web/src/game/GameLog.tsx) has independent `logOpen` state, reset on match-key changes. It renders existing personalized GameEvents plus optional legacy Connection details. RoomChat stays mounted with `room.chat_history`, `client.sendChat` and connection gating; rate limits/history/revision/reconnect semantics remain server/WSClient-owned. Independent Log does not suppress pending incoming trade offers. PlayerStrip receives Room only for public presence/host; VP/resource/dev counters still come from the permitted player snapshot. Missing Room presence is not invented as offline.
+
+[testModeAccess](../../web/src/game/TestTools.tsx) explains availability from existing `test_mode`, `test_tools`, connection and game-over flags. The header exposes Tools only for the server-issued host capability, with waiting/disconnected/endgame disabled states; participants see TEST MODE without controls. Ordinary/disabled-server Game info explains how to opt in. Existing server checks, owning socket, Test Room and `CATAN_ENABLE_TEST_TOOLS=1` are unchanged. No new action or privilege is introduced.
+
+[environment.ts](../../web/src/board3d/environment.ts) contains presentation-only Base ship policy, actual-tile clearance/routes and a scenery raycast no-op. AmbientShips uses Three group refs and a cleaned-up 100ms timer with demand invalidation; it pauses on hidden document/reduced motion and has no React per-frame updates. Neither ocean nor boats have topology/IDs/legal/callbacks or enter camera fitting. [PortReadout3D.tsx](../../web/src/board3d/PortReadout3D.tsx) uses round markers and shared resource glyphs; original port edges/vertices/paths remain. BoardSnapshot only picks the existing optional rules_config for the visual Seafarers policy; wire shape is unchanged.
+
+Verified: 187 web tests, TypeScript/build; [match-polish.cjs](../../web/e2e/match-polish.cjs) passes 8 ON + 1 OFF browser groups against real isolated fixture servers. Natural Base setup/Roll/End, all ports, paid placements/trades/production, three-player theft privacy, Gold ship/move/pirate, Chat/draft/Log/refresh, orbit/zoom/reset/2D↔3D and 19 responsive layout checks pass. Funded/dev/coastal states are fixtures; hidden-tab pause uses a controlled visibility event in headless Chrome. No mobile/full natural match/account-backend acceptance claim. Scope/evidence — [[Design System#Product / UX / Visual Polish — Phase 2]] and [[plans/game-ui-redesign#Product / UX / Visual Polish — Phase 2]]. Historical Phase 1 composition below describes that checkpoint.
+
 ## Product shell and auth UX — 2026-10-08
 
 App still creates one WSClient, subscribes to the same room/match callbacks and restores the same current-game pointer. With no match it now renders [PageShell](../../web/src/shell/PageShell.tsx) → account/connection header + LobbyPage. LobbyPage branches into Home when room is null, or pre-match Room otherwise. GamePage stays in the same `.app.app--match` wrapper with its previous props/controller/scene layout.

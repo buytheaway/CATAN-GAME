@@ -143,12 +143,13 @@ test("projection preserves original tile/vertex/edge IDs and snapshot terrain/nu
   assert.equal(model.pirate.tileIndex, 2);
 });
 
-test("ports retain the exact snapshot edge/kind, expose resource labels and fit within bounds", () => {
+test("ports retain the exact snapshot edge/kind, expose ratio/resource marks and fit within bounds", () => {
   const model = createRenderModel(snapshot());
   assert.deepEqual(model.ports.map(p => [p.edge, p.kind]), [[[42, 7], "2:1:wood"], [[7, 81], "3:1"]]);
   assert.equal(portAppearance("3:1").label, "3:1");
   for (const resource of ["wood", "brick", "sheep", "wheat", "ore"]) {
-    assert.equal(portAppearance(`2:1:${resource}`).label, `2:1\n${resource}`);
+    assert.equal(portAppearance(`2:1:${resource}`).label, "2:1");
+    assert.equal(portAppearance(`2:1:${resource}`).resource, resource);
   }
   for (const port of model.ports) {
     assert.ok(port.position[0] > model.bounds.minX && port.position[0] < model.bounds.maxX);

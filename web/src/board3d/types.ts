@@ -3,7 +3,7 @@ import type { EdgeTuple, GameState } from "../components/BoardView.types";
 export type Point3D = [number, number, number];
 export type BoardSnapshot = Pick<GameState,
   "tiles" | "size" | "vertices" | "edges" | "ports" | "occupied_v" |
-  "occupied_e" | "occupied_ships" | "robber_tile" | "robbers" | "pirate_tile" | "edge_adj_hexes" | "players"
+  "occupied_e" | "occupied_ships" | "robber_tile" | "robbers" | "pirate_tile" | "edge_adj_hexes" | "players" | "rules_config"
 >;
 
 export interface BoardBounds {

@@ -6,6 +6,20 @@ import GameOverlay from "./GameOverlay";
 import { ActionFeedback, type ActionSubmit } from "./TradePanel";
 import type { ServerError } from "../wsClient";
 
+/** Snapshot capability is server-issued; this is presentation gating, never authorization. */
+export function testModeAccess(state: Pick<GameSnapshot, "test_mode" | "test_tools" | "game_over">, status: string, serverAvailable = false) {
+  const enabled = state.test_mode === true;
+  const canUse = enabled && state.test_tools === true && status === "connected" && !state.game_over;
+  const description = !enabled
+    ? serverAvailable ? "Enable Test Room in the lobby before starting a match to use developer tools."
+      : "Test tools are disabled on this server. The server operator must enable them before creating a Test Room."
+    : !state.test_tools ? "Non-production Test Room. Only the current host can use Test Tools."
+      : state.game_over ? "Non-production Test Room. Test actions are unavailable after the match ends."
+        : status !== "connected" ? "Non-production Test Room. Reconnect to use Test Tools."
+          : "Non-production Test Room. Open TEST MODE in the header for server-validated developer tools.";
+  return { enabled, canUse, description };
+}
+
 export default function TestTools({ state, waiting, submit, onClose, error = null }: {
   state: GameSnapshot; waiting: boolean; submit: ActionSubmit; onClose: () => void; error?: ServerError | null;
 }) {
@@ -16,7 +30,7 @@ export default function TestTools({ state, waiting, submit, onClose, error = nul
   const [faces, setFaces] = useState([6, 1]);
   const send = (action: string, fields: Record<string, unknown> = {}) => submit({ type: "test_action", action, ...fields });
   return <GameOverlay id="test-tools" title="Test Tools" modal onClose={onClose}>
-    <p className="test-room-warning">Development room only. Every action is validated and logged by the server.</p>
+    <p className="test-room-warning">TEST MODE · Non-production room. Every action is validated and logged by the server.</p>
     <ActionFeedback waiting={waiting} error={error} />
     {state.phase !== "main" && <p>Finish initial placement to use test actions.</p>}
     <fieldset disabled={waiting || state.phase !== "main"}><label className="field">Test player<select aria-label="Test player" value={player} onChange={e => setPlayer(Number(e.target.value))}>

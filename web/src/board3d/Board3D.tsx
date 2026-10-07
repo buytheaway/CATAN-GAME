@@ -17,6 +17,8 @@ import DiceRoll3D from "./DiceRoll3D";
 import type { DiceRollVisual } from "../game/dice";
 import { colorForPlayer } from "../board/colors";
 import DecorativeOcean from "./DecorativeOcean";
+import AmbientShips from "./AmbientShips";
+import { decorativeShipsEnabled, oceanClearance } from "./environment";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -86,6 +88,7 @@ export default function Board3D({ state, interaction, diceRoll }: {
           </mesh>
           <VisualResources>
           <DecorativeOcean bounds={bounds} coast={model.coast} />
+          {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={oceanClearance(model)} />}
           {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}

@@ -8,39 +8,54 @@ import ResourceCard from "./ResourceCard";
 import type { Resource } from "./actions";
 import TurnTimer from "./TurnTimer";
 import { AccountControls } from "../auth/AuthUI";
+import type { RoomState } from "../wsClient";
+import { StatusBadge } from "../shell/PageShell";
 
-export function GameTopBar({ state, roomCode, onInfo, onLog, drawer }: {
+export function GameTopBar({ state, roomCode, onInfo, onLog, drawer, status = "connected", logOpen = false, onTest, testAvailable = false, waiting = false }: {
   state: GameSnapshot; pid: number; roomCode: string; drawer: string | null; onInfo: () => void; onLog: () => void;
+  status?: string; logOpen?: boolean; onTest?: () => void; testAvailable?: boolean; waiting?: boolean;
 }) {
   return <header className="game-topbar">
-    <div className="game-brand"><strong>CATAN<span> / Online</span></strong>
-      <span className="game-room" title={state.map_meta?.name}>{state.map_meta?.name ?? "Room"} · {roomCode}</span></div>
+    <div className="game-brand"><strong>CATAN.КОЛОНИЗАТОРЫ</strong>
+      <span className="game-room" title={`${state.map_meta?.name ?? state.map_id ?? "Current map"} · Room ${roomCode}`}>
+        {state.map_meta?.name ?? state.map_id ?? "Current map"}<span className="game-room-code"> · {roomCode}</span></span></div>
     <div className="match-summary"><span className="vp-goal">Goal <strong>{state.rules_config?.target_vp ?? 10} VP</strong></span>
+      <span className="match-connection" role="status"><StatusBadge tone={status === "connected" ? "live" : "neutral"}>
+        {status === "connected" ? "Online" : status === "reconnecting" ? "Reconnecting…" : status}
+      </StatusBadge></span>
       <AccountControls />
-      {state.test_mode && <span className="test-room-warning">TEST ROOM</span>}
+      {state.test_mode && (state.test_tools && onTest
+        ? <button className="game-button test-mode-entry" aria-label="Test Tools" title="Non-production Test Room · open developer tools"
+          disabled={!testAvailable || waiting} onClick={onTest}><b>TEST MODE</b><span>Tools</span></button>
+        : <span className="test-room-warning" title="Non-production Test Room · host-only tools">TEST MODE</span>)}
       <button className="game-button icon-button" aria-label="Game info" aria-expanded={drawer === "info"}
         aria-controls="game-info" onClick={onInfo}><GameIcon name="info" /></button>
-      <button className="game-button icon-button" aria-label="Event log" aria-expanded={drawer === "log"}
+      <button className="game-button icon-button" aria-label="Event log" aria-expanded={logOpen}
         aria-controls="game-log" onClick={onLog}><GameIcon name="log" /></button>
     </div>
   </header>;
 }
 
-export function PlayerStrip({ state, pid }: { state: GameSnapshot; pid: number }) {
+export function PlayerStrip({ state, pid, room }: { state: GameSnapshot; pid: number; room?: RoomState | null }) {
   return <ol className="players-strip" aria-label="Players">
-      {state.players.map(p => <li key={p.pid} className={`player-hud${state.turn === p.pid ? " is-current" : ""}`}
+      {state.players.map(p => {
+        const presence = room?.players.find(slot => slot.pid === p.pid);
+        return <li key={p.pid} className={`player-hud${state.turn === p.pid ? " is-current" : ""}`}
         data-motion-anchor={p.pid}
         style={{ "--player-color": colorForPlayer(p.pid, state.players) } as CSSProperties}
         aria-current={state.turn === p.pid ? "true" : undefined}>
-        <span className="player-number">{p.pid + 1}</span>
-        <div className="player-hud-details"><div className="player-name"><strong title={p.name}>{p.name}</strong><span>{p.pid === pid ? "you" : ""}</span></div>
+        <span className="player-identity"><span className="player-number">{p.pid + 1}</span>
+          {presence && <span className={`player-presence${presence.connected ? " is-online" : ""}`}
+            aria-label={presence.connected ? "Connected" : "Disconnected"} title={presence.connected ? "Connected" : "Disconnected"} />}</span>
+        <div className="player-hud-details"><div className="player-name"><strong title={p.name}>{p.name}</strong>
+          {p.pid === pid && <span>you</span>}{room?.host_pid === p.pid && <span className="player-role">host</span>}</div>
           <div className="player-counters"><strong>{p.vp} VP</strong>
             <span aria-label={`${p.resource_count} resource cards`}>{p.resource_count} cards</span>
             <span aria-label={`${p.dev_count} development cards`}>{p.dev_count} dev</span>
           </div></div>
         {state.turn === p.pid && <div className="turn-status"><span className="turn-indicator">{p.pid === pid ? "Your turn" : "Turn"}</span>
           <TurnTimer timer={state.turn_timer} /></div>}
-      </li>)}
+      </li>; })}
     </ol>;
 }
 
@@ -73,6 +88,6 @@ export function BankSummary({ available, counts }: {
       aria-label={`${resource}: ${counts ? counts[resource] ?? 0 : available?.[resource] ? "available" : "unavailable"}`}>
       {counts ? <GameIcon name={resource} /> : <span className="bank-card-back">?</span>}<small>{counts ? counts[resource] ?? 0 : available?.[resource] ? "Available" : "Empty"}</small>
     </span>)}</div>
-    <p>{counts ? "Public bank counts · Development deck hidden." : "Exact bank quantities are hidden."}</p>
+    <p>{counts ? "Public counts · Development deck hidden." : "Exact bank quantities are hidden."}</p>
   </details>;
 }

@@ -1,4 +1,5 @@
 import { PLAYER_COLORS } from "../board/constants";
+import { RESOURCE_ICON_PATHS } from "../game/resourceIcons";
 
 export const TERRAIN_STYLES = {
   forest: { color: "#377f4c", side: "#235239", hint: "trees" },
@@ -58,12 +59,13 @@ export function playerColor(owner: number): string {
 }
 
 export function portAppearance(kind: string) {
-  const resource = kind.split(":")[2];
+  const name = kind.split(":")[2];
+  const resource = Object.prototype.hasOwnProperty.call(RESOURCE_ICON_PATHS, name) ? name as keyof typeof RESOURCE_ICON_PATHS : undefined;
   const colors: Record<string, string> = {
     wood: TERRAIN_STYLES.forest.color, brick: TERRAIN_STYLES.hills.color,
     sheep: TERRAIN_STYLES.pasture.color, wheat: TERRAIN_STYLES.fields.color, ore: TERRAIN_STYLES.mountains.color,
   };
-  return kind.includes("3:1")
-    ? { label: "3:1", color: "#f6f3e9" }
-    : { label: `2:1\n${resource ?? "?"}`, color: colors[resource] ?? "#f6f3e9" };
+  return kind === "3:1"
+    ? { label: "3:1", resource: undefined, color: VISUAL.dock }
+    : { label: kind.startsWith("2:1:") ? "2:1" : "?", resource, color: colors[resource ?? ""] ?? VISUAL.dock };
 }
