@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultWebSocketUrl, WSClient, MatchState, RoomState, ServerError } from "./wsClient";
 import LobbyPage from "./components/LobbyPage";
 import GamePage from "./components/GamePage";
+import { AuthProvider, AccountControls } from "./auth/AuthUI";
 
 const WS_DEFAULT = defaultWebSocketUrl();
 
@@ -25,6 +26,9 @@ export default function App() {
       setError(null);
     };
     client.onError = (err) => {
+      if (["session_expired", "seat_taken_over", "seat_not_owned", "unauthenticated"].includes(err.code)) {
+        setMatch(null); setRoom(null);
+      }
       setError(err);
       setLog((prev) => [...prev, `[ERR] ${err.code}: ${err.message}`]);
     };
@@ -36,8 +40,10 @@ export default function App() {
   }, [client]);
 
   return (
+    <AuthProvider client={client} onExit={() => { setMatch(null); setRoom(null); setError(null); }}>
     <div className={match ? "app app--match" : "app"}>
       {!match && <h2>CATAN LAN Web</h2>}
+      {!match && <AccountControls />}
       {match ? (
         <GamePage
           client={client}
@@ -61,5 +67,6 @@ export default function App() {
         />
       )}
     </div>
+    </AuthProvider>
   );
 }

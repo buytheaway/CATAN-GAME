@@ -1,13 +1,35 @@
 ---
 tags: [catan, deployment, docker]
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # Deployment
 
 [[Project State]] · [[Точки входа]] · [[Сервер и протокол]] · [[Architecture Decisions]] · [[plans/containerization]]
 
-Production Infrastructure Phase 1 добавила Docker Compose; Persistence 1B добавляет durable PostgreSQL и startup recovery. Проверено 2026-10-06 на Docker Desktop Linux containers, Windows host. Это production-like запуск с persistence, без TLS/accounts, не готовый публичный internet deployment.
+Production Infrastructure Phase 1 добавила Docker Compose; Persistence 1B — durable PostgreSQL/recovery; Auth Phase 1 — account sessions/ownership. Проверено 2026-10-07 на Docker Desktop Linux containers, Windows host. Это production-like запуск с persistence/accounts, без собственного TLS termination; публичное развёртывание требует HTTPS и operational hardening.
+
+## Account cookies and HTTPS — Auth Phase 1
+
+Compose passes CATAN_AUTH_MODE (default **production**) and CATAN_AUTH_ORIGINS (default empty). Production registration/login require an exact configured HTTPS Origin; cookie is Secure/HttpOnly/SameSite=Lax/Path=/, max-age 30 days. Empty origins fail closed for auth mutations/cookie WS. Do not deploy development mode publicly. Existing same-origin plain-HTTP guest play remains possible independently of account auth. PostgreSQL stores users/session hashes/seat ownership; migration f1a001 upgrades existing guest schema without deleting room/match/head/token data. One backend worker remains mandatory.
+
+Explicit local HTTP example (PowerShell):
+
+```powershell
+$env:CATAN_AUTH_MODE = 'development'
+$env:CATAN_AUTH_ORIGINS = 'http://localhost,http://127.0.0.1'
+docker compose up --build
+```
+
+Only development sets Secure=false. .env.example documents this local profile. For production use CATAN_AUTH_MODE=production and CATAN_AUTH_ORIGINS=https://your-domain (exact port if nonstandard, no trailing slash), with HTTPS termination in front of the existing Nginx. No insecure production cookie fallback, wildcard CORS or permissive Origin. TLS certificate provisioning/public deployment was not performed in this phase.
+
+Nginx already proxies /api and /ws; Set-Cookie/Cookie/Origin pass unchanged, no auth token/password in URL or access-log body. Auth HTTP limits bodies to 4 KiB inside the existing 16 KiB proxy ceiling. Vite now proxies both /api and /ws to the configured backend, default 127.0.0.1:8000; browser default WS is page-origin /ws. For local Python/Vite auth set development plus allowed http://localhost:5173/http://127.0.0.1:5173 origins. Keep account HTTP/WS on the same site; explicit foreign/manual WS remains guest scope.
+
+Dependencies: only argon2-cffi 25.1.0 and its pinned bindings/CFFI/pycparser were added; backend Docker copies app/auth. No new services/ports/worker/JWT/framework. Auth rate limits are process-local (register 5/min, login 15/min/peer, global 5× each); default Nginx may share peer budget. Not a distributed brute-force/load solution.
+
+Windows `RUN_SERVER.bat` installs `requirements-server.txt`, including persistence and Argon2 dependencies. The existing desktop/test `requirements.txt` is separate; it is not the server runtime lock.
+
+Verified: Docker backend/web build, host/container pip check, nginx -t, previous-schema upgrade and real Chrome/Nginx/PG cross-browser/mixed-room/claim/logout/SIGKILL/full down/up without -v. Test-only tests/persistence.compose.yaml explicitly sets development + origin :18081; main compose retains secure defaults. Reproduction: node web/e2e/auth.cjs using external Playwright/Chrome and the isolated catan-persistence-test project. Existing volume was retained; no normal production stack restart. Detailed gate/measurements — [[plans/persistence-auth#Auth Phase 1 — completed 2026-10-07]].
 
 ## Continue API — Persistence 1C
 

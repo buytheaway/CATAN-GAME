@@ -23,6 +23,9 @@ from app.persistence.credentials import utcnow, issue_token, token_hash, valid_t
 from app.persistence.errors import PersistenceUnavailable, RecoveryError
 from app.persistence.recovery import clone_room, resume_timer, checksum
 from app.persistence.inspection import MAX_CREDENTIALS, MAX_BODY_BYTES, InspectionLimiter, inspect_memory
+from app.auth.routes import router as auth_router
+from app.auth.security import AuthError, COOKIE, allowed_origin, same_origin_guest, authorization
+from app.auth.service import AuthService
 
 from app import net_protocol
 from app import game_events, test_tools
@@ -62,6 +65,7 @@ class PlayerSlot:
     token_hash: Optional[bytes] = field(default=None, repr=False)
     token_expires_at: Optional[datetime] = None
     token_revoked_at: Optional[datetime] = None
+    user_id: Optional[uuid.UUID] = None
 
 
 @dataclass
@@ -70,6 +74,11 @@ class ClientConn:
     name: str = ""
     room_code: Optional[str] = None
     pid: Optional[int] = None
+    user_id: Optional[uuid.UUID] = None
+    session_id: Optional[uuid.UUID] = None
+    session_hash: Optional[bytes] = field(default=None, repr=False)
+    session_expires_at: Optional[datetime] = None
+    connection_nonce: str = field(default_factory=issue_token, repr=False)
 
 
 @dataclass
@@ -126,7 +135,7 @@ class RoomManager:
             if code not in self.rooms and code not in persistence.reserved_codes:
                 return code
 
-    def create_room(self, name: str, max_players: int, *, register: bool = True) -> Room:
+    def create_room(self, name: str, max_players: int, *, register: bool = True, user_id=None) -> Room:
         code = self._gen_code()
         players = [PlayerSlot(pid=i) for i in range(max_players)]
         room = Room(room_code=code, max_players=max_players, host_pid=0, players=players)
@@ -138,17 +147,18 @@ class RoomManager:
         room.selected_map_data = None
         if register:
             self.rooms[code] = room
-        self._assign_player(room, 0, name, connected=True)
+        self._assign_player(room, 0, name, connected=True, user_id=user_id)
         return room
 
-    def _assign_player(self, room: Room, pid: int, name: str, connected: bool) -> None:
+    def _assign_player(self, room: Room, pid: int, name: str, connected: bool, user_id=None) -> None:
         slot = room.players[pid]
         slot.name = name
+        slot.user_id = user_id
         slot.connected = connected
         if slot.color is None:
             used = {p.color for p in room.players if p.name and p is not slot}
             slot.color = next(color for color in COLORS if color not in used)
-        if not slot.reconnect_token:
+        if user_id is None and not slot.reconnect_token:
             slot.reconnect_token = issue_token()
             slot.token_hash = token_hash(slot.reconnect_token)
             slot.token_expires_at = renewed_expiry()
@@ -234,6 +244,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(auth_router)
 manager = RoomManager()
 persistence = Coordinator()
 inspection_limiter = InspectionLimiter()
@@ -360,6 +371,8 @@ async def _send_match_state(room: Room) -> None:
         if (not conn or conn.room_code != room.room_code or conn.pid != pid
                 or room.match_id != message["match_id"] or room.players[pid].active_ws is not ws):
             continue
+        if not await account_socket_valid(conn):
+            continue
         try:
             await _send(ws, message)
         except (WebSocketDisconnect, RuntimeError, OSError):
@@ -372,12 +385,18 @@ async def _send_match_state_to(ws: WebSocket, room: Room) -> None:
     conn = manager.connections.get(ws)
     if not conn or conn.room_code != room.room_code or conn.pid is None:
         return
+    if not _owns(conn, room) or not await account_socket_valid(conn):
+        return
     state = _snapshot_state(room.game, room, conn.pid)
     await _send(ws, net_protocol.match_state_message(room, state))
 
 
 async def _send_reconnect_token(ws: WebSocket, room: Room, pid: int) -> None:
     slot = room.players[pid]
+    if slot.user_id is not None:
+        await _send(ws, {"type": "seat_identity", "ownership": "account", "room_code": room.room_code,
+                         "pid": pid, "last_seq_applied": slot.last_seq_applied, "match_id": room.match_id})
+        return
     await _send(ws, {
         "type": "reconnect_token",
         "room_code": room.room_code,
@@ -626,7 +645,7 @@ def _promote(room: Room, candidate: Room) -> None:
     retained = []
     for new in candidate.players:
         slot = old.get(new.id, new)
-        if new.reconnect_token is None and slot.token_hash == new.token_hash:
+        if new.reconnect_token is None and new.user_id is None and new.token_revoked_at is None and slot.token_hash == new.token_hash:
             new.reconnect_token = slot.reconnect_token
         for f in fields(PlayerSlot):
             if f.name not in {"active_ws", "connected"}:
@@ -778,52 +797,102 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
 
 
 def _owns(conn: ClientConn, room: Room) -> bool:
-    return (conn.room_code == room.room_code and conn.pid is not None
-            and 0 <= conn.pid < len(room.players)
-            and room.players[conn.pid].active_ws is conn.ws
-            and room.players[conn.pid].token_expires_at is not None
-            and room.players[conn.pid].token_revoked_at is None
-            and room.players[conn.pid].token_expires_at > utcnow())
+    if (conn.room_code != room.room_code or conn.pid is None or not 0 <= conn.pid < len(room.players)
+            or room.players[conn.pid].active_ws is not conn.ws):
+        return False
+    slot = room.players[conn.pid]
+    if slot.user_id is not None:
+        return (conn.user_id == slot.user_id and conn.session_id is not None
+                and conn.session_expires_at is not None and conn.session_expires_at > utcnow())
+    return (slot.token_expires_at is not None and slot.token_revoked_at is None and slot.token_expires_at > utcnow())
+
+
+def set_account_context(conn, who):
+    conn.user_id, conn.session_id = who["user_id"], who["session_id"]
+    conn.session_hash, conn.session_expires_at = who["session_hash"], who["expires_at"]
+
+
+async def account_socket_valid(conn):
+    if conn.session_hash is None:
+        return True
+    if not persistence.ready or not persistence.database:
+        await _send(conn.ws, net_protocol.error_message("persistence_unavailable", "Session temporarily unavailable", {"retryable": True}))
+        await conn.ws.close(code=1013)
+        return False
+    try:
+        who = await AuthService(persistence.database).resolve_hash(conn.session_hash)
+    except Exception:
+        await conn.ws.close(code=1013)
+        return False
+    if who is None:
+        conn.user_id = None
+        await _send(conn.ws, net_protocol.error_message("session_expired", "Sign in again"))
+        await conn.ws.close(code=4401)
+        return False
+    set_account_context(conn, who)
+    return True
 
 
 async def _dispatch(conn: ClientConn, data: Dict) -> None:
+    who = None
+    if conn.session_hash:
+        if not persistence.ready or not persistence.database:
+            raise PersistenceUnavailable("Account session temporarily unavailable")
+        who = await AuthService(persistence.database).resolve_hash(conn.session_hash)
+        if who is None:
+            raise AuthError("session_expired")
+        set_account_context(conn, who)
+    context = authorization.set(who)
+    try:
+        await _dispatch_impl(conn, data)
+    finally:
+        authorization.reset(context)
+
+
+async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
     ws, kind = conn.ws, data["type"]
     if kind == "hello":
         conn.name = data["name"]
         await _send(ws, {"type": "hello", "version": net_protocol.VERSION,
-                         "test_tools_available": TEST_TOOLS_ENABLED})
+                         "test_tools_available": TEST_TOOLS_ENABLED, "connection_nonce": conn.connection_nonce})
         return
     if not persistence.ready:
         raise PersistenceUnavailable("Database/recovery temporarily unavailable")
     if kind == "create_room":
         async with manager.create_lock:
-            room = manager.create_room(data["name"].strip(), data.get("max_players", 4), register=False)
+            who = authorization.get()
+            room = manager.create_room(who["display_name"] if who else data["name"].strip(),
+                                       data.get("max_players", 4), register=False, user_id=conn.user_id)
             await persistence.commit(None, room)
             manager.rooms[room.room_code] = room
             manager.bind_player(conn, room, 0)
             await _send(ws, net_protocol.room_state_message(room))
             await _send_reconnect_token(ws, room, 0)
         return
-    code = data.get("room_code", "").strip().upper() if kind in ("join_room", "reconnect") else conn.room_code
+    code = data.get("room_code", "").strip().upper() if kind in ("join_room", "reconnect", "account_continue") else conn.room_code
     room = manager.rooms.get(code or "")
     if not room:
         if code in persistence.quarantined_codes:
             raise PersistenceUnavailable("Room recovery quarantined; server attention required")
         if kind in ("set_settings", "set_color", "chat", "enable_test_mode"):
             raise RuleError("forbidden", "Room membership required")
-        raise RuleError("not_found", "Room not found")
+        raise RuleError("seat_not_owned" if kind == "account_continue" else "not_found",
+                        "Room unavailable" if kind == "account_continue" else "Room not found")
     async with room.lock:
         if room.persistence_blocked:
             raise PersistenceUnavailable("Room persistence temporarily blocked")
         if kind == "join_room":
-            name = data["name"].strip()
+            who = authorization.get()
+            name = who["display_name"] if who else data["name"].strip()
+            if conn.user_id and any(p.name and p.user_id == conn.user_id for p in room.players):
+                raise RuleError("duplicate_room_membership", "Use Continue for your existing seat")
             if room.status != "lobby" or any(p.name == name for p in room.players):
                 raise RuleError("not_found", "Room not found or full")
             pid = next((p.pid for p in room.players if not p.name), None)
             if pid is None:
                 raise RuleError("not_found", "Room not found or full")
             candidate = clone_room(room)
-            manager._assign_player(candidate, pid, name, connected=True)
+            manager._assign_player(candidate, pid, name, connected=True, user_id=conn.user_id)
             candidate.config_revision += 1
             candidate.last_activity_ts = time.time()
             await _commit(room, candidate)
@@ -832,18 +901,31 @@ async def _dispatch(conn: ClientConn, data: Dict) -> None:
             await _send_reconnect_token(ws, room, pid)
             await _send_room_state(room)
             return
-        if kind == "reconnect":
-            raw = data["reconnect_token"]
-            pid = next((p.pid for p in room.players if p.name and valid_token(p, raw)), None)
+        if kind in ("reconnect", "account_continue"):
+            raw = data.get("reconnect_token")
+            if kind == "account_continue":
+                if not conn.user_id:
+                    raise AuthError("unauthenticated")
+                if room.closed_at or room.status not in ("lobby", "in_match") or room.expires_at and room.expires_at <= utcnow():
+                    raise RuleError("seat_not_owned", "Seat unavailable")
+                pid = next((p.pid for p in room.players if p.name and p.user_id == conn.user_id), None)
+            else:
+                pid = next((p.pid for p in room.players if p.name and valid_token(p, raw)), None)
             if pid is None:
-                raise RuleError("forbidden", "Invalid reconnect token")
+                raise RuleError("seat_not_owned" if kind == "account_continue" else "forbidden",
+                                "Seat unavailable" if kind == "account_continue" else "Invalid reconnect token")
             candidate = clone_room(room)
-            candidate.players[pid].reconnect_token = raw  # Presented proof, never a DB field.
-            candidate.players[pid].token_expires_at = renewed_expiry()
+            if kind == "reconnect":
+                candidate.players[pid].reconnect_token = raw  # Presented proof, never a DB field.
+                candidate.players[pid].token_expires_at = renewed_expiry()
             candidate.last_activity_ts = time.time()
             resumed = resume_timer(candidate)
             await _commit(room, candidate, snapshot=resumed)
+            previous = manager.connections.get(room.players[pid].active_ws)
             manager.bind_player(conn, room, pid)
+            if kind == "account_continue" and previous is not None and previous is not conn:
+                await _send(previous.ws, net_protocol.error_message("seat_taken_over", "This seat was opened in another browser"))
+                await previous.ws.close(code=4409)
             await _send(ws, net_protocol.room_state_message(room))
             await _send_reconnect_token(ws, room, pid)
             await _send_match_state_to(ws, room)
@@ -957,8 +1039,31 @@ async def _dispatch(conn: ClientConn, data: Dict) -> None:
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    origin, cookie = ws.headers.get("origin"), ws.cookies.get(COOKIE)
+    if ((origin is not None and not allowed_origin(origin) and not (not cookie and same_origin_guest(ws, origin)))
+            or (cookie and not allowed_origin(origin))):
+        await ws.close(code=4403)
+        return
     await ws.accept()
+    who = None
+    if cookie:
+        try:
+            who = await AuthService(persistence.database).resolve(cookie) if persistence.ready and persistence.database else None
+        except Exception:
+            await _send(ws, net_protocol.error_message("persistence_unavailable", "Session temporarily unavailable", {"retryable": True}))
+            await ws.close(code=1013)
+            return
+        if who is None:
+            if not persistence.ready or not persistence.database:
+                await _send(ws, net_protocol.error_message("persistence_unavailable", "Session temporarily unavailable", {"retryable": True}))
+                await ws.close(code=1013)
+            else:
+                await _send(ws, net_protocol.error_message("session_expired", "Sign in again"))
+                await ws.close(code=4401)
+            return
     conn = ClientConn(ws=ws)
+    if who:
+        set_account_context(conn, who)
     manager.connections[ws] = conn
     try:
         while True:
@@ -978,6 +1083,10 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
             try:
                 await _dispatch(conn, data)
+            except AuthError as exc:
+                await _send(ws, net_protocol.error_message(exc.code, "Sign in again"))
+                await ws.close(code=4401)
+                return
             except RuleError as exc:
                 await _send(ws, net_protocol.error_message(exc.code, exc.message, {**(exc.details or {}), **detail}))
             except PersistenceUnavailable:

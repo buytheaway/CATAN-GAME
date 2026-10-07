@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
       proxy: {
         // Same backend as the configured development WebSocket.
         "/api": backend.origin,
+        "/ws": { target: backend.origin, ws: true },
       },
     },
   };

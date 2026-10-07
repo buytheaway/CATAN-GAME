@@ -15,7 +15,7 @@ echo [i] Python:
 
 echo [i] Installing deps...
 "%PY%" -m pip install -U pip
-"%PY%" -m pip install -r requirements.txt
+"%PY%" -m pip install -r requirements-server.txt
 
 echo [i] Starting server...
 "%PY%" -m app.server_mp

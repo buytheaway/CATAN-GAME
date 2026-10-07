@@ -22,5 +22,5 @@ def renewed_expiry():
 
 
 def valid_token(slot, raw: str) -> bool:
-    return bool(slot.token_hash and slot.token_revoked_at is None and slot.token_expires_at and slot.token_expires_at > utcnow()
+    return bool(getattr(slot, "user_id", None) is None and slot.token_hash and slot.token_revoked_at is None and slot.token_expires_at and slot.token_expires_at > utcnow()
                 and secrets.compare_digest(slot.token_hash, token_hash(raw)))

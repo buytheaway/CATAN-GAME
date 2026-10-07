@@ -1,5 +1,6 @@
 import type { GameState } from "./components/BoardView.types";
 import { clearCurrentGame, currentGame, readRecentGames, removeRecentGame, saveRecentGame, setCurrentGame } from "./recentGames";
+import { accountCurrent, setAccountCurrent } from "./auth/api";
 import type { RecentGame } from "./recentGames";
 
 export type RoomSettings = {
@@ -121,15 +122,18 @@ export type CmdAck = {
   duplicate: boolean;
 };
 
-export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | CmdAck | ChatState
-  | { type: "hello"; version: number; test_tools_available?: boolean };
+type SeatIdentity = { type: "seat_identity"; ownership: "account"; room_code: string; pid: number; match_id: number; last_seq_applied: number };
+export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | SeatIdentity | CmdAck | ChatState
+  | { type: "hello"; version: number; test_tools_available?: boolean; connection_nonce?: string };
 
 type MapSelection = { mapId: string; payload: Record<string, any> };
 
 export function defaultWebSocketUrl(): string {
   return import.meta.env.PROD
     ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`
-    : import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+    : import.meta.env.VITE_WS_URL || (window.location?.host
+      ? `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/ws`
+      : "ws://127.0.0.1:8000/ws");
 }
 
 function genId(): string {
@@ -146,6 +150,8 @@ export class WSClient {
   private roomCode: string | null = null;
   private reconnectToken: string | null = null;
   private pendingReconnect: RecentGame | null = null;
+  private accountSeat = false;
+  public connectionNonce: string | undefined;
   private pendingMatchOperation: { roomCode: string; type: "start_match" | "rematch"; request_id: string; expected_match_id: number } | null = null;
   private reconnectTimer: number | null = null;
   private reconnectDelay = 1000;
@@ -254,7 +260,7 @@ export class WSClient {
   }
 
   host(maxPlayers: number) {
-    const interruptedReconnect = this.pendingReconnect !== null;
+    const interruptedReconnect = this.pendingReconnect !== null || this.accountSeat;
     if (interruptedReconnect) this.leaveRoom();
     clearCurrentGame();
     this.pendingMatchOperation = null;
@@ -264,6 +270,7 @@ export class WSClient {
     this.roomCode = null;
     this.reconnectToken = null;
     this.pendingReconnect = null;
+    this.accountSeat = false;
     this.pendingAction = { type: "host", maxPlayers };
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.send({ type: "create_room", name: this.name, max_players: maxPlayers, ruleset: { base: true, max_players: maxPlayers } });
@@ -288,7 +295,10 @@ export class WSClient {
     if (this.roomState?.room_code !== roomCode) this.roomState = null;
     if (this.roomCode !== roomCode) this.reconnectToken = null;
     this.roomCode = roomCode;
-    if (this.reconnectToken) {
+    if (this.accountSeat) {
+      this.pendingReconnect = null;
+      this.send({ type: "account_continue", room_code: roomCode });
+    } else if (this.reconnectToken) {
       this.pendingReconnect = { room_code: roomCode, reconnect_token: this.reconnectToken, last_known_name: this.name, last_seen_at: 0, server_url: this.url };
       this.send({ type: "reconnect", room_code: roomCode, reconnect_token: this.reconnectToken });
     } else {
@@ -333,6 +343,7 @@ export class WSClient {
     this.pendingAction = null;
     this.roomCode = this.reconnectToken = this.matchKey = null;
     this.pendingReconnect = null;
+    this.accountSeat = false;
     this.roomState = this.matchState = null;
     this.youPid = null;
     this.matchId = this.seq = this.lastSeqApplied = 0;
@@ -414,11 +425,16 @@ export class WSClient {
       } else if (this.pendingAction?.type === "join") {
         this.sendJoinIntent(this.pendingAction.roomCode);
         this.pendingAction = null;
-      } else if (this.roomCode && this.reconnectToken) {
+      } else if (this.roomCode && (this.reconnectToken || this.accountSeat)) {
         this.sendJoinIntent(this.roomCode);
       }
     };
-    this.ws.onclose = () => {
+    this.ws.onclose = (event) => {
+      if (event?.code === 4401 || event?.code === 4409 || event?.code === 4403) {
+        this.pendingAction = null; this.accountSeat = false; this.reconnectToken = null;
+        clearCurrentGame();
+        this.onError?.({ type: "error", code: event.code === 4409 ? "seat_taken_over" : "session_expired", message: event.code === 4409 ? "This seat was opened in another browser" : "Sign in again" });
+      }
       this.resetConfig();
       this.resetMapSelection();
       this.onStatus?.("disconnected");
@@ -431,7 +447,7 @@ export class WSClient {
   }
 
   private scheduleReconnect() {
-    if (!this.pendingAction && !(this.roomCode && this.reconnectToken)) return;
+    if (!this.pendingAction && !(this.roomCode && (this.reconnectToken || this.accountSeat))) return;
     if (this.reconnectTimer) return;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
@@ -449,6 +465,7 @@ export class WSClient {
       return;
     }
     if (data.type === "hello") {
+      this.connectionNonce = data.connection_nonce;
       this.testToolsAvailable = data.test_tools_available === true;
       this.onCapabilities?.();
       return;
@@ -482,12 +499,20 @@ export class WSClient {
       this.onRoomState?.(this.roomState);
       return;
     }
-    if (data.type === "reconnect_token") {
+    if (data.type === "reconnect_token" || data.type === "seat_identity") {
       this.pendingReconnect = null;
       this.reconnectDelay = 1000;
       this.setMatch(data.room_code, data.match_id);
       this.roomCode = data.room_code;
-      this.reconnectToken = data.reconnect_token;
+      if (data.type === "seat_identity") {
+        const guest = this.guestBinding();
+        if (guest) removeRecentGame(guest);
+        this.accountSeat = true;
+        this.reconnectToken = null;
+      } else {
+        this.accountSeat = false;
+        this.reconnectToken = data.reconnect_token;
+      }
       this.lastSeqApplied = data.last_seq_applied ?? 0;
       this.seq = Math.max(this.seq, this.lastSeqApplied);
       const serverName = this.roomState?.players.find(p => p.pid === data.pid)?.name || this.name;
@@ -495,6 +520,7 @@ export class WSClient {
       this.youPid = data.pid;
       this.name = serverName;
       this.persistToken();
+      if (this.accountSeat) setAccountCurrent(data.room_code, this.url);
       // A stale cached nickname may not identify us in the earlier room_state.
       if (identityChanged && this.roomState) {
         this.roomState = { ...this.roomState };
@@ -532,6 +558,10 @@ export class WSClient {
       return;
     }
     if (data.type === "error") {
+      if (["session_expired", "unauthenticated", "seat_taken_over", "seat_not_owned"].includes(data.code)) {
+        this.accountSeat = false; this.pendingAction = null; this.reconnectToken = null;
+        this.pendingCmds.clear(); this.pendingMatchOperation = null; clearCurrentGame();
+      }
       if (data.detail?.request_id === this.pendingMatchOperation?.request_id && !data.detail?.retryable)
         this.pendingMatchOperation = null;
       this.finishConfig(data.detail?.request_id);
@@ -586,10 +616,11 @@ export class WSClient {
   }
 
   loadToken(roomCode: string, name: string, url = this.url || defaultWebSocketUrl()) {
-    if (this.pendingReconnect) this.leaveRoom();
+    if (this.pendingReconnect || this.accountSeat) this.leaveRoom();
     this.roomCode = roomCode;
     this.reconnectToken = null;
     this.pendingReconnect = null;
+    this.accountSeat = false;
     this.reconnectToken = readRecentGames().find(entry => entry.room_code === roomCode && entry.last_known_name === name
       && (!entry.server_url || entry.server_url === url))?.reconnect_token ?? null;
   }
@@ -604,7 +635,24 @@ export class WSClient {
     this.connect(entry.server_url || url, this.name);
   }
 
+  guestBinding(): RecentGame | null {
+    return this.roomCode && this.reconnectToken ? { room_code: this.roomCode, reconnect_token: this.reconnectToken,
+      last_known_name: this.name, last_seen_at: Date.now(), server_url: this.url } : null;
+  }
+
+  continueAccount(roomCode: string, name: string, url = defaultWebSocketUrl()) {
+    this.leaveRoom();
+    this.accountSeat = true;
+    this.roomCode = roomCode;
+    this.name = name;
+    this.join(roomCode);
+    setAccountCurrent(roomCode, url);
+    this.connect(url, name);
+  }
+
   restoreCurrentGame(url = defaultWebSocketUrl()) {
+    const account = accountCurrent();
+    if (account && account.server_url === url) { this.continueAccount(account.room_code, "Player", url); return; }
     const entry = currentGame();
     if (entry) this.continueGame(entry, url);
   }

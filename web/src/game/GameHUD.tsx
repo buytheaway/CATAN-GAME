@@ -7,6 +7,7 @@ import GameIcon from "./GameIcon";
 import ResourceCard from "./ResourceCard";
 import type { Resource } from "./actions";
 import TurnTimer from "./TurnTimer";
+import { AccountControls } from "../auth/AuthUI";
 
 export function GameTopBar({ state, roomCode, onInfo, onLog, drawer }: {
   state: GameSnapshot; pid: number; roomCode: string; drawer: string | null; onInfo: () => void; onLog: () => void;
@@ -15,6 +16,7 @@ export function GameTopBar({ state, roomCode, onInfo, onLog, drawer }: {
     <div className="game-brand"><strong>CATAN<span> / Online</span></strong>
       <span className="game-room" title={state.map_meta?.name}>{state.map_meta?.name ?? "Room"} · {roomCode}</span></div>
     <div className="match-summary"><span className="vp-goal">Goal <strong>{state.rules_config?.target_vp ?? 10} VP</strong></span>
+      <AccountControls />
       {state.test_mode && <span className="test-room-warning">TEST ROOM</span>}
       <button className="game-button icon-button" aria-label="Game info" aria-expanded={drawer === "info"}
         aria-controls="game-info" onClick={onInfo}><GameIcon name="info" /></button>

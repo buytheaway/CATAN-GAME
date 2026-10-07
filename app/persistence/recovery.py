@@ -95,11 +95,13 @@ def restore_room(bundle):
     players = [PlayerSlot(pid=i) for i in range(capacity)]
     for member in named:
         token = bundle["tokens"].get(member["id"])
-        _require(member["color"] in COLORS and token is not None)
+        _require(member["color"] in COLORS and (member.get("user_id") is not None or token is not None))
         slot = players[member["current_pid"]]
         slot.id, slot.name, slot.color = member["id"], member["name"], member["color"]
-        slot.token_hash, slot.token_expires_at = bytes(token["token_hash"]), token["expires_at"]
-        slot.token_revoked_at = token["revoked_at"]
+        slot.user_id = member.get("user_id")
+        if token is not None:
+            slot.token_hash, slot.token_expires_at = bytes(token["token_hash"]), token["expires_at"]
+            slot.token_revoked_at = token["revoked_at"]
     host = next((p.pid for p in players if p.id == row["host_room_player_id"]), None)
     _require(host is not None)
     room = Room(room_code=row["room_code"], max_players=row["max_players"], host_pid=host, players=players)

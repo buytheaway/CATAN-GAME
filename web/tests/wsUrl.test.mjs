@@ -11,8 +11,8 @@ const cases = [
     protocol: "https:", host: "game.example", expected: "wss://game.example/ws" },
   { name: "development preserves VITE_WS_URL", prod: false, override: "ws://lan-server:8000/ws",
     protocol: "http:", host: "localhost:5173", expected: "ws://lan-server:8000/ws" },
-  { name: "development has a local backend fallback", prod: false, override: "",
-    protocol: "http:", host: "localhost:5173", expected: "ws://127.0.0.1:8000/ws" },
+  { name: "development uses the same-origin Vite WS proxy so account cookies reach the backend", prod: false, override: "",
+    protocol: "http:", host: "localhost:5173", expected: "ws://localhost:5173/ws" },
 ];
 
 for (const scenario of cases) {

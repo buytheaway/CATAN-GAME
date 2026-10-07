@@ -17,6 +17,7 @@ const compiled = await build({
     resolveDir: fileURLToPath(new URL("../src", import.meta.url)), loader: "tsx" },
   bundle: true, write: false, platform: "node", format: "cjs", jsx: "automatic",
   external: ["react", "react/jsx-runtime"],
+  loader: { ".css": "empty" },
 });
 let elements = [];
 const traced = { ...jsxRuntime, ...Object.fromEntries(["jsx", "jsxs"].map(name => [name, (type, props, key) => {

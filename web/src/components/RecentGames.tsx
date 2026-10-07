@@ -5,12 +5,13 @@ import { inspectRecentGames, recentGamesForServer, removeRecentGame, updateRecen
 import type { Inspection, RecentGame } from "../recentGames";
 import { colorForPlayer } from "../board/colors";
 import "./recentGames.css";
+import { useAuth } from "../auth/AuthUI";
 
 export type RecentCard = { binding: RecentGame; inspection: Inspection | null };
 
 // Separate the small view from discovery so it can be verified without a WebSocket or WebGL.
-export function RecentGamesCards({ cards, loading, onContinue }: {
-  cards: RecentCard[]; loading: boolean; onContinue: (entry: RecentGame) => void;
+export function RecentGamesCards({ cards, loading, onContinue, onSave }: {
+  cards: RecentCard[]; loading: boolean; onContinue: (entry: RecentGame) => void; onSave?: (entry: RecentGame) => void;
 }) {
   return <div className="recent-games-list">
     {cards.map(({ binding, inspection }, i) => {
@@ -29,6 +30,7 @@ export function RecentGamesCards({ cards, loading, onContinue }: {
         <button className="btn primary" disabled={loading || !game?.can_continue} onClick={() => onContinue(binding)}>
           {game?.status === "game_over" ? "Return to Room" : "Continue"}
         </button>
+        {game && onSave && <button disabled={loading} onClick={() => onSave(binding)}>Save to account</button>}
       </article>;
     })}
   </div>;
@@ -58,6 +60,8 @@ export async function discoverRecentGames(signal?: AbortSignal, url = defaultWeb
 export default function RecentGames({ client, wsDefault, error }: {
   client: WSClient; wsDefault: string; error: ServerError | null;
 }) {
+  const auth = useAuth();
+  const [claimError, setClaimError] = useState("");
   const [cards, setCards] = useState<RecentCard[]>(() => recentGamesForServer(wsDefault).map(binding => ({ binding, inspection: null })));
   const [loading, setLoading] = useState(cards.length > 0);
   const [retry, setRetry] = useState(0);
@@ -71,12 +75,14 @@ export default function RecentGames({ client, wsDefault, error }: {
       if (mounted) { setCards(next); setLoading(false); }
     });
     return () => { mounted = false; abort.abort(); window.clearTimeout(timeout); };
-  }, [retry, error, wsDefault]);
+  }, [retry, error, wsDefault, auth?.revision]);
   return <section className="recent-games" aria-label="Recent games" aria-busy={loading}>
     {cards.length > 0 && <>
       <div className="recent-games-title"><h3>Continue Game</h3>
         <button className="btn" disabled={loading} onClick={() => setRetry(n => n + 1)}>Check again</button></div>
-      <RecentGamesCards cards={cards} loading={loading} onContinue={binding => client.continueGame(binding, wsDefault)} />
+      <RecentGamesCards cards={cards} loading={loading} onContinue={binding => client.continueGame(binding, wsDefault)}
+        onSave={auth?.user ? binding => { setClaimError(""); void auth.claim(binding).catch(() => setClaimError("Could not save this guest game. Check your session and try again.")); } : undefined} />
+      {claimError && <p role="alert">{claimError}</p>}
     </>}
     <p className="guest-recovery-note">Guest games are recoverable only on this browser.</p>
   </section>;

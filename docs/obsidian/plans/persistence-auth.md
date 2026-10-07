@@ -1,7 +1,7 @@
 ---
 tags: [catan, architecture, persistence, auth, plan]
-updated: 2026-10-06
-status: phase-1c-completed
+updated: 2026-10-07
+status: auth-phase-1-completed
 ---
 
 # Persistence + Auth Architecture v1
@@ -10,9 +10,35 @@ status: phase-1c-completed
 
 ## Status and boundary
 
-Architecture plan audited 2026-10-06 against `745d749` / `game-ux-2-3`, then used as the user-approved direction for Persistence 1A/1B. **Full GameState codec 1A, durable guest backend 1B and guest Continue UX 1C are implemented/verified.** Auth and Profile remain future scope. Current authority/privacy/consumed-sequence/rematch constraints remain in force; engine/rules/codec/player projection unchanged. Historical pre-persistence audit and future account proposals below are labelled separately from the implemented 1B contract.
+## Auth Phase 1 — completed 2026-10-07
 
-Goal: one FastAPI worker and one PostgreSQL database; committed active games survive process/container restart, guests can continue using their credential, accounts can later list their games. No Redis, broker, event sourcing, multi-instance coordination, engine rewrite or mandatory registration.
+**Completed; READY FOR CHECKPOINT.** Authorized after `4cdfc1a` / `persistence-phase-1c`. The pre-implementation audit found no users/sessions/ownership FK. The released implementation reuses existing RoomPlayer UUID, locked candidate → PostgreSQL commit → promotion and one-active-socket bind; engine/codec/player projection are unchanged.
+
+Alembic f1a001 adds users + hash-only opaque user_sessions and nullable RoomPlayer.user_id with a partial unique active room/user index. Guest tokens remain valid for NULL-owned seats; previous-schema upgrade preserves their room/match/head/proof. Direct authenticated Host/Join creates ownership without a guest token and uses account display_name. Claim requires session and guest proof, commits ownership/revocation together, and uses an ephemeral per-connection nonce to preserve only the requesting browser's current socket; another socket is fenced. No claim by name/pid or silent auto-claim. Same owner can retry the same confirmed claim idempotently; another owner cannot claim it.
+
+Auth uses Argon2id (19 MiB, t=2, p=1), bounded Unicode passwords, ASCII case-normalized usernames and Unicode display names. Session expiry is absolute 30 days, last_seen writes throttled to 5 minutes. Login/register issue fresh sessions and revoke the incoming browser session. Mutation transactions share-lock the current session/user so logout and commands have a defined order. WS private publication also revalidates sessions.
+
+Username: ASCII letters/digits/underscore/dash, 3–32, trim/lowercase, controls forbidden. Display name: Unicode 1–32 without controls/format characters; captured per seat and not rewritten by claim. Password: exact Unicode, 10–128 code points and ≤512 UTF-8 bytes, no trimming/composition rules. argon2-cffi generates salt/encoded parameters, verifies in up to two worker threads and upgrades older parameters on successful login. Session proof is 256-bit random cookie, only SHA-256 stored; cookie max-age 30 days/HttpOnly/SameSite=Lax/Path=/, production Secure. Auth bodies max4KiB, register5/min and login15/min per peer, global5× each, bounded peer map. No sensitive validation/SQL/password/cookie output.
+
+HTTP writes require JSON + an exact configured Origin; no missing/null/wildcard Origin, no permissive CORS. WS validates browser Origin before accepting cookie auth; Origin-less desktop guest connections remain supported. Production is Secure-cookie/HTTPS-only by default; local HTTP requires explicit development mode and allowed origins. Frontend adds compact auth forms/account controls, account Active Games/Continue and explicit Save to account, keeping guest Recent/Create/Join and existing match/controller UI.
+
+Implementation files: [auth modules](../../../app/auth/), [migration](../../../migrations/versions/f1a001_account_ownership.py), existing server/persistence commit/recovery adapter, [AuthUI](../../../web/src/auth/AuthUI.tsx)/[API](../../../web/src/auth/api.ts)/WSClient. HTTP register/login/logout/me/active/claim and WS account_continue/seat_identity are detailed in [[Сервер и протокол#Auth Phase 1 — HTTP and WS ownership]]. Account Continue uses the cookie-derived user + durable owned RoomPlayer; no user_id/pid/guest proof from the client. Current pointer stores account marker/code/server only. True expiry/foreign seat/takeover stops retry, temporary outage preserves intent; old browser never auto-fights takeover. Guest schema and personal snapshots remain unchanged.
+
+Verification **2026-10-07**: full **564 pytest**, **90 real-PG cases**, **162 web**, TypeScript/production build, Docker backend/web, nginx -t, host/container pip check. Previous Phase 1C schema upgrade preserves guest match/head/token. New behavior tests cover password/normalization/rehash, session rotation/expiry/revoke/disabled/throttling, Origin/CSRF/HTTP cookie flags, account create/join/duplicate/foreign Continue, explicit claim/retry/wrong proof/failed commit/current socket/other controller/recovery/rematch compact pid, and actual transaction share-lock ordering against logout.
+
+Chrome 154/Nginx/PostgreSQL **10/10 Auth E2E checks**: Register→mixed ordinary Host/Join/setup/Roll, browser B login/Active Games/Continue/same seat + old socket fencing, account C denied, Logout + old-cookie replay + Login/Continue, backend SIGKILL and retained-volume down/up, guest Register without auto-claim→Save/current socket/pid/name/state preserved→new browser Continue→another restart, and logged-out guest Host/Join/Recent/Continue/Roll. Screenshots inspected, 1920/1440/1280 layout checked; no browser JS errors. Reproduce with node web/e2e/auth.cjs and external Playwright/Chrome; isolated catan-persistence-test only, never down -v. Separate prior guest E2E is web/e2e/continue-games.cjs.
+
+The entire prior guest Continue E2E was also rerun against the Auth image: **10/10 passed**, including two bindings, automatic refresh, cached-name correction, loading/503/retry, SIGKILL and retained-volume down/up, internal durable close removing only its own binding and playable End in the other room. No JS errors; same seat/match/private state/deck/bag survived recovery.
+
+Local browser round-trip medians: login **27.3ms**, /me **4.9ms**, Active Games **7.7ms** (6 samples); account WS handshake/Continue to personal snapshot **24.3ms** (3 samples). These are local Docker Desktop checks, not load/production-hardware estimates. Session cookie remained invisible to JS; HTTP mutation headers validated in real same-origin browser requests. Production Secure-cookie attributes verified in PostgreSQL API tests; HTTPS deployment/certificates were not performed.
+
+No confirmed Auth Phase 1 blocker. No profiles/history/OAuth/email/reset/account deletion/multi-worker/Redis/gameplay changes. Current one-worker/process-local limits may share a Nginx peer budget; one controlling socket per seat; guest token loss still cannot recover by nickname, account recovery requires login, password reset is absent. HttpOnly does not stop XSS from making authenticated requests. TLS/backup/retention/load remain separate. Checkpoint: feat: add account authentication and game ownership, tag auth-phase-1; do not automatically start profiles/history. Accepted policy — [[Architecture Decisions#ADR-013 — Account sessions and durable seat ownership]], development/HTTPS — [[Deployment#Account cookies and HTTPS — Auth Phase 1]].
+
+Separate password verification median **16.9ms**, 12 samples in the actual Docker Python 3.12 worker-limited Argon2id path, excluding DB/network. The login round trip above includes verification plus HTTP/DB/session issuance.
+
+Architecture plan originally audited 2026-10-06 against `745d749` / `game-ux-2-3`, then used for Persistence 1A/1B/1C and Auth 1. **Codec, durable guest backend, guest Continue and account Auth 1 are implemented/verified.** Profile/history remain future scope. Authority/privacy/consumed-sequence/rematch constraints remain in force; engine/rules/codec/player projection unchanged. The older audit/proposals below remain historical or future where richer than the implemented contract above.
+
+Goal: one FastAPI worker and PostgreSQL database; committed games survive restart, guests continue with credentials and accounts list/Continue their owned seats. No Redis, broker, event sourcing, multi-instance coordination, engine rewrite or mandatory registration.
 
 ## Persistence Phase 1C — completed 2026-10-06
 
@@ -390,6 +416,8 @@ Accounts may Continue from another browser/device using session + DB ownership. 
 
 ## Auth proposal
 
+Historical proposal; the implemented Auth Phase 1 contract is above. Optional session-refresh/sliding expiry, display-name editor/CSRF nonce, broader account/history fields remain proposals and are not runtime promises.
+
 | Option | Assessment for this project |
 | --- | --- |
 | Opaque server-side session | Recommended: random cookie bearer, hashed DB record, easy expiry/revoke/logout, same PostgreSQL. |
@@ -442,9 +470,9 @@ DB/backups contain trusted game secrets and account hashes; app-private credenti
 
 ## Future Docker and dependencies
 
-Current 1B: Browser → Nginx → FastAPI → Python runtime + private PostgreSQL/named volume/healthcheck. Only web exposed; one worker/replica mandatory, startup Alembic once before durable traffic. Future auth still needs `/api/` proxy (current routes only /ws and /health), HTTPS/cookie policy and backup/restore drills. Volume is not backup. No auth/deployment expansion beyond 1B.
+Current Auth 1: Browser → Nginx → FastAPI/Python + private PostgreSQL/named volume/healthcheck. Only web exposed; one worker/replica, startup Alembic before durable traffic. /api proxy arrived in 1C, same-origin dev /ws proxy and cookie/Origin policy in Auth 1. Public auth requires HTTPS; certificate termination/backup drills were not implemented here. Volume is not backup.
 
-Current server requirements have FastAPI/Uvicorn/websockets/Pydantic but no DB/migrations/password library. Recommend SQLAlchemy 2.x + Alembic + psycopg 3 async driver; choose exact supported pins at implementation. AsyncSession per operation/task, explicit transactions and no shared global session. Direct psycopg is viable but would duplicate mapping/migration management across membership/auth/history; SQLModel adds another model layer without replacing typed engine dataclasses. Do not add both psycopg and asyncpg unnecessarily. Auth Phase adds argon2-cffi only when needed. No dependency modernization in architecture phase.
+Implemented pins: existing SQLAlchemy/Alembic/psycopg from 1B plus argon2-cffi 25.1.0, bindings26.1.0/CFFI2.1.1/pycparser3.0 in Auth 1. One AsyncSession per operation/task, explicit transactions, no shared global session/JWT/auth framework or dependency modernization. The earlier architecture comparison chose SQLAlchemy rather than adding another model/driver layer.
 
 ## Proposed modules and incremental adoption
 
@@ -497,9 +525,9 @@ Finished normal results retained indefinitely in v1; full finished snapshots/pri
 
 ## Blockers and recommended next step
 
-Codec, durable guest backend and Continue gates closed by verified 1A/1B/1C. Existing to_dict/from_dict remains incomplete and must not replace full codec. Auth/history/TLS/backup/load/retention remain separate work; gameplay P1 unchanged.
+Codec, durable guest backend, guest Continue and account Auth gates closed by verified 1A/1B/1C/Auth1. Existing to_dict/from_dict remains incomplete and must not replace full codec. Profiles/history/reset/TLS deployment/backup/load/retention remain separate work; gameplay P1 unchanged.
 
-**Next only on a separate user request: optional Auth/Profile stages or another focused task.** Do not start automatically; checkpoint 1C before extending scope.
+**Next only on a separate user request: profiles/history or another focused task.** Do not start automatically; checkpoint Auth 1 before extending scope.
 
 ## Audit evidence and sources
 

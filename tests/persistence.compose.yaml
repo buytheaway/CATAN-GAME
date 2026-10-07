@@ -1,5 +1,9 @@
 # Isolated, explicit opt-in test project. Never reuse the normal production volume.
 services:
+  backend:
+    environment:
+      CATAN_AUTH_MODE: development
+      CATAN_AUTH_ORIGINS: http://127.0.0.1:18081
   postgres:
     ports:
       - "127.0.0.1:15432:5432"

@@ -4,6 +4,7 @@ import { MatchSettings, PlayerColors } from "./RoomSettings";
 import RoomChat from "../game/RoomChat";
 import { colorForPlayer } from "../board/colors";
 import RecentGames from "./RecentGames";
+import { AccountGames, useAuth } from "../auth/AuthUI";
 import "../game/room.css";
 
 export default function LobbyPage({
@@ -20,6 +21,7 @@ export default function LobbyPage({
   error: ServerError | null;
 }) {
   const [url, setUrl] = useState(wsDefault);
+  const auth = useAuth();
   const [name, setName] = useState("Player");
   const [roomCode, setRoomCode] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(4);
@@ -44,14 +46,19 @@ export default function LobbyPage({
   }, [client]);
 
   useEffect(() => { setCustomLabel("Custom map: none"); }, [room?.room_code]);
+  useEffect(() => { if (auth?.user) { setName(auth.user.display_name); setUrl(wsDefault); } }, [auth?.user?.display_name, wsDefault]);
 
   const onHost = () => {
+    if (auth?.user && url !== wsDefault) return;
+    if (auth?.user) client.leaveRoom();
     client.setName(name);
     if (!client.isOpen(url)) client.connect(url, name);
     client.host(maxPlayers);
   };
 
   const onJoin = () => {
+    if (auth?.user && url !== wsDefault) return;
+    if (auth?.user) client.leaveRoom();
     const code = roomCode.trim().toUpperCase();
     if (!code) return;
     client.loadToken(code, name, url);
@@ -62,17 +69,18 @@ export default function LobbyPage({
 
   return (
     <div>
+      {!room && <AccountGames />}
       {!room && <RecentGames client={client} wsDefault={wsDefault} error={error} />}
       <div className="lobby-grid">
       <div className="panel card">
         <h3>Connection</h3>
         <label className="field">
           <span>Server WS URL</span>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} />
+          <input value={url} disabled={!!auth?.user} onChange={(e) => setUrl(e.target.value)} />
         </label>
         <label className="field">
           <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} />
+          <input value={name} readOnly={!!auth?.user} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="field">
           <span>Room code</span>

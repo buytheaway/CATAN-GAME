@@ -57,6 +57,8 @@ class Coordinator:
                     landed = (restored.match_id == candidate.match_id and restored.tick == candidate.tick
                               and bundle["room"]["config"] == room_config(candidate)
                               and [p.id for p in restored.players if p.name] == [p.id for p in candidate.players if p.name])
+                    landed = landed and [(p.user_id, p.token_revoked_at) for p in restored.players if p.name] == [
+                        (p.user_id, p.token_revoked_at) for p in candidate.players if p.name]
                     if kwargs.get("snapshot") and candidate.game:
                         landed = landed and checksum(bundle["head"]["payload"]) == checksum(match_checkpoint(candidate))
                     receipt = kwargs.get("receipt")

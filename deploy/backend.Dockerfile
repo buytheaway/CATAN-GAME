@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements-server.txt \
 COPY app/__init__.py app/server_mp.py app/net_protocol.py app/resource_path.py app/room_options.py ./app/
 COPY app/game_events.py app/test_tools.py ./app/
 COPY app/persistence/ ./app/persistence/
+COPY app/auth/ ./app/auth/
 COPY alembic.ini ./
 COPY migrations/ ./migrations/
 COPY app/engine/ ./app/engine/

@@ -9,6 +9,18 @@ updated: 2026-10-06
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
 
+## ADR-013 — Account sessions and durable seat ownership
+
+Status: **Accepted; implemented/verified 2026-10-07, Auth Phase 1.** User authorized accounts/cookie sessions/explicit guest claim/account Continue after `persistence-phase-1c`.
+
+Decision: opaque 256-bit cookie bearer, SHA-256 session hash in PostgreSQL, HttpOnly/SameSite=Lax/Path=/ and Secure by default. Absolute expiry 30 days; last_seen writes throttled to 5 minutes; successful login/register issues a fresh session and revokes the incoming one, logout revokes only the current browser session. Argon2id password hashes with encoded parameters/random salt, baseline 19 MiB/t=2/p=1. No JWT/account framework/email/OAuth/profile/history.
+
+Durable RoomPlayer.user_id determines account ownership independently of match pid. Direct account Host/Join needs no guest token. Claim requires both authenticated session and guest proof, atomically sets ownership and revokes the old guest credential without changing name/pid/GameState. An ephemeral per-connection nonce identifies the requesting current WS; it is not a recovery credential. Matching socket upgrades in place, another controller is fenced. Unique active room/user membership is enforced in runtime and PostgreSQL. Retained rematch participants keep ownership through compact pid; excluded memberships retire.
+
+Reason: one existing commit/RoomPlayer/WS system can support both guests and accounts; cookie sessions give straightforward revoke/logout/restart durability without JWT lifecycle complexity. A nonce prevents a token holder from silently upgrading another browser's live socket to account authority. Session/user share locks during room mutation give logout and in-flight commands a transaction order; every private account publication also rechecks session validity. Same-account verified Continue takes over the seat, with no automatic reclaim loop by the old browser.
+
+Consequences: HTTP mutations require JSON and an exact configured Origin, including login/register/logout/claim; missing/null/foreign origins fail and no permissive CORS is added. Cookie WS checks browser Origin before acceptance. Origin-less non-cookie desktop guests and same-origin plain-HTTP guests remain supported. Production auth requires HTTPS and configured exact HTTPS origins; local HTTP explicitly opts into development mode. Vite proxies both API and WS on the site origin. Account session is never stored in JS/localStorage or put in a URL; existing guest bearer limitations remain. Details — [[Сервер и протокол#Auth Phase 1 — HTTP and WS ownership]], [[Deployment#Account cookies and HTTPS — Auth Phase 1]], [[plans/persistence-auth#Auth Phase 1 — completed 2026-10-07]].
+
 ## ADR-012 — Durable commit gate and conservative restart
 
 Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1B.** User authorized PostgreSQL durability, stable guest ownership, commit-before-ACK and paused restart policy. Engine/rules remain unchanged.

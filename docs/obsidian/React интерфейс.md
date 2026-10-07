@@ -4,6 +4,18 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Auth Phase 1 — account and guest UI
+
+Implemented/verified **2026-10-07**: 162 web tests, 564 pytest, TS/production/Docker and 10 Chrome/Nginx/PG auth flows. [AuthUI.tsx](../../web/src/auth/AuthUI.tsx) adds AuthProvider, compact AccountControls/Register/Login dialog, AccountGames and explicit Save to account. [api.ts](../../web/src/auth/api.ts) makes same-origin/no-store requests with an 8s timeout and safe error messages; opaque session is HttpOnly and never accessible to this code. [auth.css](../../web/src/auth/auth.css) scopes dark auth UI; lobby/board/trade/dev-card composition is preserved.
+
+App → AuthProvider → LobbyPage (AccountGames + guest Recent Games + unchanged Create/Join) or GamePage (AccountControls in GameTopBar). Forms have username/password and registration display name, focus/Escape handling, busy state and no password persistence. Signed-in Host/Join uses account display_name and site's WS origin; guest name/manual-server controls remain. Active cards show only safe owned-room metadata; different browser needs only login, not local guest storage. Failed /me/Active Games does not delete guest bindings. Stale bootstrap responses cannot overwrite a later login/logout.
+
+Account Continue → WSClient.continueAccount → account_continue(room_code) with browser cookie → server seat_identity → same room/personal snapshot/controller. Account current pointer stores only ownership:"account", room_code and server_url in sessionStorage; pid/match/session token stay out of storage. Refresh restores that pointer. Server pid/name/epoch/consumed seq update current client identity and pending replay; new match resets old commands. Confirmed session_expired/seat_not_owned/unauthenticated/seat_taken_over stops retry/fallback, clears current pointer and leaves the match UI; transient DB/network failure preserves intent. The old browser after takeover can explicitly Continue again, never auto-fight the new owner.
+
+Login/Register never claim browser guest games. Save to account in current AccountControls or a guest Recent card submits session + that exact guest proof; current socket's hello nonce is included only for its room. Server commit confirms ownership/revocation, then only that guest proof is removed; unrelated games remain. Current matching socket receives account identity and stays usable without pid/state/name changes. Account Active Games is then the recovery source, including another browser. Claim retries for the same confirmed owner/proof are idempotent. Guest Recent schema/version/bounds/migration remain unchanged.
+
+Vite default WS now uses the page's /ws proxy along with /api so cookie and WS share the origin. Explicit VITE_WS_URL/manual guest overrides remain available; cross-origin account cookie transport is not supported. No localStorage JWT/session, profile/history/login-required gameplay. Limits and backend security — [[Сервер и протокол#Auth Phase 1 — HTTP and WS ownership]], [[plans/persistence-auth#Auth Phase 1 — completed 2026-10-07]].
+
 ## Persistence 1C — Recent Games and Continue
 
 Implemented/verified **2026-10-06**: 150 web cases, TS/production/Docker builds и 10 Chrome/Nginx/PG checks; full pytest 535. [RecentGames.tsx](../../web/src/components/RecentGames.tsx) находится над lobby-grid, поэтому Connection/Room не получают лишние пустые grid tracks. Scoped [recentGames.css](../../web/src/components/recentGames.css) оформляет компактные dark cards; match UI/Board3D не менялись.

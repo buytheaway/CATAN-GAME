@@ -6,6 +6,29 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 metadata = MetaData()
 
+users = Table("users", metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("username", Text, nullable=False),
+    Column("username_normalized", Text, nullable=False, unique=True),
+    Column("display_name", Text, nullable=False),
+    Column("password_hash", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("disabled_at", DateTime(timezone=True)),
+)
+user_sessions = Table("user_sessions", metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id"), nullable=False),
+    Column("token_hash", LargeBinary, nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False),
+    Column("revoked_at", DateTime(timezone=True)),
+    CheckConstraint("octet_length(token_hash) = 32", name="session_hash_length"),
+)
+Index("sessions_user", user_sessions.c.user_id)
+Index("sessions_active_expiry", user_sessions.c.expires_at, postgresql_where=user_sessions.c.revoked_at.is_(None))
+
 rooms = Table("rooms", metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("room_code", Text, nullable=False, unique=True),
@@ -37,6 +60,7 @@ Index("rooms_recovery", rooms.c.status, rooms.c.last_activity_at)
 room_players = Table("room_players", metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("room_id", UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=False),
+    Column("user_id", UUID(as_uuid=True), ForeignKey("users.id")),
     Column("name", Text, nullable=False),
     Column("color", Text, nullable=False),
     Column("current_pid", Integer),
@@ -52,6 +76,8 @@ room_players = Table("room_players", metadata,
 )
 Index("room_active_color", room_players.c.room_id, room_players.c.color, unique=True, postgresql_where=room_players.c.status == "active")
 Index("room_active_name", room_players.c.room_id, room_players.c.name, unique=True, postgresql_where=room_players.c.status == "active")
+Index("room_active_user", room_players.c.room_id, room_players.c.user_id, unique=True,
+      postgresql_where=(room_players.c.status == "active") & room_players.c.user_id.is_not(None))
 
 seat_tokens = Table("seat_tokens", metadata,
     Column("room_player_id", UUID(as_uuid=True), ForeignKey("room_players.id"), primary_key=True),

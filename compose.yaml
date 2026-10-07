@@ -18,6 +18,8 @@ services:
     environment:
       CATAN_ENABLE_TEST_TOOLS: "${CATAN_ENABLE_TEST_TOOLS:-0}"
       CATAN_PERSISTENCE_MODE: durable
+      CATAN_AUTH_MODE: "${CATAN_AUTH_MODE:-production}"
+      CATAN_AUTH_ORIGINS: "${CATAN_AUTH_ORIGINS:-}"
       DATABASE_URL: "${DATABASE_URL:-}"
       CATAN_DATABASE_HOST: postgres
       POSTGRES_DB: "${POSTGRES_DB:-catan}"

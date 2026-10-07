@@ -1,9 +1,27 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # Project State
+
+## Auth Phase 1 — Accounts and Account Continue
+
+**Completed — verified 2026-10-07. READY FOR CHECKPOINT.** Implemented after `4cdfc1a` / `persistence-phase-1c`: username/password registration, login/logout, database-backed opaque HttpOnly sessions, direct account-owned Host/Join, explicit guest claim, safe My Active Games and cross-browser Continue. No profiles/history/OAuth/reset/email or gameplay changes.
+
+Alembic `f1a001` adds users, hash-only user_sessions and nullable RoomPlayer.user_id; partial unique active room/user index prevents two seats for one account. Existing NULL-owned guest rooms/matches/tokens survive upgrade. Ownership stays with durable RoomPlayer UUID; pid/epoch/sequence come from the existing WS identity flow. Guest credentials remain separate. Claim requires session + valid guest token, atomically assigns ownership/revokes the token, preserves pid/name/GameState and only upgrades the requesting active socket when its in-memory connection nonce matches; otherwise the old controller is fenced. Login/register never auto-claim. Lost claim success can retry idempotently for the same owner/proof.
+
+Argon2id: 19 MiB/t=2/p=1, random library salt, rehash on successful login. Username ASCII 3–32, trim/lowercase, no controls; display name Unicode 1–32 without controls/formats; password exact Unicode 10–128 code points/≤512 UTF-8 bytes. Session absolute expiry 30 days, last_seen writes at most once/5 minutes. New login/register rotates the incoming browser session; logout revokes only that session and fences its sockets. Account command transactions share-lock session/user before mutation; private snapshot publication revalidates account sessions. Transient DB failure keeps recovery intent; confirmed expiry/revocation stops retries.
+
+Production defaults to Secure/HttpOnly/SameSite=Lax/Path=/ cookies and exact HTTPS `CATAN_AUTH_ORIGINS`. Local HTTP requires explicit `CATAN_AUTH_MODE=development`; existing same-origin guest HTTP and Origin-less desktop guest WS remain supported. Browser cookie WS validates Origin. Vite now proxies `/ws` as well as `/api` so cookies stay on the site origin; explicit guest WS override remains. Public internet deployment still requires HTTPS/operational hardening.
+
+Verification: **564/564 pytest**, including **90 real-PostgreSQL cases**, **162/162 web**, TypeScript/production build, Docker backend/web, host/container pip check and nginx -t. Previous-schema upgrade preserved guest match/head/token. Real Chrome 154/Nginx/PG **10/10 Auth acceptance checks**: ordinary mixed room setup/Roll, cross-browser takeover, foreign denial, logout/old-cookie replay, SIGKILL and full down/up without -v, explicit guest claim/current socket/new browser/restart, logged-out guest Recent/Continue/Roll. Screenshot inspected; 1920/1440/1280 desktop checks passed. Local browser medians: login 27.3ms, /me 4.9ms, Active Games 7.7ms (6 samples), WS account Continue 24.3ms (3 samples); not load testing. Engine/codec/rules/player projection unchanged; scenarios not rerun, **348/508 historical**.
+
+Отдельно на текущем Auth image повторён весь прежний guest Continue E2E: **10/10**, включая две комнаты, refresh, cached-name correction, loading/503/retry, backend SIGKILL, down/up с сохранением volume и удаление только подтверждённо закрытой binding. Проверки выполнялись в изолированном `catan-persistence-test`.
+
+Отдельная Argon2id verification median: **16.9ms**, 12 samples, настоящий worker-limited verify в Docker Python 3.12, без DB/network. Login 27.3ms выше включает полный HTTP/DB/session path.
+
+No confirmed Auth Phase 1 blocker. Remaining scope: production TLS/backup/load/retention, future account recovery/password reset/profile/history only on separate request. One worker and one controlling socket/seat; auth limiter is process-local and default Nginx may share peer budget. Password/session secrets are not logged or cached in browser JS; HttpOnly does not prevent an XSS from making authenticated requests. Details — [[plans/persistence-auth#Auth Phase 1 — completed 2026-10-07]], [[Architecture Decisions#ADR-013 — Account sessions and durable seat ownership]]. Checkpoint: `feat: add account authentication and game ownership`, tag `auth-phase-1`.
 
 ## Persistence Phase 1C — Continue Game / Recent Games
 

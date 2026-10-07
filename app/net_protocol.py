@@ -51,6 +51,12 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "reconnect_token required")
         return {"ok": True}
 
+    if mtype == "account_continue":
+        if (not isinstance(msg.get("room_code"), str) or not 1 <= len(msg["room_code"]) <= 32
+                or set(msg) != {"type", "room_code"}):
+            return _err("invalid", "room_code required; identity comes from session")
+        return {"ok": True}
+
     if mtype in ("leave_room", "start_match", "rematch", "enable_test_mode"):
         if "request_id" in msg and (not isinstance(msg["request_id"], str) or not 1 <= len(msg["request_id"]) <= 128):
             return _err("invalid", "Invalid request_id")

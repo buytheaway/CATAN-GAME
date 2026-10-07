@@ -12,6 +12,7 @@ from . import models as m
 from .credentials import utcnow, token_hash, valid_token
 from .inspection import safe_game
 from .errors import PersistenceUnavailable, CommitUncertain
+from app.auth.security import AuthError, authorize_transaction
 from .recovery import room_config, match_checkpoint, checksum
 
 
@@ -97,6 +98,7 @@ class Repository:
         async with self.db.sessions() as session:
             try:
                 await session.begin()
+                await authorize_transaction(session)
                 self._fault("before_write")
                 if before is None:
                     await session.execute(insert(m.rooms).values(**values))
@@ -119,7 +121,7 @@ class Repository:
                     await session.execute(update(m.seat_tokens).where(m.seat_tokens.c.room_player_id.in_(retired))
                                           .values(revoked_at=now))
                 for p in named:
-                    member = dict(id=p.id, room_id=candidate.id, name=p.name, color=p.color, current_pid=p.pid,
+                    member = dict(id=p.id, room_id=candidate.id, user_id=p.user_id, name=p.name, color=p.color, current_pid=p.pid,
                                   status="active", joined_at=now, last_seen_at=now, removed_at=None)
                     patch = {k: v for k, v in member.items() if k not in ("id", "joined_at", "last_seen_at")}
                     old_member = next((old for old in before.players if old.id == p.id), None) if before else None
@@ -127,11 +129,12 @@ class Repository:
                         patch["last_seen_at"] = now
                     await session.execute(pg_insert(m.room_players).values(**member).on_conflict_do_update(
                         index_elements=[m.room_players.c.id], set_=patch))
-                    token = dict(room_player_id=p.id, token_hash=p.token_hash, created_at=now,
-                                 expires_at=p.token_expires_at, revoked_at=None)
-                    await session.execute(pg_insert(m.seat_tokens).values(**token).on_conflict_do_update(
-                        index_elements=[m.seat_tokens.c.room_player_id],
-                        set_={"expires_at": p.token_expires_at}))
+                    if p.token_hash:
+                        token = dict(room_player_id=p.id, token_hash=p.token_hash, created_at=now,
+                                     expires_at=p.token_expires_at, revoked_at=p.token_revoked_at)
+                        await session.execute(pg_insert(m.seat_tokens).values(**token).on_conflict_do_update(
+                            index_elements=[m.seat_tokens.c.room_player_id],
+                            set_={"expires_at": p.token_expires_at, "revoked_at": p.token_revoked_at}))
                 if before and before.match_uuid and before.match_uuid != candidate.match_uuid:
                     await session.execute(update(m.matches).where(m.matches.c.id == before.match_uuid,
                         m.matches.c.status == "active").values(status="superseded", updated_at=now))
@@ -194,6 +197,9 @@ class Repository:
                     before.persistence_blocked = True
                 with suppress(Exception):
                     await session.rollback()
+                raise
+            except AuthError:
+                await session.rollback()
                 raise
             except Exception as exc:
                 # Cancellation while COMMIT is in flight is also ambiguous. Never retry the write.
