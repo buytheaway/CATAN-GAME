@@ -1,11 +1,19 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-06
+updated: 2026-10-07
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
+
+## Finalized terrain GLBs — implemented
+
+Implemented/visually verified **2026-10-07**, using the user's finalized models. Eight assets in `web/public/models/terrain/` replace procedural terrain as the primary Board3D presentation: forest, fields, pasture, hills, mountains, desert, sea and gold. Procedural hints remain loading/error fallback. Assets and their Blender sources were not redesigned or modified; surrounding ocean, HUD, ownership palette, structures and action flow are preserved.
+
+One transform for all assets: scale `1/1.2`, Y rotation `π/2`, source bottom correction `+0.11` (world Y offset `+0.0916667`). This aligns the flat-top source base with the existing radius-one pointy-top graph. Taller relief does not move gameplay anchors. Number-token cylinders/text/pips stay at their existing position but draw as a readable badge above decor; no arbitrary per-terrain height. Thin hovered/selected/legal hex rings replace procedural-body emissive feedback, without recoloring shared GLB materials.
+
+Actual Chrome screenshots inspected: Base Standard and Seafarers Gold Haven, all eight hover states, number tokens, edge/vertex structures, robber on Mountains, sea/pirate/ships, orbit/zoom, production/theft flights and missing-asset fallback. Gold Haven was checked at 1920/1440/1280 desktop widths. Screenshots are temporary verification artifacts in `%TEMP%/catan-terrain-integration/`, not new design references. More geometry measurably increases frame cost (~2 → ~10ms warm median on RTX 5050); Fields optimization/mobile/low-end validation are outside this integration. Full evidence/limits — [[plans/board3d#Terrain GLB integration — visual scope]].
 
 ## Game UX 2.3 — implemented playtest feedback
 

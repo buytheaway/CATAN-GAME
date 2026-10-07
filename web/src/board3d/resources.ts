@@ -88,18 +88,19 @@ export function createVisualResources() {
       if (!geometries.has(key)) geometries.set(key, new RingGeometry(inner, outer, segments));
       return geometries.get(key)!;
     },
-    standard(color: string, ghost = false, glow?: { color: string; intensity: number }) {
-      const key = `standard:${color}:${ghost}:${glow?.color ?? "none"}:${glow?.intensity ?? 0}`;
+    standard(color: string, ghost = false, glow?: { color: string; intensity: number }, overlay = false) {
+      const key = `standard:${color}:${ghost}:${glow?.color ?? "none"}:${glow?.intensity ?? 0}:${overlay}`;
       if (!materials.has(key)) materials.set(key, new MeshStandardMaterial({
-        color, roughness: 0.78, transparent: ghost, opacity: ghost ? 0.46 : 1, depthWrite: !ghost,
+        color, roughness: 0.78, transparent: ghost, opacity: ghost ? 0.46 : 1,
+        depthWrite: !ghost && !overlay, depthTest: !overlay,
         emissive: glow?.color ?? "#000000", emissiveIntensity: glow?.intensity ?? 0,
       }));
       return materials.get(key)!;
     },
-    flat(color: string, opacity = 1) {
-      const key = `flat:${color}:${opacity}`;
+    flat(color: string, opacity = 1, overlay = false) {
+      const key = `flat:${color}:${opacity}:${overlay}`;
       if (!materials.has(key)) materials.set(key, new MeshBasicMaterial({
-        color, transparent: opacity < 1, opacity, depthWrite: opacity === 1,
+        color, transparent: opacity < 1, opacity, depthWrite: !overlay && opacity === 1, depthTest: !overlay,
       }));
       return materials.get(key)!;
     },

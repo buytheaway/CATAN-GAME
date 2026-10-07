@@ -4,6 +4,14 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Board3D terrain assets — 2026-10-07
+
+GamePage → BoardRenderer → Board3D → HexTile3D → [TerrainHexVisual.tsx](../../web/src/board3d/TerrainHexVisual.tsx). Snapshot projection/controller/legal callbacks remain unchanged. HexTile3D keeps the original simple hex as an invisible hit mesh and retains tileIndex; GLB children ignore raycasting. Vertex/edge targets and piece anchors are still separate and authoritative snapshot IDs reach the existing controller.
+
+[terrainAssets.ts](../../web/src/board3d/terrainAssets.ts) selects eight assets/resource aliases, caches one Promise per canonical terrain and clones only scene nodes. Geometry/materials are shared; unmount/terrain-change effects ignore late replies. Pending/failed loads use TerrainHints and the original hex material palette locally, including unknown-type fallback; failed loads warn once and stay cached until page reload. No Suspense/error from one asset can remove the whole board. Sea assets do not create extra map tiles.
+
+NumberToken3D/visual resource pool add a shared readable badge layer, with no per-terrain height changes or material edits to the GLBs. Hex feedback uses a thin ring; coordinates.ts only expands conservative visual camera heights. UI/controller/rules/protocol/auth stay unchanged. Verified: 169 web tests, TS/build, production Chrome Base/Gold placement/events/hover/camera/reconnect/fallback; limits and performance — [[plans/board3d#Terrain GLB integration — visual scope]].
+
 ## Auth Phase 1 — account and guest UI
 
 Implemented/verified **2026-10-07**: 162 web tests, 564 pytest, TS/production/Docker and 10 Chrome/Nginx/PG auth flows. [AuthUI.tsx](../../web/src/auth/AuthUI.tsx) adds AuthProvider, compact AccountControls/Register/Login dialog, AccountGames and explicit Save to account. [api.ts](../../web/src/auth/api.ts) makes same-origin/no-store requests with an 8s timeout and safe error messages; opaque session is HttpOnly and never accessible to this code. [auth.css](../../web/src/auth/auth.css) scopes dark auth UI; lobby/board/trade/dev-card composition is preserved.

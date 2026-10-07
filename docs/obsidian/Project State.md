@@ -5,6 +5,16 @@ updated: 2026-10-07
 
 # Project State
 
+## Board3D — finalized terrain GLBs
+
+**Completed visual integration — verified 2026-10-07.** Все восемь finalized GLB из `web/public/models/terrain/` подключены через TerrainHexVisual/Three GLTFLoader. Одна загрузка на тип, собственные scene nodes на hex, общие geometry/materials. GLB не участвуют в raycasting: исходный простой hex, vertex/edge targets, controller и snapshot IDs сохранены. Loading/error fallback — прежний procedural terrain; ошибка одного asset не заменяет всю сцену. Number tokens и tile feedback рисуются поверх relief без изменения игровых координат; camera footprint учитывает более высокие модели. Sea GLB появляется только на настоящих sea tiles, DecorativeOcean остаётся отдельным статичным декором.
+
+Verification: **169/169 web tests** (162 прежних + 7 focused cases), TypeScript и production build. Все 8 GLB попадают в `dist/models/terrain/` без изменения bytes. Chrome 154/production frontend + существующий isolated fixture server: **11/11 acceptance groups** — Base natural setup/Roll, paid settlement/city/road, free roads, Knight/robber/victim, ship/move/pirate на Gold Haven, exact dice, production/theft flights, hover всех восьми terrain, camera, 2D/3D, reconnect/refresh и missing-Mountains fallback. Gold Haven 1920/1440/1280 desktop framing/layout прошёл. Snapshot rerenders сохраняют terrain clone UUIDs; toggle использует кеш, idle +0 frames. GLB/.blend/.blend1 и пользовательский graph.json не менялись.
+
+Performance measured before/after on RTX 5050 Laptop, 1920×1080, two 19-tile presets, 20 warm renders with GPU completion: Base **2.2 → 10.2ms**, Gold Haven **1.9 → 10.3ms** median; rendered triangles **22,020 → 275,562** / **19,658 → 233,010**. Fields сохраняет исходные ~44k triangles и является основным вкладом в Base. Заметного зависания камеры на проверенном GPU нет, low-end/mobile/50-hex GLB performance не сертифицированы; asset optimization не выполнялась. Build сохраняет warning о крупном lazy Board3D chunk (~939kB).
+
+Python runtime, server, protocol, auth/persistence, Docker, dependencies и unrelated UI не менялись; pytest/scenarios/Docker не повторялись. Browser server использовал existing engine-built fixtures и opt-in Test Room для управляемых событий; естественно проходились Base setup/Roll, не полная партия. Fixture запускается без auth DB: его прежние /api/auth/me 503 исключены из renderer checks; Auth acceptance этим этапом не повторялась. Evidence/screenshots/measurements находятся в `%TEMP%/catan-terrain-integration/`. Детали — [[plans/board3d#Terrain GLB integration — visual scope]], [[Design System#Finalized terrain GLBs — implemented]].
+
 ## Auth Phase 1 — Accounts and Account Continue
 
 **Completed — verified 2026-10-07. READY FOR CHECKPOINT.** Implemented after `4cdfc1a` / `persistence-phase-1c`: username/password registration, login/logout, database-backed opaque HttpOnly sessions, direct account-owned Host/Join, explicit guest claim, safe My Active Games and cross-browser Continue. No profiles/history/OAuth/reset/email or gameplay changes.

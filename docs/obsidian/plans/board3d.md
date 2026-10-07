@@ -1,11 +1,44 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-05
+updated: 2026-10-07
 ---
 
 # Board3D
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[Карты и сценарии]]
+
+## Terrain GLB integration — visual scope
+
+Scope: integrate the eight finalized assets in `web/public/models/terrain/`, without changing those files or their Blender sources. No rules, snapshot, controller, networking, authentication or deployment changes.
+
+Audit: `model.ts` projects the original snapshot IDs; `coordinates.ts` converts server XY to Three XZ. `HexTile3D` currently uses its simple hex body for tile raycasting, while `TerrainHints` ignores raycasting. Vertex/edge targets are separate in `InteractionOverlay3D`; pieces use the original vertex/edge anchors. There is no board-level corrective transform. Terrain decoration and the surrounding `DecorativeOcean` are static; existing finite dice/robber/event animations are independent of terrain decoration.
+
+Integration plan:
+
+1. Keep the existing logical hex geometry and callbacks. Replace only its visible body/decor with a reusable `TerrainHexVisual`; visual GLB meshes never raycast.
+2. Use the installed Three `GLTFLoader`, one cached load per terrain type. Clone scene nodes once per mounted hex, sharing geometry/materials; preserve procedural terrain as loading/error fallback.
+3. Use one common transform: scale `1 / 1.2`, rotation Y `π / 2`, source-space Y correction `+0.11` (world offset `0.11 / 1.2`). The assets are flat-top; the logical board is pointy-top. Tile centers and game IDs stay unchanged.
+4. Preserve number tokens and feedback, with the smallest shared presentation adjustment needed to keep them visible over the taller decor. Keep structures, interaction targets and decorative ocean on existing anchors.
+5. Verify mappings, caching/failure fallback and common transforms; run all web tests, TypeScript and production build. In Chrome, compare Base Standard and Seafarers Gold Haven, placement/movement, hover, camera and reconnect; keep screenshots and measurements outside the repository.
+
+Completed and verified **2026-10-07**. No dependencies added; installed Three 0.180.0/Fiber 8.18.0 remain. Source GLBs and all Blender originals/backups are unchanged. Cached assets live for the page lifetime (at most eight); primitives do not dispose shared resources on hex removal. Each Canvas retains its own renderer/GPU lifecycle.
+
+Number-token geometry, coordinates and number/pip content are preserved. A shared depth-independent badge layer prevents Mountains/Fields from hiding the tokens; no arbitrary terrain-specific token heights or GLB material edits. Tile feedback uses a thin hex ring over the original logical footprint. Vertex/edge targets, pieces and robber/pirate anchors/animations are unchanged. Only conservative visual camera heights increased where GLB relief exceeds the old procedural hints.
+
+Validation: 169/169 web tests, TypeScript and production build; the eight production GLB copies match source hashes. Seven added tests cover canonical/resource aliases, unknown fallback, concurrent/repeated load reuse, failed/synchronous loader fallback, clone/resource/raycast isolation, all eight real GLB base transforms and overlay depth safety. No brittle full-scene snapshots.
+
+Chrome 154, production frontend + unchanged fixture server: 11 acceptance groups passed, including natural Base setup/Roll, paid settlement/city/road, Road Building, Knight/victims/robber, Gold Haven ships/move/pirate, dice, production/theft flights and a robber placed on Mountains. Hover covered all eight terrains; snapshot nodes remained stable, 2D/3D reused downloads, reconnect/refresh had exactly one terrain per original tile, and idle rendering stopped. Intentional missing Mountains produced one warning per page and local procedural fallback; city/hover still worked. Gold Haven 1920×1080/1440×900/1280×720 fit without HUD overlap. Screenshots inspected and kept in `%TEMP%/catan-terrain-integration/`.
+
+Performance, RTX 5050 Laptop, 1920×1080, 20 warm GPU-complete renders per 19-tile map:
+
+| Map | Before → after median | Before → after draw calls | Before → after triangles |
+| --- | --- | --- | --- |
+| Base Standard | 2.2 → 10.2ms | 792 → 1151 | 22,020 → 275,562 |
+| Seafarers Gold Haven | 1.9 → 10.3ms | 698 → 1071 | 19,658 → 233,010 |
+
+These are diagnostic timings with `gl.finish()`, not measured sustained FPS. Fields remains ~2.74MB/~44k triangles per tile and accounts for most Base triangles; no decimation/instancing/asset redesign was performed. Low-end/mobile/50-hex GLB performance remains unverified. The lazy Board3D production chunk is ~939kB and retains Vite's size warning.
+
+Testing limits: fixture auth DB was disabled (pre-existing /api/auth/me 503 are outside renderer checks). Existing browser helper's old manual Join after refresh was adapted only in a temporary copy to permit the current automatic reconnect; repository E2E scripts and authentication were not changed. Backend pytest/scenarios/Docker were not rerun because no backend/deployment code changed.
 
 ## Phase 1 — Visual Foundation
 

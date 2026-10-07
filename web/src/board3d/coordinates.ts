@@ -67,9 +67,10 @@ export function cameraFootprint(model: Pick<BoardRenderModel, "tiles" | "ports">
   const outline = model.tiles.flatMap(t => {
     const rim = Array.from({ length: 6 }, (_, i): Point3D =>
       [t.position[0] + Math.sin(i * Math.PI / 3), TILE_TOP, t.position[2] + Math.cos(i * Math.PI / 3)]);
+    // Conservative heights cover both GLB relief and the procedural fallback.
     // Tall details live inside the hex, not at every empty perimeter corner.
-    const height = ({ forest: 1.15, mountains: 1.18, hills: .68, pasture: .6,
-      fields: .7, desert: .47, gold: .8 } as Record<string, number>)[t.terrain];
+    const height = ({ forest: 1.15, mountains: 1.42, hills: .68, pasture: .77,
+      fields: .77, desert: .51, gold: .8 } as Record<string, number>)[t.terrain];
     const detail = height == null ? [] : [-.58, .58].map((x): Point3D =>
       [t.position[0] + x, height, t.position[2] - .65]);
     return [...rim, ...detail];

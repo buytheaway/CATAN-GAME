@@ -5,8 +5,8 @@ import { VISUAL } from "./materials";
 import { useVisualResources } from "./VisualResources";
 
 /** Canvas-generated label: no font download or external texture assets. */
-export function TokenLabel({ text, color = VISUAL.ink, width = 0.72, depth = 0.72, pips = 0 }: {
-  text: string; color?: string; width?: number; depth?: number; pips?: number;
+export function TokenLabel({ text, color = VISUAL.ink, width = 0.72, depth = 0.72, pips = 0, overlay = false }: {
+  text: string; color?: string; width?: number; depth?: number; pips?: number; overlay?: boolean;
 }) {
   const pool = useVisualResources();
   const canvas = useMemo(() => {
@@ -32,8 +32,9 @@ export function TokenLabel({ text, color = VISUAL.ink, width = 0.72, depth = 0.7
     return image;
   }, [text, color, pips]);
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} scale={[width, depth, 1]} geometry={pool.geometry("plane")}>
-      <meshBasicMaterial transparent toneMapped={false} depthWrite={false}>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} scale={[width, depth, 1]} geometry={pool.geometry("plane")}
+      renderOrder={overlay ? 4 : 0}>
+      <meshBasicMaterial transparent toneMapped={false} depthWrite={false} depthTest={!overlay}>
         <canvasTexture attach="map" args={[canvas]} colorSpace={SRGBColorSpace} />
       </meshBasicMaterial>
     </mesh>
@@ -45,14 +46,16 @@ export default function NumberToken3D({ number }: { number: number }) {
   const pool = useVisualResources();
   // Printed board-token dots, purely visual (never a production/roll calculation).
   const pips = Math.max(0, 6 - Math.abs(7 - number));
+  // Keep the logical token position. Draw the badge above decorative relief instead
+  // of floating every token above the tallest mountain or changing terrain assets.
   return (
     <group position={[0, TILE_TOP + 0.045, 0.18]} userData={{ number }}>
-      <mesh castShadow receiveShadow scale={[0.41, 0.075, 0.41]}
-        geometry={pool.geometry("cylinder")} material={pool.standard(VISUAL.tokenSide)} />
-      <mesh position={[0, 0.038, 0]} scale={[0.395, 0.012, 0.395]}
-        geometry={pool.geometry("cylinder")} material={pool.standard(VISUAL.ivory)} />
+      <mesh receiveShadow scale={[0.41, 0.075, 0.41]} renderOrder={2}
+        geometry={pool.geometry("cylinder")} material={pool.standard(VISUAL.tokenSide, false, undefined, true)} />
+      <mesh position={[0, 0.038, 0]} scale={[0.395, 0.012, 0.395]} renderOrder={3}
+        geometry={pool.geometry("cylinder")} material={pool.standard(VISUAL.ivory, false, undefined, true)} />
       <group position={[0, 0.047, 0]}>
-        <TokenLabel text={String(number)} color={highlighted ? VISUAL.accent : VISUAL.ink} pips={pips} />
+        <TokenLabel text={String(number)} color={highlighted ? VISUAL.accent : VISUAL.ink} pips={pips} overlay />
       </group>
     </group>
   );

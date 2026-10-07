@@ -322,6 +322,18 @@ test("scene resources reuse geometry/materials and ghost materials do not write 
   pool.release(); await Promise.resolve();
 });
 
+test("visual badges stay readable over relief without mutating ordinary or ghost materials", async () => {
+  const pool = createVisualResources(); pool.retain();
+  const ordinary = pool.standard("#ffffff"), ghost = pool.standard("#ffffff", true);
+  const badge = pool.standard("#ffffff", false, undefined, true);
+  const ring = pool.flat("#ffffff", .8, true);
+  assert.equal(pool.standard("#ffffff", false, undefined, true), badge);
+  assert.ok(!badge.depthTest && !badge.depthWrite && !ring.depthTest && !ring.depthWrite);
+  assert.ok(ordinary.depthTest && ordinary.depthWrite && ghost.depthTest && !ghost.depthWrite);
+  assert.notEqual(badge, ordinary); assert.notEqual(ring, pool.flat("#ffffff", .8));
+  pool.release(); await Promise.resolve();
+});
+
 test("scene unmount disposes shared geometry and both material kinds, once per resource", async () => {
   const pool = createVisualResources(); pool.retain();
   const resources = [pool.geometry("hex"), pool.ring(0.18, 0.26), pool.standard("#ffffff"), pool.flat("#ffffff", 0.5)];
