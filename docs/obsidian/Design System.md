@@ -1,11 +1,44 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
+
+## Product / UX / Visual Polish — Phase 1
+
+**Implemented/verified 2026-10-08; non-game shell only.** Product identity: `Danik Inc. Entertainment` is the secondary studio mark; `CATAN.КОЛОНИЗАТОРЫ` is the primary title. Existing English UI is retained, without an i18n layer. Direction: warm modern digital tabletop with restrained cartographic ambience, system fonts and a serif heading accent. No heavy images, external art or ornamental fantasy surfaces.
+
+Scoped tokens in [shell.css](../../web/src/shell/shell.css), shared by `.app-shell` and the portalled `.auth-backdrop`:
+
+| Token / convention | Current value |
+| --- | --- |
+| Background / surface / raised / input | `#0a1721` / `#102430` / `#172e3b` / `#0b1c27` |
+| Text / secondary text / border | `#f0eadd` / `#a6b8c1` / `#314651` |
+| Primary / warm accent / error | Seafoam `#a8d7c7` / sand `#e4cda6` / clay `#e8a18b` |
+| Type | Segoe UI/system UI body; Georgia headings; body 14px, help 12px, restrained 10–11px metadata |
+| Spacing / surfaces | 4px-based scale; 8px controls, 14px panels; subtle shared shadow/borders |
+| Focus / interaction | Visible seafoam outline, primary/secondary/subtle buttons, hover/pressed/disabled states |
+| Content width | Maximum 1184px; adaptive desktop/tablet grids; longer content scrolls vertically |
+
+[PageShell.tsx](../../web/src/shell/PageShell.tsx) provides Brand/header plus account/connection affordances, Panel, SectionHeader, StatusBadge and EmptyState. [GameCard.tsx](../../web/src/shell/GameCard.tsx) presents the same safe server summary for guest and account recovery; it owns no credentials or game controller. Existing color IDs/palette remain separate from shell accents.
+
+Home: modest hero → Continue/account/guest recovery → identity/advanced connection → independent Host and Join forms. One game stays a compact card; unavailable games remain visible and disabled, with their proof retained; confirmed invalid bindings disappear. Map/custom JSON and rules stay in the created room, because presets/settings are server-owned. Room: code/map/presence header → players/colors/Start and chat on the left, map/custom JSON plus Victory & discard / Dice & timer / Game / Bank groups on the right. No synthetic ready state is introduced.
+
+Auth: explicit Username, distinct Display name and pre-submit constraints; inline field errors plus safe global credentials/session/origin/network errors. Dialog is keyboard navigable, traps focus during requests and restores focus on close. Sign In always opens Login for a signed-out user. Code-point limits match the server model rather than HTML UTF-16 maxLength. Details — [[React интерфейс#Product shell and auth UX — 2026-10-08]].
+
+Actual browser evidence, generated from production dist against the real existing server. These are implementation screenshots, not concept references:
+
+| State | Evidence |
+| --- | --- |
+| Signed-out Home / compact Recent games | [Home](../design/references/product-shell-phase-1/home-signed-out-1920.png) · [Recent](../design/references/product-shell-phase-1/home-recent-1920.png) |
+| Host / participant, 4 seats and 2 connected players | [Host](../design/references/product-shell-phase-1/room-host-two-players-1920.png) · [Participant](../design/references/product-shell-phase-1/room-participant-1920.png) |
+| Login / registration / inline validation | [Login](../design/references/product-shell-phase-1/login-1920.png) · [Register](../design/references/product-shell-phase-1/registration-1920.png) · [Errors](../design/references/product-shell-phase-1/auth-validation-1920.png) |
+| Narrow desktop, 900px | [Home](../design/references/product-shell-phase-1/home-narrow-900.png) · [Room](../design/references/product-shell-phase-1/room-narrow-900.png) |
+
+Full browser check captures 14 states; also checks 1440/1280/768/480 widths. No horizontal overflow, giant input widths or JS errors in this run. The new static files were fulfilled only inside the test browser on localhost; normal API/WS/cookie flows were real, the existing Docker stack stayed untouched. No active-match palette/layout/ocean/ports/pieces/chat/log/placement/audio work starts here. Earlier match-design sections retain their historical dates.
 
 ## Finalized terrain GLBs — implemented
 

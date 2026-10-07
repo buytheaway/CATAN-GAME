@@ -8,25 +8,33 @@ export function MatchSettings({ client, room, connected }: { client: WSClient; r
   return <fieldset className="room-settings" disabled={disabled}>
     <legend>Match settings {disabled ? "· read only" : "· host"}</legend>
     <div className="room-settings-grid">
-      <label className="field"><span>Discard threshold</span><select value={settings.discard_threshold}
-        onChange={e => client.setSettings({ discard_threshold: Number(e.target.value) })}>
-        {Array.from({ length: 50 }, (_, i) => i + 1).map(value => <option key={value} value={value}>{value} cards</option>)}</select></label>
-      <label className="field"><span>Dice mode</span><select value={settings.dice_mode}
-        onChange={e => client.setSettings({ dice_mode: e.target.value as "random" | "balanced" })}>
-        <option value="random">Random</option><option value="balanced">Balanced</option></select></label>
-      <label className="field"><span>Starting player</span><select value={settings.starting_player}
-        onChange={e => client.setSettings({ starting_player: e.target.value as "random" | "host" })}>
-        <option value="random">Random</option><option value="host">Host</option></select></label>
-      <label className="field"><span>Turn timer</span><select value={settings.turn_timer}
-        onChange={e => client.setSettings({ turn_timer: Number(e.target.value) as 0 | 30 | 60 | 90 | 120 })}>
-        <option value={0}>Off</option>{[30, 60, 90, 120].map(seconds => <option key={seconds} value={seconds}>{seconds} sec</option>)}</select></label>
-      <label className="field"><span>Bank resource counts</span><select value={settings.bank_visibility}
-        onChange={e => client.setSettings({ bank_visibility: e.target.value as "visible" | "hidden" })}>
-        <option value="visible">Visible</option><option value="hidden">Hidden</option></select></label>
-      <label className="field"><span>Target VP</span><select value={settings.target_vp}
+      <section className="settings-group"><h4>Victory & discard</h4>
+      <label className="field"><span>Target VP</span><select aria-label="Target VP" value={settings.target_vp}
         onChange={e => client.setSettings({ target_vp: Number(e.target.value) })}>
         {(settings.target_vp < 3 || settings.target_vp > 30) && <option value={settings.target_vp}>{settings.target_vp} VP (preset)</option>}
         {Array.from({ length: 28 }, (_, i) => i + 3).map(vp => <option key={vp} value={vp}>{vp} VP</option>)}</select></label>
+      <label className="field"><span>Discard threshold</span><select aria-label="Discard threshold" value={settings.discard_threshold}
+        onChange={e => client.setSettings({ discard_threshold: Number(e.target.value) })}>
+        {Array.from({ length: 50 }, (_, i) => i + 1).map(value => <option key={value} value={value}>{value} cards</option>)}</select></label>
+      </section>
+      <section className="settings-group"><h4>Dice & timer</h4>
+      <label className="field"><span>Dice mode</span><select aria-label="Dice mode" value={settings.dice_mode}
+        onChange={e => client.setSettings({ dice_mode: e.target.value as "random" | "balanced" })}>
+        <option value="random">Random</option><option value="balanced">Balanced</option></select></label>
+      <label className="field"><span>Turn timer</span><select aria-label="Turn timer" value={settings.turn_timer}
+        onChange={e => client.setSettings({ turn_timer: Number(e.target.value) as 0 | 30 | 60 | 90 | 120 })}>
+        <option value={0}>Off</option>{[30, 60, 90, 120].map(seconds => <option key={seconds} value={seconds}>{seconds} sec</option>)}</select></label>
+      </section>
+      <section className="settings-group"><h4>Game</h4>
+      <label className="field"><span>Starting player</span><select aria-label="Starting player" value={settings.starting_player}
+        onChange={e => client.setSettings({ starting_player: e.target.value as "random" | "host" })}>
+        <option value="random">Random</option><option value="host">Host</option></select></label>
+      </section>
+      <section className="settings-group"><h4>Bank</h4>
+      <label className="field"><span>Bank resource counts</span><select aria-label="Bank resource counts" value={settings.bank_visibility}
+        onChange={e => client.setSettings({ bank_visibility: e.target.value as "visible" | "hidden" })}>
+        <option value="visible">Visible</option><option value="hidden">Hidden</option></select></label>
+      </section>
     </div>
     {settings.dice_mode === "balanced" && <p className="settings-hint">Balanced: shuffled 2d6 outcomes, refreshed after 24 rolls. No guaranteed number.</p>}
   </fieldset>;

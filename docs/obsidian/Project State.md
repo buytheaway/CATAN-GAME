@@ -1,9 +1,19 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # Project State
+
+## Product / UX / Visual Polish — Phase 1
+
+**Completed — verified 2026-10-08.** Non-game shell: exact `Danik Inc. Entertainment` / `CATAN.КОЛОНИЗАТОРЫ` brand, scoped navy/sand/seafoam system, Home/session hub, compact guest/account game cards, separate Host/Join forms and grouped pre-match Room. Manual server URL remains in Advanced connection; map/custom JSON/rules are configured after Host, from authoritative Room data. Players show actual presence/host/color/open seats, Room chat stays separate from match composition. Back to home uses existing disconnect and retains recoverable seats.
+
+Auth remains username/password, not email: username is 3–32 ASCII letters/digits/_/-; public display name is separate and accepts ordinary Unicode names. Form explains constraints before submission and shows field/server errors. Code-point validation replaces HTML UTF-16 length limits, preserving exact passwords; registration → Logout → Sign In now opens Login instead of retaining registration mode. Modal traps/restores keyboard focus, including disabled-controls busy state. Backend auth, cookie ownership, guest claims and recovery semantics are unchanged.
+
+Verification: **178/178 web tests** (169 existing + 9 focused behavior tests), TypeScript and production build pass. Chrome 154, new production dist + real existing HTTP/WS/PostgreSQL server: Home zero/one/multiple/unavailable games, invalid-binding cleanup, Host/Join, 4 seats/2 players, host/participant permissions, preset/custom/invalid JSON, settings/color/chat, guest/account Continue and refresh, Register/Login/Logout/incorrect credentials/inline validation/focus, Start with confirmed Gold Haven +12 VP. Widths 1920/1440/1280/900/768/480, no horizontal overflow or oversized inputs. **14 screenshots**, representative evidence in [[Design System#Product / UX / Visual Polish — Phase 1]]. No browser JS errors.
+
+Limits: browser-only static routing served the new dist on the existing allowed localhost origin; ordinary Docker containers/frontend were not rebuilt/restarted. Only outage and invalid local proof are controlled failure cases, not mocked successful auth/game snapshots. No Python/runtime/protocol/schema/assets/dependencies/deployment changes; pytest/scenarios/Docker builds were not repeated. Existing lazy Board3D ~939kB chunk warning remains. Active-game layout/art/interaction/audio were not redesigned; later work needs a separate task. Implementation boundaries — [[plans/game-ui-redesign#Product / UX / Visual Polish — Phase 1]].
 
 ## Board3D — finalized terrain GLBs
 
@@ -14,6 +24,8 @@ Verification: **169/169 web tests** (162 прежних + 7 focused cases), Type
 Performance measured before/after on RTX 5050 Laptop, 1920×1080, two 19-tile presets, 20 warm renders with GPU completion: Base **2.2 → 10.2ms**, Gold Haven **1.9 → 10.3ms** median; rendered triangles **22,020 → 275,562** / **19,658 → 233,010**. Fields сохраняет исходные ~44k triangles и является основным вкладом в Base. Заметного зависания камеры на проверенном GPU нет, low-end/mobile/50-hex GLB performance не сертифицированы; asset optimization не выполнялась. Build сохраняет warning о крупном lazy Board3D chunk (~939kB).
 
 Python runtime, server, protocol, auth/persistence, Docker, dependencies и unrelated UI не менялись; pytest/scenarios/Docker не повторялись. Browser server использовал existing engine-built fixtures и opt-in Test Room для управляемых событий; естественно проходились Base setup/Roll, не полная партия. Fixture запускается без auth DB: его прежние /api/auth/me 503 исключены из renderer checks; Auth acceptance этим этапом не повторялась. Evidence/screenshots/measurements находятся в `%TEMP%/catan-terrain-integration/`. Детали — [[plans/board3d#Terrain GLB integration — visual scope]], [[Design System#Finalized terrain GLBs — implemented]].
+
+Дополнительно при обычном локальном запуске **2026-10-07** исправлена упаковка assets: `deploy/web.Dockerfile` теперь копирует `web/public/` перед Vite build. `docker compose up -d --build --wait` прошёл; PostgreSQL/backend healthy, `/health` ready с PostgreSQL, homepage/auth bootstrap/WS hello проверены в Chrome без JS errors. Все восемь GLB отдаются через Nginx и совпадают с исходными SHA-256. Local HTTP accounts запущены с documented development mode/exact localhost origins; Test Tools выключены. Это packaging fix, без изменения deployment architecture; прежние fixture gameplay checks не выдаются за повторную полноценную Docker-партию.
 
 ## Auth Phase 1 — Accounts and Account Continue
 

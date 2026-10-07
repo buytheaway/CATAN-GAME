@@ -4,6 +4,20 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Product shell and auth UX — 2026-10-08
+
+App still creates one WSClient, subscribes to the same room/match callbacks and restores the same current-game pointer. With no match it now renders [PageShell](../../web/src/shell/PageShell.tsx) → account/connection header + LobbyPage. LobbyPage branches into Home when room is null, or pre-match Room otherwise. GamePage stays in the same `.app.app--match` wrapper with its previous props/controller/scene layout.
+
+Home reuses AccountGames and RecentGames discovery. Both use presentation-only [GameCard](../../web/src/shell/GameCard.tsx): room code, public map, own name/color, counts/online/lifecycle/winner and callbacks. Guest inspection, credential removal only after confirmed invalidation, account Continue/claim and transient failure retention remain in existing controllers. Host/Join forms retain setName/connect/host and loadToken/connect/join ordering. Advanced server URL stays available for guests; signed-in games use the existing same-origin account policy. Map presets/custom JSON/rules are in Room; no invented pre-host config or extra API is added.
+
+Room uses actual slots/host/presence/color plus PlayerColors; map handler/FileReader keeps its room/status guard and original setMap payload. MatchSettings is grouped into Victory & discard, Dice & timer, Game and Bank; selects have exact accessible labels. Pending map/settings/color still come from WSClient; Start waits for confirmation, host, lobby, connection and at least two connected named players. The header reads the confirmed target override. Chat uses unchanged RoomChat callbacks/history, styled only inside the shell. Back to home disconnects through existing leaveRoom, clears local display/log and retains recoverable bindings.
+
+AuthProvider and [api.ts](../../web/src/auth/api.ts) keep their HTTP/cookie/session/claim behavior. AccountControls adds explanatory helpers and [validation.ts](../../web/src/auth/validation.ts), checked against app/auth/passwords.py: username ASCII 3–32 with case-insensitive server normalization; display_name 1–32 trimmed Unicode code points without category-C characters; password 10–128 code points / ≤512 UTF-8 bytes, never trimmed. No email login. Removing display/password HTML maxLength avoids rejecting valid astral Unicode by UTF-16 length. Server remains authoritative and field errors identify username/display/password; credentials, origin, session and network errors stay global.
+
+Confirmed UI bug fixed: register mode previously persisted after successful registration/logout, so signed-out Sign In reopened Create account. Launch now resets to Login; the real browser regression covers registration → logout → incorrect login → successful login. Focus trap includes busy periods with all controls disabled, preserves Escape/restore and aria-busy/invalid/describedby. Specific past user credentials were not available, so their exact rejected attempt is not diagnosed beyond the verified username/email/display-name contract.
+
+Verified 2026-10-08: **178 web tests**, TS/build; [product-shell.cjs](../../web/e2e/product-shell.cjs) tests real auth/rooms/recovery/preset/custom JSON/settings/chat/Start plus explicit unavailable/invalid failures. New dist was served to the isolated browser only; existing backend/nginx/container state stayed running. Screenshots and limits — [[Design System#Product / UX / Visual Polish — Phase 1]]. No Python, WS contract, database, Board3D/assets or active-match composition changes.
+
 ## Board3D terrain assets — 2026-10-07
 
 GamePage → BoardRenderer → Board3D → HexTile3D → [TerrainHexVisual.tsx](../../web/src/board3d/TerrainHexVisual.tsx). Snapshot projection/controller/legal callbacks remain unchanged. HexTile3D keeps the original simple hex as an invisible hit mesh and retains tileIndex; GLB children ignore raycasting. Vertex/edge targets and piece anchors are still separate and authoritative snapshot IDs reach the existing controller.
@@ -123,8 +137,8 @@ App показывает LobbyPage без match и GamePage при его нал
 
 | Блок | Где | Данные и поведение |
 | --- | --- | --- |
-| Главное меню | Отдельного нет | Стартовый экран — LobbyPage |
-| Connection | LobbyPage | URL, имя, код, число мест; Host/Join |
+| Главная / бренд | PageShell + Home branch LobbyPage | Brand, account/connection status, hero, Continue/account/guest recovery |
+| Host / Join | LobbyPage | Имя, отдельные формы числа мест/кода; manual URL в Advanced connection; существующие WS intents |
 | Карта комнаты | LobbyPage | room.map_presets/id/meta/rules и map_revision, isHost, client.pendingMapId; setMap из onChange/FileReader |
 | Участники лобби | LobbyPage | room.players, host_pid, connected |
 | Turn/prompt и Game info | GameTopBar/ContextPrompt/GameOverlay | turn, snapshot/controller; raw tick/phase/pending/status/map/rules скрыты в закрытом info drawer |
@@ -209,9 +223,12 @@ Build palette показывает только инструменты с сущ
 ## Текущее дерево
 
 ```text
-App
-├── LobbyPage → RecentGames (home only) / connection / map / MatchSettings / PlayerColors / RoomChat
-│   └── Enable Test Room (only host, flag ON, lobby)
+App / AuthProvider (existing cookie/ownership/claim flows)
+├── PageShell (no match) → Brand / connection status / AccountControls
+│   └── LobbyPage
+│       ├── Home → hero / AccountGames + RecentGames → GameCard / identity / Host + Join forms
+│       └── Room → code/map/presence / players + PlayerColors / Start / RoomChat / map + MatchSettings
+│           └── Enable Test Room (only host, flag ON, lobby)
 └── GamePage → one snapshot / useBoardInteraction / useGameCommand
     ├── GameTopBar → brand / goal / info / event button
     ├── ContextPrompt → header center, pointer-events none
@@ -219,7 +236,7 @@ App
     │   ├── BoardView → original SVG + shared callbacks
     │   └── Board3D / Canvas / CameraRig / VisualResources
     │       ├── DecorativeOcean / Coastline (static, no game IDs)
-    │       ├── HexTile3D → TerrainHints → terrain/*Visual + NumberToken3D
+    │       ├── HexTile3D → TerrainHexVisual (GLBs; TerrainHints fallback) + NumberToken3D
     │       ├── Pieces3D / Port3D / finite DiceRoll3D
     │       └── InteractionOverlay3D → same legal / targets / ghosts
     ├── Right sidebar

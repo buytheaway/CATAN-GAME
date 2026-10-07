@@ -3,6 +3,7 @@ import { defaultWebSocketUrl, WSClient, MatchState, RoomState, ServerError } fro
 import LobbyPage from "./components/LobbyPage";
 import GamePage from "./components/GamePage";
 import { AuthProvider, AccountControls } from "./auth/AuthUI";
+import { PageShell } from "./shell/PageShell";
 
 const WS_DEFAULT = defaultWebSocketUrl();
 
@@ -41,10 +42,8 @@ export default function App() {
 
   return (
     <AuthProvider client={client} onExit={() => { setMatch(null); setRoom(null); setError(null); }}>
-    <div className={match ? "app app--match" : "app"}>
-      {!match && <h2>CATAN LAN Web</h2>}
-      {!match && <AccountControls />}
       {match ? (
+        <div className="app app--match">
         <GamePage
           client={client}
           match={match}
@@ -57,16 +56,19 @@ export default function App() {
             setMatch(null); setRoom(null); setError(null); setLog([]);
           }}
         />
+        </div>
       ) : (
+        <PageShell status={status} account={<AccountControls shell />}>
         <LobbyPage
           client={client}
           room={room}
           status={status}
           wsDefault={WS_DEFAULT}
           error={error}
+          onBackToHome={() => { client.leaveRoom(); setRoom(null); setError(null); setLog([]); }}
         />
+        </PageShell>
       )}
-    </div>
     </AuthProvider>
   );
 }

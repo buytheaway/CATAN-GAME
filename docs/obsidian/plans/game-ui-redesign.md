@@ -1,11 +1,21 @@
 ---
 tags: [catan, план, web, дизайн]
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # Game UI Redesign
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[plans/board3d]]
+
+## Product / UX / Visual Polish — Phase 1
+
+Scope accepted 2026-10-07: non-game shell only — Home, Continue/Recent, Host/Join, pre-match Room and account dialog. Reuse this plan; no new planning/session document.
+
+Affected path: App's existing room/match switch → LobbyPage actions → unchanged WSClient intents → authoritative Room → room_state → React. Map/settings/color confirmation and Start guards stay intact. Recent inspection/guest proofs and account cookie ownership stay with their existing controllers. Auth form → same-origin authRequest → existing AuthService/password validators; client validation explains the contract and never replaces server validation.
+
+Implementation: a scoped PageShell/Brand, shared section/panel/status/empty-state primitives and GameCard; reusable shell/form/focus tokens, compact Home and grouped Room controls. Keep English UI except the exact brand `Danik Inc. Entertainment` / `CATAN.КОЛОНИЗАТОРЫ`. Username is 3–32 ASCII letters/digits/_/-, not email; display name is separate; password is 10–128 Unicode code points, preserved exactly, at most 512 UTF-8 bytes. Avoid HTML UTF-16 length limits that contradict the server.
+
+**Completed — verified 2026-10-08.** Reused existing controllers; added shell primitives/shared GameCard, grouped lobby, exact labels and explanatory auth code-point validation. Fixed sticky Register mode after logout and prevented focus from leaving the busy dialog. 178/178 web tests (9 new behavior groups), TypeScript and production build passed. Real Chrome/new production dist on existing server passed guest/account Home/Continue/Host/Join/Room/custom JSON/settings/chat/auth/Start flows and width checks; 14 screenshots, representative evidence in [[Design System#Product / UX / Visual Polish — Phase 1]]. Explicit temporary-outage and invalid local-proof faults only; successful flows use real server state. Existing Docker stack was not rebuilt/restarted: browser-only static routing supplied new frontend files. No backend, WS contract, persistence, Docker, Board3D/assets, gameplay or active-match composition changes. Later polish requires a new task.
 
 ## Game / Room UX 2.2 — Match Settings, Timer and Chat
 

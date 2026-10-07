@@ -7,7 +7,7 @@ export class AuthFailure extends Error {
 }
 export const errorText: Record<string, string> = {
   invalid_credentials: "Username or password is incorrect.", username_taken: "This username is taken.",
-  invalid_username: "Use 3–32 letters, digits, underscores or dashes for username.",
+  invalid_username: "Username must use 3–32 ASCII letters (A–Z), digits, underscores or dashes. Email and display names cannot be used to sign in.",
   invalid_display_name: "Display name must contain 1–32 visible characters.",
   invalid_password: "Password must contain 10–128 characters (up to 512 UTF-8 bytes).",
   unauthenticated: "Sign in to continue.", session_expired: "Your session expired. Sign in again.",

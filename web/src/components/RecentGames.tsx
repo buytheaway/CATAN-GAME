@@ -3,7 +3,8 @@ import type { ServerError, WSClient } from "../wsClient";
 import { defaultWebSocketUrl } from "../wsClient";
 import { inspectRecentGames, recentGamesForServer, removeRecentGame, updateRecentName } from "../recentGames";
 import type { Inspection, RecentGame } from "../recentGames";
-import { colorForPlayer } from "../board/colors";
+import GameCard from "../shell/GameCard";
+import { EmptyState, SectionHeader } from "../shell/PageShell";
 import "./recentGames.css";
 import { useAuth } from "../auth/AuthUI";
 
@@ -16,22 +17,8 @@ export function RecentGamesCards({ cards, loading, onContinue, onSave }: {
   return <div className="recent-games-list">
     {cards.map(({ binding, inspection }, i) => {
       const game = inspection?.status === "available" ? inspection.game : null;
-      return <article className="recent-game" key={`${binding.room_code}:${i}`}>
-        <div className="recent-game-heading"><strong>Room {binding.room_code}</strong>
-          <span>{loading ? "Checking…" : game ? { lobby: "Lobby", active: "In Game", game_over: "Game Over" }[game.status]
-            : "Temporarily unavailable"}</span></div>
-        {game && <>
-          <p className="recent-map">{game.map_name}</p>
-          <p><span className="color-dot" style={{ background: colorForPlayer(0, [{ pid: 0, color: game.own_color }]) }} />
-            Player: {game.own_name} · {game.player_count}/{game.max_players} players · {game.connected_count} online</p>
-          {game.winner && <p>Winner: {game.winner.name}</p>}
-        </>}
-        {!loading && !game && <p>Your saved place is kept. Try again when the server is available.</p>}
-        <button className="btn primary" disabled={loading || !game?.can_continue} onClick={() => onContinue(binding)}>
-          {game?.status === "game_over" ? "Return to Room" : "Continue"}
-        </button>
-        {game && onSave && <button disabled={loading} onClick={() => onSave(binding)}>Save to account</button>}
-      </article>;
+      return <GameCard key={`${binding.room_code}:${i}`} code={binding.room_code} game={game} loading={loading}
+        onContinue={() => onContinue(binding)} onSave={onSave ? () => onSave(binding) : undefined} />;
     })}
   </div>;
 }
@@ -78,12 +65,15 @@ export default function RecentGames({ client, wsDefault, error }: {
   }, [retry, error, wsDefault, auth?.revision]);
   return <section className="recent-games" aria-label="Recent games" aria-busy={loading}>
     {cards.length > 0 && <>
-      <div className="recent-games-title"><h3>Continue Game</h3>
-        <button className="btn" disabled={loading} onClick={() => setRetry(n => n + 1)}>Check again</button></div>
+      <SectionHeader title="Continue Game" eyebrow="Saved on this browser">
+        <button className="btn subtle" disabled={loading} onClick={() => setRetry(n => n + 1)}>Check again</button></SectionHeader>
       <RecentGamesCards cards={cards} loading={loading} onContinue={binding => client.continueGame(binding, wsDefault)}
         onSave={auth?.user ? binding => { setClaimError(""); void auth.claim(binding).catch(() => setClaimError("Could not save this guest game. Check your session and try again.")); } : undefined} />
       {claimError && <p role="alert">{claimError}</p>}
     </>}
+    {!loading && !cards.length && !auth?.user && <EmptyState title="No saved tables yet">
+      Host a game or join your friends. Your recoverable rooms will appear here.
+    </EmptyState>}
     <p className="guest-recovery-note">Guest games are recoverable only on this browser.</p>
   </section>;
 }

@@ -4,6 +4,7 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/index.html web/vite.config.ts web/tsconfig*.json web/postcss.config.cjs ./
 COPY web/src/ ./src/
+COPY web/public/ ./public/
 RUN npm run build
 
 FROM nginx:stable-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94

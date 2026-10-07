@@ -9,6 +9,10 @@ updated: 2026-10-07
 
 Production Infrastructure Phase 1 добавила Docker Compose; Persistence 1B — durable PostgreSQL/recovery; Auth Phase 1 — account sessions/ownership. Проверено 2026-10-07 на Docker Desktop Linux containers, Windows host. Это production-like запуск с persistence/accounts, без собственного TLS termination; публичное развёртывание требует HTTPS и operational hardening.
 
+## Frontend public assets
+
+`deploy/web.Dockerfile` copies `web/public/` into the build stage before Vite build. This includes the finalized eight `models/terrain/*.glb` files in Nginx's production static output; Blender sources under docs are not deployment inputs. Verified **2026-10-07** with the normal Compose stack: backend/PostgreSQL healthy, HTTP/auth bootstrap/WS hello passed in Chrome, all eight GLB responses have valid headers and match source SHA-256. No service/port/proxy architecture changes.
+
 ## Account cookies and HTTPS — Auth Phase 1
 
 Compose passes CATAN_AUTH_MODE (default **production**) and CATAN_AUTH_ORIGINS (default empty). Production registration/login require an exact configured HTTPS Origin; cookie is Secure/HttpOnly/SameSite=Lax/Path=/, max-age 30 days. Empty origins fail closed for auth mutations/cookie WS. Do not deploy development mode publicly. Existing same-origin plain-HTTP guest play remains possible independently of account auth. PostgreSQL stores users/session hashes/seat ownership; migration f1a001 upgrades existing guest schema without deleting room/match/head/token data. One backend worker remains mandatory.

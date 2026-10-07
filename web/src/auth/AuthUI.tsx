@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import { AuthFailure, authRequest, errorText, getActiveGames, getMe, type User } from "./api";
 import { removeRecentGame, type RecentGame, type GameSummary } from "../recentGames";
 import type { WSClient } from "../wsClient";
+import GameCard from "../shell/GameCard";
+import { EmptyState, SectionHeader } from "../shell/PageShell";
+import { authErrorField, validateAuth, type AuthField, type AuthFieldErrors } from "./validation";
 import "./auth.css";
 
 type Auth = { user: User | null; loading: boolean; message: string; revision: number;
@@ -46,7 +49,7 @@ export function AuthProvider({ client, onExit, children }: {client: WSClient; on
   return <Context.Provider value={{user, loading, message, revision, signIn, logout, claim, refresh, client}}>{children}</Context.Provider>;
 }
 
-export function AccountControls() {
+export function AccountControls({ shell = false }: { shell?: boolean }) {
   const auth = useAuth();
   const [open, setOpen] = useState(false);
   const [register, setRegister] = useState(false);
@@ -55,55 +58,102 @@ export function AccountControls() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
+  const [touched, setTouched] = useState<Partial<Record<AuthField, boolean>>>({});
+  const [serverErrors, setServerErrors] = useState<AuthFieldErrors>({});
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
-    panel.current?.querySelector<HTMLElement>("input,button")?.focus();
+    (panel.current?.querySelector<HTMLElement>("input:not(:disabled)") ?? panel.current?.querySelector<HTMLElement>("button:not(:disabled)"))?.focus();
     return () => previous?.focus();
   }, [open, register, auth?.user]);
+  useEffect(() => {
+    if (!open) return;
+    if (busy) { panel.current?.focus(); return; }
+    const field = Object.keys(serverErrors).find(key => serverErrors[key as AuthField]);
+    if (field) panel.current?.querySelector<HTMLInputElement>(`input[name="${field}"]`)?.focus();
+  }, [open, busy, serverErrors]);
   if (!auth) return null;
-  const close = () => { if (!busy) { setOpen(false); setPassword(""); setError(""); } };
+  const close = () => { if (!busy) { setOpen(false); setPassword(""); setError(""); setTouched({}); setServerErrors({}); } };
+  const fields = { username, password, display_name: displayName };
+  const validation = validateAuth(fields, register);
+  const fieldError = (field: AuthField) => serverErrors[field] || (touched[field] ? validation[field] : undefined);
+  const edit = (field: AuthField, value: string) => {
+    if (field === "username") setUsername(value);
+    else if (field === "password") setPassword(value);
+    else setDisplayName(value);
+    setServerErrors(previous => ({ ...previous, [field]: undefined })); setError("");
+  };
   const perform = async (operation: () => Promise<void>, leave = true) => {
-    setBusy(true); setError("");
-    try { await operation(); setPassword(""); if (leave) setOpen(false); }
-    catch (e) { setError(describe(e)); }
+    setBusy(true); setError(""); setServerErrors({});
+    try { await operation(); setPassword(""); setTouched({}); if (leave) setOpen(false); }
+    catch (e) {
+      const field = e instanceof AuthFailure ? authErrorField(e.code) : undefined;
+      if (field) setServerErrors({ [field]: describe(e) });
+      else setError(describe(e));
+    }
     finally { setBusy(false); }
   };
   const binding = auth.client.guestBinding();
-  return <div className="auth-controls">
-    <button className="auth-launch" title={auth.user?.display_name} onClick={() => { setOpen(true); void auth.refresh(); }}>
+  return <div className={`auth-controls${shell ? " auth-controls--shell" : ""}`}>
+    {shell && <span className="shell-account-label">{auth.loading ? "Checking account…" : auth.user ? "Signed in" : "Playing as a guest"}</span>}
+    <button className="auth-launch" title={auth.user?.display_name} onClick={() => {
+      if (!auth.user) setRegister(false);
+      setTouched({}); setServerErrors({}); setError(""); setOpen(true); void auth.refresh();
+    }}>
       {auth.user ? auth.user.display_name : "Sign In"}</button>
     {open && createPortal(<div className="auth-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
-      <div className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" ref={panel}
+      <div className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" aria-busy={busy || auth.loading} tabIndex={-1} ref={panel}
         onKeyDown={e => {
           if (e.key === "Escape") close();
           if (e.key === "Tab") {
             const nodes = Array.from(panel.current?.querySelectorAll<HTMLElement>("input:not(:disabled),button:not(:disabled)") ?? []);
             const first = nodes[0], last = nodes[nodes.length - 1];
-            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+            if (!nodes.length) { e.preventDefault(); panel.current?.focus(); }
+            else if (document.activeElement === panel.current) { e.preventDefault(); (e.shiftKey ? last : first)?.focus(); }
+            else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
             else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
           }
         }}>
-        <div className="auth-heading"><h3 id="auth-title">{auth.user ? "Account" : register ? "Create account" : "Sign In"}</h3>
+        <div className="auth-heading"><div><p className="shell-eyebrow">Your place at the table</p><h3 id="auth-title">{auth.user ? "Account" : register ? "Create account" : "Sign In"}</h3></div>
           <button onClick={close} disabled={busy} aria-label="Close account">×</button></div>
         {auth.user ? <>
-          <p>{auth.user.display_name} <span className="auth-muted">@{auth.user.username}</span></p>
+          <p className="auth-account-name">{auth.user.display_name} <span className="auth-muted">@{auth.user.username}</span></p>
           {binding && <><p>This game is currently saved only on this browser.</p>
             <button disabled={busy} onClick={() => void perform(() => auth.claim(binding))}>Save to account</button></>}
           <button disabled={busy} onClick={() => void perform(auth.logout)}>Logout</button>
-        </> : <form onSubmit={e => { e.preventDefault(); void perform(() => auth.signIn(register,
-          {username, password, ...(register ? {display_name: displayName} : {})})); }}>
-          <label>Username<input autoComplete="username" value={username} maxLength={32} required disabled={busy}
-            onChange={e => setUsername(e.target.value)} /></label>
-          {register && <label>Display name<input autoComplete="nickname" value={displayName} maxLength={32} required disabled={busy}
-            onChange={e => setDisplayName(e.target.value)} /></label>}
-          <label>Password<input type="password" autoComplete={register ? "new-password" : "current-password"} value={password}
-            minLength={10} maxLength={128} required disabled={busy} onChange={e => setPassword(e.target.value)} /></label>
-          <button disabled={busy || auth.loading}>{busy ? "Please wait…" : register ? "Register" : "Login"}</button>
-          <button type="button" disabled={busy} onClick={() => { setRegister(!register); setError(""); setPassword(""); }}>
+        </> : <form noValidate onSubmit={e => {
+          e.preventDefault(); setTouched({ username: true, password: true, display_name: register }); setServerErrors({}); setError("");
+          const invalid = Object.keys(validation)[0];
+          if (invalid) { panel.current?.querySelector<HTMLInputElement>(`input[name="${invalid}"]`)?.focus(); return; }
+          void perform(() => auth.signIn(register, { username, password, ...(register ? { display_name: displayName } : {}) }));
+        }}>
+          <p className="auth-intro">{register ? "Keep your games with one account, across browsers." : "Sign in to return to your account games."}</p>
+          <div className="auth-field"><label htmlFor="auth-username">Username</label>
+            <input id="auth-username" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} required disabled={busy}
+              aria-invalid={!!fieldError("username")} aria-describedby={`auth-username-help${fieldError("username") ? " auth-username-error" : ""}`}
+              onBlur={() => setTouched(previous => ({ ...previous, username: true }))} onChange={e => edit("username", e.target.value)} />
+            <p className="auth-muted" id="auth-username-help">3–32 ASCII letters (A–Z), digits, _ or -. Use your username, not an email or display name. Uppercase and lowercase are equivalent.</p>
+            {fieldError("username") && <p className="auth-field-error" id="auth-username-error" role="alert">{fieldError("username")}</p>}
+          </div>
+          {register && <div className="auth-field"><label htmlFor="auth-display-name">Display name</label>
+            <input id="auth-display-name" name="display_name" autoComplete="nickname" value={displayName} required disabled={busy}
+              aria-invalid={!!fieldError("display_name")} aria-describedby={`auth-display-help${fieldError("display_name") ? " auth-display-error" : ""}`}
+              onBlur={() => setTouched(previous => ({ ...previous, display_name: true }))} onChange={e => edit("display_name", e.target.value)} />
+            <p className="auth-muted" id="auth-display-help">Shown to other players. 1–32 characters; Unicode names are welcome. This is separate from your sign-in username.</p>
+            {fieldError("display_name") && <p className="auth-field-error" id="auth-display-error" role="alert">{fieldError("display_name")}</p>}
+          </div>}
+          <div className="auth-field"><label htmlFor="auth-password">Password</label>
+            <input id="auth-password" name="password" type="password" autoComplete={register ? "new-password" : "current-password"} value={password} required disabled={busy}
+              aria-invalid={!!fieldError("password")} aria-describedby={`auth-password-help${fieldError("password") ? " auth-password-error" : ""}`}
+              onBlur={() => setTouched(previous => ({ ...previous, password: true }))} onChange={e => edit("password", e.target.value)} />
+            <p className="auth-muted" id="auth-password-help">10–128 characters, up to 512 UTF-8 bytes. Spaces and Unicode are kept exactly as entered.</p>
+            {fieldError("password") && <p className="auth-field-error" id="auth-password-error" role="alert">{fieldError("password")}</p>}
+          </div>
+          <button className="auth-primary" disabled={busy || auth.loading}>{busy ? "Please wait…" : register ? "Register" : "Login"}</button>
+          <button className="auth-text-button" type="button" disabled={busy} onClick={() => { setRegister(!register); setError(""); setPassword(""); setTouched({}); setServerErrors({}); }}>
             {register ? "Already have an account? Sign In" : "Create account"}</button>
-          <p className="auth-muted">You can also play as a guest.</p>
+          <p className="auth-muted auth-guest-note">You can also play as a guest. Guest games stay on this browser until you save them to an account.</p>
         </form>}
         {(error || auth.message) && <p role="alert">{error || auth.message}</p>}
       </div>
@@ -128,16 +178,11 @@ export function AccountGames() {
   }, [auth?.user?.username, auth?.revision, retry]);
   if (!auth?.user) return null;
   return <section className="account-games" aria-label="My active games" aria-busy={loading}>
-    <div className="auth-heading"><h3>My Active Games</h3><button disabled={loading} onClick={() => setRetry(n => n + 1)}>Check again</button></div>
+    <SectionHeader title="My Active Games" eyebrow="Saved to your account"><button className="btn subtle" disabled={loading} onClick={() => setRetry(n => n + 1)}>Check again</button></SectionHeader>
     {loading && <p>Checking games…</p>}
     {error && <p role="alert">{error}</p>}
-    {!loading && !error && !games.length && <p>No active account games yet. Create, Join or save a guest game.</p>}
-    <div className="recent-games-list">{games.map(game => <article className="recent-game" key={game.room_code}>
-      <div className="recent-game-heading"><strong>Room {game.room_code}</strong><span>{game.status === "active" ? "In Game" : game.status === "game_over" ? "Game Over" : "Lobby"}</span></div>
-      <p>{game.map_name}</p><p>Your seat: {game.own_name} · {game.player_count}/{game.max_players} players</p>
-      {game.winner && <p>Winner: {game.winner.name}</p>}
-      <button disabled={loading || !game.can_continue} onClick={() => auth.client.continueAccount(game.room_code, game.own_name)}>
-        {game.status === "game_over" ? "Return to Room" : "Continue"}</button>
-    </article>)}</div>
+    {!loading && !error && !games.length && <EmptyState title="No account games yet">Host, Join or save a guest game to keep your seat with this account.</EmptyState>}
+    <div className="recent-games-list">{games.map(game => <GameCard key={game.room_code} code={game.room_code} game={game} loading={loading}
+      onContinue={() => auth.client.continueAccount(game.room_code, game.own_name)} />)}</div>
   </section>;
 }
