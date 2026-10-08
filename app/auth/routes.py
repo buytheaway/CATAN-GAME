@@ -10,6 +10,7 @@ from sqlalchemy import select, func, or_
 from app.persistence import models as m
 from app.persistence.credentials import utcnow, valid_token, token_hash
 from app.persistence.inspection import InspectionLimiter, safe_game
+from app.match_rulesets import compatibility
 from app.persistence.recovery import clone_room
 from .security import (AuthError, COOKIE, authorization, require_origin, set_cookie, clear_cookie)
 from .service import AuthService, safe_user
@@ -134,7 +135,7 @@ async def active_games(request: Request):
                    m.rooms.c.config["map_meta"]["name"].astext.label("map_name"),
                    m.rooms.c.config["rules"]["target_vp"].astext.label("target_vp"),
                    m.room_players.c.name, m.room_players.c.color, count.label("count"),
-                   m.matches.c.status, winner.c.name.label("winner_name"), winner.c.color.label("winner_color")
+                   m.matches.c.status, m.matches.c.ruleset_id, winner.c.name.label("winner_name"), winner.c.color.label("winner_color")
                    ).select_from(m.rooms.join(m.room_players, m.room_players.c.room_id == m.rooms.c.id).outerjoin(m.matches, m.rooms.c.current_match_id == m.matches.c.id)
                                  .outerjoin(winner, m.matches.c.winner_match_player_id == winner.c.id)).where(
         m.room_players.c.user_id == who["user_id"], m.room_players.c.status == "active",
@@ -158,6 +159,7 @@ async def active_games(request: Request):
                 connected_count=sum(bool(p.name and p.connected) for p in room.players),
                 status="game_over" if row["status"] == "finished" else "active" if row["status"] == "active" else "lobby",
                 target_vp=int(row["target_vp"]), updated_at=row["updated_at"],
+                ruleset=compatibility(row["ruleset_id"]) if row["status"] else None,
                 winner={"name": row["winner_name"], "color": row["winner_color"]} if row["winner_name"] else None)["game"])
     return reply({"games": games})
 

@@ -136,6 +136,9 @@ class GameState:
     dev_deck: List[str] = field(default_factory=list)
     dev_played_turn: Dict[int, bool] = field(default_factory=dict)
     free_roads: Dict[int, int] = field(default_factory=dict)
+    # Active player's turn only; private lifecycle, independent of renderer/Room.
+    ships_built_this_turn: Set[Tuple[int, int]] = field(default_factory=set)
+    ship_moved_this_turn: bool = False
     roll_history: List[int] = field(default_factory=list)
 
     tick: int = 0

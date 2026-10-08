@@ -17,8 +17,13 @@ def _recompute_longest_road(g) -> Tuple[Optional[int], int]:
         return None, 0
     max_len = max(lens)
     leaders = [i for i, ln in enumerate(lens) if ln == max_len]
-    if max_len >= 5 and len(leaders) == 1:
-        return leaders[0], max_len
+    if max_len >= 5:
+        # A tied incumbent is valid: board lengths alone cannot reconstruct
+        # who obtained the award first. A non-leading holder is never valid.
+        if g.longest_road_owner in leaders:
+            return g.longest_road_owner, max_len
+        if len(leaders) == 1:
+            return leaders[0], max_len
     return None, 0
 
 

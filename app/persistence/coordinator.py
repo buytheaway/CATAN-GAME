@@ -1,6 +1,7 @@
 """Commit gate; no gameplay rules, socket publication or SQL in callers."""
 import logging
 import asyncio
+from app.match_rulesets import validate_transition
 from .errors import PersistenceUnavailable, CommitUncertain, RecoveryError
 from .repositories import Repository
 from .recovery import restore_room, match_checkpoint, checksum, room_config
@@ -37,6 +38,7 @@ class Coordinator:
         self.ready = True
 
     async def commit(self, before, candidate, **kwargs):
+        validate_transition(before, candidate, **kwargs)
         if not self.ready or (before and before.persistence_blocked):
             raise PersistenceUnavailable("Persistence temporarily unavailable")
         if not self.repository:
@@ -55,6 +57,7 @@ class Coordinator:
                 if bundle and bundle["room"]["durable_revision"] == expected:
                     restored = restore_room(bundle)
                     landed = (restored.match_id == candidate.match_id and restored.tick == candidate.tick
+                              and restored.ruleset_id == candidate.ruleset_id
                               and bundle["room"]["config"] == room_config(candidate)
                               and [p.id for p in restored.players if p.name] == [p.id for p in candidate.players if p.name])
                     landed = landed and [(p.user_id, p.token_revoked_at) for p in restored.players if p.name] == [

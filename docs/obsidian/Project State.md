@@ -1,9 +1,67 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # Project State
+
+## Current verification and status
+
+Документация сверена с кодом и сохранёнными verification artifacts **2026-10-09**, после S1/F1/F2/F3. **Последний полный Python suite: F3 — 757 passed, 0 skipped**, с изолированной PostgreSQL. **Последний полный web suite: F2 — 241 passed**, TypeScript/production build и пять focused Chrome/PostgreSQL compatibility groups. F3 менял только Qt, поэтому web/build/browser не повторялись. Числа 694/732/749 и прежние web результаты ниже относятся к своим историческим checkpoint, а не к дополнительным сегодняшним запускам. При reconciliation повторены только 22 focused Python cases и 6 web compatibility cases; это не новые full-suite counts.
+
+| Возможность | Реализация и фактическая проверка | Что остаётся |
+| --- | --- | --- |
+| Seafarers S1 core | Implemented/tested: mixed route/ties/own-turn victory, ship lifecycle, island settlement connectivity, Gold и robber/pirate validation; Python/WS/PG и focused browser acceptance | Partially implemented expansion: production archipelagos/start islands/bonuses/fog/coastal ports — planned S2; полные natural matches — planned S3 |
+| F1 private publication | Implemented/tested: актуальные guest/account ownership, expiry/revocation, controlling-socket takeover, privacy и publication ordering | Single-worker deployment; out-of-band guest SQL edits не являются live revocation API; отправленный до revoke frame нельзя отозвать |
+| F2 Strategy C | Implemented/tested: durable ruleset marker, unknown legacy restriction, inert timers/legal/commands/rematch, безопасный Continue notice | Unmarked native S1 тоже restricted; Strategy D explicit conversion — planned, не реализована; исторические VP/achievements не переписываются |
+| F3 Qt persistence | Implemented/tested: оба ship-turn поля через настоящий Qt file round-trip; eight offscreen cases | Видимые file dialogs/полная ручная Qt-партия не проверены; прочие legacy save bugs остаются |
+| Auth/Continue | Implemented/tested: username/password, cookie sessions, account seat ownership/guest claim, Active Games/account Continue; guest Recent/Continue сохранён | Profiles, richer history, password reset/email/OAuth — planned, не реализованы |
+| React/Board3D/Product Polish | Implemented/tested в указанном desktop scope: общий controller/personal snapshot, default interactive 3D + SVG, terrain/building GLBs, Product Phases 1–4/audio | Полная mobile/accessibility/low-end/load сертификация не выполнена; renderer не определяет правила |
+| Scenario suite | **Known broken: 348/508 passed, 160 failed**, последний полный run — S1 | 140 pre-roll отказов и 20 pirate fixture connectivity отказов; подробности ниже. Зелёный pytest их не закрывает |
+
+Implemented не означает проверку всех веток; tested относится только к указанным suites/acceptance. Термины и обязательная сверка после существенных изменений — [[Documentation Policy]]. Актуальные пути — [[Сценарий сетевой партии]], [[React интерфейс]], [[Сервер и протокол]].
+
+## Qt desktop ship lifecycle persistence — F3
+
+**Completed — verified 2026-10-08. READY FOR CHECKPOINT for F3.** Legacy offline Qt `Game`, `_convert_base_state` and `_ui_game_to_engine_dict` now preserve `ships_built_this_turn` and `ship_moved_this_turn`. Actual `_save_game`/`_load_game` preserves construction-age and once-per-turn restrictions. Old files use the existing shared decoder's conservative main-turn Seafarers movement lock until End Turn, including before Roll; repeated saves retain that lock. No rules or history reconstruction were added to Qt. Base compatibility remains intact.
+
+Real round-trip testing also exposed stale graphics handles after `scene.clear()`. The loader clears its existing overlay/piece collections before redraw, allowing actual load completion. Runtime diff: only [ui_v6.py](../../app/ui_v6.py), **11 added lines**. Engine, web, PostgreSQL, S1/F1/F2 infrastructure and unrelated user changes are preserved.
+
+Verification: **8 new real PySide6/Qt 6.10.1 offscreen cases** exercise `QApplication`/`MainWindow`, engine → Qt → disk JSON → load → engine, plus commands against the loaded Qt model. Only file chooser results are replaced; serialization, load, redraw and shared validation remain real. Full pytest with isolated PostgreSQL: **757 passed, 0 skipped** (F2 baseline 749 + 8). No visible native-dialog/manual full-match verification; Qt's old format has not become the trusted PostgreSQL codec, and unrelated legacy save limitations remain. No automatic commit/tag, no S2. Details — [[Desktop клиент#Ship lifecycle persistence — F3]], [[Состояние игры#Seafarers turn history — codec v2]].
+
+## Match ruleset compatibility — F2
+
+**Completed — verified 2026-10-08. READY FOR CHECKPOINT for F2 (Strategy C).** New matches persist `matches.ruleset_id=catan-seafarers-s1`; additive migration `f2a001` leaves existing matches NULL. Codec v1/v2 reading is independent: decoding does not establish ruleset provenance or reconcile VP/achievements. Unknown/unrecognized rulesets recover without rule execution as restricted valid matches, not corruption.
+
+Backend blocks gameplay commands, private playable snapshots/legal projection, timers/resumption and start/rematch, with an additional commit fence. Continue/takeover/guest renewal/account claim remain available; metadata-only writes preserve old heads, scores, participant sequences and finished results. Recent/Active Games shows Compatibility required → View saved match; App shows a dedicated explanation without gameplay controls, Home navigation and creation of a separate current match. No legacy deletion, conversion or RAM fallback.
+
+Database inventory: no running accessible project development database was present. The isolated prior F1-test container was started for read-only metadata inventory: 108 rooms, 102 matches (94 active, 3 finished, 1 abandoned, 2 quarantined, 2 superseded); current heads are all codec v2/engine_compatibility=1, with no ruleset marker. These are test fixtures, **not evidence of production data or S1 provenance**. Production containers/database were not started or modified. F2 verification used separate disposable PostgreSQL databases.
+
+Verification: full **749/749 pytest, no skips**, including **132 PostgreSQL cases**, **17 new F2 cases**, and all **38 F1 cases**. Full web **241/241** (+6), TypeScript and production build pass. Real Chrome/FastAPI/PostgreSQL production-dist acceptance: five groups covering guest v1/v2 discovery/Continue/refresh, raw command denial, retained bindings/Home/new two-player current match with 2D board, and account Login/Continue/refresh/Home. SQL head/metadata checksum comparison confirms all three browser legacy heads/results unchanged. No browser JS errors; screenshots inspected. This is focused compatibility acceptance, not a production deployment or full natural Seafarers match. Engine/scenario files unchanged in F2; scenarios were not rerun (S1's 348/508 remains historical).
+
+Limits: restricts **all unmarked matches**, including genuine pre-marker S1 matches. Detailed legacy board/hand inspection is not exposed; safe room/Continue summaries and historical winner remain available. Older backends do not enforce the gate and must not be deployed over these records. Strategy D remains future explicit maintenance, **not implemented**. No automatic commit/tag; S1/F1 and unrelated user changes preserved. Policy — [[Architecture Decisions#ADR-015 — Match ruleset provenance and safe legacy restriction]]; details — [[plans/persistence-auth#F2 — match ruleset compatibility (Strategy C)]].
+
+## Security hardening — F1 private publication
+
+**Completed — verified 2026-10-08. READY FOR CHECKPOINT for F1.** An open guest socket previously received personalized broadcasts after its reconnect credential expired or was revoked, although commands were already denied. Both broadcast and directed `match_state` now use `_publish_match_state` in [server_mp.py](../../app/server_mp.py): current controlling connection, captured RoomPlayer ID/pid/match epoch and `_owns` are checked before publication and again after asynchronous validation. Invalid credentials fence the controller before any network await and close with 4401; unavailable persistence/session validation fails closed with 1013. Transport failures cannot restore ownership. No private frame is redirected to a replacement controller or another seat.
+
+Account seats retain session-based ownership independently of old guest proof expiry/revocation. Existing PostgreSQL session/user SHARE authorization also covers private frame publication, ordering logout/disable before or after an authorized frame. Room.lock continues to serialize durable guest revocation, claim, reconnect and rematch with publication. No credential renewal, RAM fallback, command authorization change or protocol/schema migration was introduced; gameplay, React and Seafarers S2 are outside this fix.
+
+Verification: full Python suite **732/732**, no skips, with real isolated PostgreSQL enabled. **38 new cases**: 23 ownership/privacy/transport/race cases, including two real open-WebSocket regressions; 15 PostgreSQL cases cover durable guest invalidation, account sessions, Continue/takeover, claim, both revocation/publication orderings and outage without cached-session fallback. Tests — [test_private_publication.py](../../tests/test_private_publication.py), [test_private_publication_postgres.py](../../tests/test_private_publication_postgres.py). Details and limits — [[Сервер и протокол#Private publication authorization — F1]]. Frontend/build/scenarios were not rerun for this server-only fix; existing S1 changes and unrelated Obsidian preferences remain intact. No automatic commit/tag.
+
+## Seafarers Hardening — S1
+
+**Completed — verified 2026-10-08. READY FOR CHECKPOINT.** Work continued from `0d1c455`, preserving the interrupted implementation. Shared Python remains authoritative; React only selects existing personalized legal targets. Mixed Longest Trade Route now counts a single edge trail, switches road/ship only at own buildings, stops at opposing buildings and preserves a qualifying tied holder. Construction/movement/interruption update the same 2VP achievement once from final state. Shared Base corrections are explicit: tied Longest Road retains its holder; victory belongs to the active player, including before Roll when their turn begins.
+
+Ships support initial anchored placement, paid construction and existing Road Building credits. Movement may reach any legal post-removal connection, once per turn, never for a newly built ship or a pirate-blocked source/target. Maritime open/closed paths and official circle exceptions are separate from trade-route scoring. Ship arrival permits an ordinary paid settlement on a different island, still enforcing land/distance/ownership/supply, without scenario bonus VP. Gold now observes robber blocking, second-settlement setup choices and bank exhaustion without impossible pending requests.
+
+Private `ships_built_this_turn`/`ship_moved_this_turn` persist in trusted engine codec **v2**, with strict released-v1 decoding. Unknown old main-turn history conservatively locks ship movement until End Turn, including unrolled turns because free ships can precede Roll. Public snapshot fields/IDs, durable transaction/receipt/ownership model and Room checkpoint v1 are preserved. Older backend binaries cannot read new v2 saves. Details — [[plans/seafarers-s1]], [[Architecture Decisions#ADR-014 — Seafarers turn history and codec v2]], [[Правила Seafarers]].
+
+Historical S1 verification: full pytest **694/694**, including real isolated PostgreSQL/account/guest recovery; web **235/235**; TypeScript and production build pass. **130 Python cases added**: 100 Seafarers route/ship/island/Gold/WS/recovery cases and 30 codec regressions. Scenarios **348/508**, matching the actual pre-change total; eight old failing scenarios (160 runs), with different causes: **140** runs across seven scenarios hit `Must roll before actions`; **20** `scenario_seafarers_pirate_move` runs hit `no legal ship edge found`. Its old fixture relies on road-only ship connectivity rejected by S1; this earlier failure masks later pirate assertions. Harness now permits a qualified tied holder; Gold fixture resolves setup choices and moves a blocking robber through an actual Knight. Old failing gameplay scenarios/assertions were not made permissive.
+
+Native Chrome production-dist acceptance passes eight groups, **46 real commands including two deliberate rejections**: Base setup/Roll/End/2D↔3D; three-player Gold Haven setup with ships/Gold choices; pre-Roll free ships; age/once-per-turn rejection and real turn aging; verified guest refresh; Knight/pirate theft with an observer receiving no resource type; desktop resize. Explicit server Test Tools fund rare actions; no fabricated frontend snapshots. Actual two-island expansion is additionally verified through real WS using generated test geometry. This is focused acceptance, not a complete natural Seafarers match.
+
+Scope limits: production presets/maps/generator/ports, SVG/Board3D/assets/audio/CSS/dependencies/auth/deployment unchanged. S2 retains real archipelagos/start islands/scenario bonuses/fog/coastal ports and no-desert robber offboard initialization. S3 retains full natural matches, scarcity ordering and broader desktop/device/performance checks. Ordinary production shortage, deterministic theft and Largest Army tie behavior remain separate known gameplay work. No checkpoint commit/tag created automatically; Obsidian application preferences are unrelated user edits.
 
 ## Product / UX / Visual Polish — Phase 4: Audio
 
@@ -161,7 +219,7 @@ Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8
 
 ## Current Architecture
 
-Общий Python-движок обслуживает локальный PySide-клиент и FastAPI WebSocket-сервер. React/TypeScript получает снимки партии и отправляет намерения. Active Room/GameState живут в памяти одного процесса; PostgreSQL хранит durable committed aggregates для restart recovery. Qt и browser имеют отдельные представления состояния. Multiplayer использует player-specific snapshot, trusted/offline to_dict сохранён, private persistence — отдельный codec v1.
+Общий Python-движок обслуживает локальный PySide-клиент и FastAPI WebSocket-сервер. React/TypeScript получает снимки партии и отправляет намерения. Active Room/GameState живут в памяти одного процесса; PostgreSQL хранит durable committed aggregates для restart recovery. Qt и browser имеют отдельные представления состояния. Multiplayer использует player-specific snapshot, trusted/offline to_dict сохранён, private persistence — отдельный codec v2 с чтением released v1.
 
 Docker production-like: Browser → Nginx (React dist, /ws, /health) → один FastAPI worker → shared engine + private PostgreSQL с named volume. Только web port опубликован; backend/web non-root, без host mounts. Alembic и recovery завершаются до readiness. Локальный Python + Vite workflow сохранён. Инструкции — [[Deployment]].
 
@@ -174,6 +232,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Сервер обрабатывает комнаты, команды и снимки; web показывает lobby и match с интерактивным SVG-полем.
 - Lobby map selection: Room authoritative; map_revision растёт при успешном set_map. WSClient отбрасывает меньшую revision в той же комнате, сохраняет последний pending выбор и держит один запрос в ожидании плюс последний queued выбор. Start ждёт подтверждения; disconnect/смена комнаты сбрасывают pending, reconnect получает актуальную карту сервера.
 - BoardRenderer теперь default 3D, компактный 2D/3D selector и прежний SVG/error fallback. Оба renderer получают один snapshot и общий controller GamePage с personal server legal. GamePage размещает BoardControls в нижнем dock; оформление отделено в game/. Gameplay остаётся в Python. Scope — [[plans/board3d]] и [[plans/game-ui-redesign]].
+- Auth Phase 1 реализована: username/password Register/Login, durable cookie sessions, account-owned seats/guest claim, Active Games и account Continue. Guest Recent/Continue также реализованы. F2 legacy Continue открывает compatibility explanation с сохранением ownership, а не playable match; profiles/history/password reset остаются будущими задачами.
 - Production roll принимает только `{type: "roll"}`; две кости генерирует сервер. CATAN_DEBUG_ROLLS больше не открывает публичный debug-путь.
 - Game UX 2.1: Room хранит подтверждённые dice=[a,b] и монотонный roll_count, одинаковые у обоих клиентов; engine получает прежнюю сумму. End Turn сохраняет последний pair, rematch сбрасывает pair/counter. HUD не придумывает грани из суммы; reduced motion показывает результат сразу, 3D-анимация заканчивается без idle frames.
 - Публичный список команд исключает grant_resources. Helper остался в trusted engine для подготовки тестов и проверяет весь payload перед выдачей.
@@ -183,8 +242,8 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 - Reconnect token восстанавливает прежний слот до rematch. Сохранившиеся участники сохраняют token с новым pid; исключённый участник теряет доступ к слоту при новом матче. match_id увеличивается; tick, sequence и deduplication history сбрасываются.
 - В снимке свои ресурсы/dev-cards и private choices; во время игры чужой VP исключает скрытые VP-карты. После game_over все players.vp содержат итоговые total VP для действующего экрана результатов; чужие res/dev_cards остаются закрытыми. Seed/колода/private RNG bag не передаются; bank counts передаются только при Visible, Hidden сохраняет прежнюю availability-only projection. Колода перемешивается независимо от карты.
 - Pirate использует одно разрешённое событие после 7/завершения discard либо Knight: pending `robber_move` позволяет выбрать land robber или sea pirate при enable_pirate. Успех закрывает pending и допускает максимум одну кражу; повтор без нового события отклоняется общим движком. React/PySide клики согласованы с этим событием.
-- Trade начинается кликом по собственной resource card: локальный немодальный Give/Want tray над рукой, targets Everyone/connected player/Bank. Bank 4:1/3:1/2:1 по собственным port endpoints, включая прежние batch exchanges; targeted/broadcast offer, accept/reject/cancel и отмена при end turn сохранены. Состав рук не изменяется до snapshot. Изменение offer = cancel + новое предложение; broadcast Reject закрывает offer для всех согласно существующему engine. Закрытый log drawer содержит сворачиваемую bank availability без точных counts.
-- Direct Road/Settlement/City и Dev Card в dock; Ship полностью скрыт без enable_seafarers/положительного max_ships. Setup показывает только обязательный инструмент. Стоимость — один presentation config; доступные цели/команды проверяет прежний shared controller/server legal.
+- Trade начинается кликом по собственной resource card: локальный немодальный Give/Want tray над рукой, targets Everyone/connected player/Bank. Bank 4:1/3:1/2:1 по собственным port endpoints, включая прежние batch exchanges; targeted/broadcast offer, accept/reject/cancel и отмена при end turn сохранены. Состав рук не изменяется до snapshot. Изменение offer = cancel + новое предложение; broadcast Reject закрывает offer для всех согласно существующему engine. BankSummary в текущем sidebar показывает counts только при Visible, иначе availability; GameLog раскрывается независимо от Chat.
+- Direct Road/Settlement/City и Dev Card в dock; Ship полностью скрыт без enable_seafarers/положительного max_ships. Setup settlement обязателен; route step после S1 предлагает Road/Ship по правилам и personal legal. Стоимость — presentation config; доступные цели/команды контролирует useBoardInteraction с server legal, полную проверку выполняет Python executor.
 - Dev cards: dock Dev Card отправляет один buy_dev напрямую; own hand/type/count/new появляется только после snapshot. Клик по своей карте открывает Play/inspect: Knight через общий robber/pirate controller, две бесплатные дороги, Year of Plenty picker, Monopoly picker и passive VP. UI объясняет new/one-play/turn/pending restrictions; окончательная проверка остаётся серверной.
 - Road Building позволяет поставить до двух бесплатных дорог в текущем ходу; неиспользованный credit очищает общий engine cleanup при успешном End Turn. Следующий собственный ход не получает старый credit; построенные дороги и обычная стоимость road сохраняются.
 - Results: server winner/final VP, connected-player rematch с прежними tokens/compact pids/sequence reset, Back to Lobby через существующий leave_room. Выход останавливает auto-reconnect; сохранённый token остаётся для явного Join с прежним room/name.
@@ -192,11 +251,11 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 
 ## Partially Implemented
 
-- Seafarers: корабли, золото, пират и перемещение есть; полная семантика маршрутов и сценариев не завершена.
-- Web UI: trade/dev/results/exit, room settings/colors, chat/timer и bank policy реализованы; отдельное меню, полный lobby/mobile redesign и полноценный game event feed остаются вне scope. Hidden bank/deck остаются закрыты: отказ Year of Plenty/пустой deck проверяет сервер, UI не знает будущих cards.
+- Seafarers expansion частично реализована: S1 core routes/ships/island connectivity/Gold implemented/tested; production map/scenario completeness и полные playtests остаются planned S2/S3.
+- Web UI: trade/dev/results/exit, Home/lobby polish, room settings/colors, chat/timer, bounded personalized game event feed, bank policy и audio реализованы. Полный mobile/general settings/accessibility/load scope не заявлен завершённым. Hidden bank/deck остаются закрыты: отказ Year of Plenty/пустой deck проверяет сервер, UI не знает будущих cards.
 - Desktop online: диалоги развития и банка отключены.
-- Очереди web/desktop теперь привязаны к room/match; отказ расходует seq и удаляется по ACK. Durable guest backend и Continue реализованы в 1B/1C; account auth, backup/retention и Qt offline save остаются отдельными вопросами.
-- Старые ошибки TypeScript и секции setup.cfg устранены в рамках проверки контракта/тестов. Сценарный прогон по-прежнему даёт 348/508 успешных запусков: восемь сценариев действуют до обязательного броска. Правило не ослаблялось.
+- Очереди web/desktop привязаны к room/match; final refusal расходует seq и удаляется по ACK. Durable guest backend/Continue и Auth/account Continue реализованы; backup/retention, profiles/history/reset и оставшиеся Qt offline save string-key bugs — отдельные задачи. F3 устранил именно потерю ship history.
+- Последний полный scenario run S1: **348/508 passed, 160 failed**. Семь сценариев ×20 seeds дают **140 `Must roll before actions`**: dev_cards_effects, dev_cards_restrictions, largest_army_award, ports_trade_rates, rules_limits, seafarers_move_ship, seafarers_ship_build. Ещё **20 scenario_seafarers_pirate_move** дают **`no legal ship edge found`**, до дальнейших pirate assertions. Это восемь failing fixtures/сценариев, не 160 разных gameplay bugs; они не исправлены, правило Roll и ship connectivity не ослаблялись. F1/F2/F3 не меняли scenario/engine файлы и не повторяли этот suite.
 
 ## Known Critical Problems
 
@@ -212,12 +271,15 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 | Пустые участники / новый матч | Исправлено; rematch с фактически подключённым составом, обновлённые pid, tokens и sequence проверен 2026-10-03, включая отключение host |
 | Повторная кража pirate без события — P0 | Исправлено 2026-10-02: single-use pending, полная atomicity при отказе, WS replay и выбор фигуры обоими клиентами проверены |
 | Offline-save | Ключи флагов и бесплатных дорог после JSON становятся строками |
-| Seafarers rules | Остаются ограничения смешанных/закрытых маршрутов, Longest Trade Route и полноты отдельных сценариев |
-| Остальные Base rules | Требуют отдельного исправления ничьи достижений, победа вне активного хода, детерминированная кража |
+| Open WS с expired/revoked guest proof — F1 | Исправлено/tested: актуальное ownership проверяется перед каждой private publication; account session/controlling socket/takeover сохраняются |
+| Legacy gameplay compatibility — F2 | Implemented/tested Strategy C: readable v1/v2 без verified ruleset restricted; нет auto conversion, VP/achievement rewrite или corrupted label |
+| Qt ship history loss — F3 | Исправлено/tested real Qt file round-trip; conservative legacy lock переживает resave, engine End Turn сбрасывает историю |
+| Seafarers rules | S1 mixed/closed routes, ship lifecycle, island connectivity и Gold проверены; полнота production maps/scenarios и playtests остаётся S2/S3 |
+| Остальные Base rules | Longest Road tie и own-turn victory исправлены в S1; Largest Army tie, deterministic theft и ordinary production shortage остаются отдельными задачами |
 | Road Building lifecycle | Исправлено 2026-10-05: end_turn_cleanup очищает free_roads только после успешной проверки End Turn. 0/1/2 placements, следующий собственный ход, paid road cost, сохранение построек, atomic rejects и персональные server snapshots проверены в tests/test_road_building_lifecycle.py |
 | Сетевой lifecycle | Persistence 1B реализована: locked durable commits, hashed guest ownership, restart recovery и replay protection. Automatic cleanup/общего WS rate limiting нет; chat limit 5/10s, рассылка последовательная |
 
-Статусы таблицы отражают завершённую Phase 1, включая reconnect/pirate fixes и финальные продуктовые решения. Остальные перечисленные P1 остаются открытыми; исторические доказательства и текущая проверка — [[Результаты аудита]].
+Таблица разделяет исправленные проблемы и оставшиеся ограничения после S1/F1/F2/F3; это не заявление о полной корректности всех правил или сценариев. Датированные ранние доказательства — [[Результаты аудита]], актуальные verification границы — в начале этой заметки и тематических sections.
 
 ## Current Priority
 
@@ -226,7 +288,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 3. Подготовить новый React UI, сохраняя игровое поведение.
 4. Затем постепенно рефакторить архитектуру.
 
-Production Hardening Phase 1 завершена в утверждённом scope. Game UI Phase 1 пересобрала match composition; Phase 2 добавила существующие trade/dev/endgame mechanics в web. Room settings/chat реализованы в UX 2.2; отдельный menu/general settings и полный lobby redesign остаются будущими задачами. Board3D Phase 1 реализовала отдельную visual foundation в принятом clean modern tabletop направлении. Fantasy/MMORPG-декор исключён, прежние references остаются historical. Desktop в Hardening Phase 1 получил совместимость с сетевыми данными, отображение доступности банка и согласование выбора robber/pirate по карте. Checkpoint: commit `fix: complete production hardening phase 1`, tag `hardening-phase-1`. Последующие commits сравнивать через `git diff hardening-phase-1..HEAD`; текущие незакоммиченные изменения — через `git diff hardening-phase-1`.
+Production Hardening Phase 1 завершена в утверждённом scope. Позднее Game UI/Room UX и Product Polish Phases 1–4 реализовали текущие Home/lobby/match, GLB pieces и audio; Board3D интерактивен и default. Полные mobile/general settings/accessibility/load задачи остаются planned. Fantasy/MMORPG references — historical/rejected direction. S1/F1/F2/F3 завершены в проверенном scope; S2 автоматически не начинается. Historical checkpoint: `fix: complete production hardening phase 1`, tag `hardening-phase-1`; сравнение последующих commits — `git diff hardening-phase-1..HEAD`, текущих незакоммиченных изменений — `git diff hardening-phase-1`.
 
 ## Map / 3D preparation
 
@@ -240,7 +302,7 @@ Production Hardening Phase 1 завершена в утверждённом scop
 
 - Game UI Phase 2 закоммичен в `d9a1d07`, Road Building fix — `dcadcab`, Game UX 2.1 — `e9db7af` (локальный tag game-ux-2-1 не найден). Game / Room UX 2.2 — f70d845/game-ux-2-2; Game UX 2.3 завершён в проверенном scope, checkpoint message/tag указаны выше. Следующие gameplay/UI этапы требуют отдельной задачи и не начинаются автоматически.
 - Дальнейшие UI phases, accessibility/low-end/mobile и gameplay P1 требуют отдельных задач. Историческое перекрытие road targets terrain decoration устранено в Polish 1.1; renderer/controller в Phase 2 не меняются.
-- Открытый backlog: привести восемь старых сценариев к законному циклу roll → action → end, сохранив их assertions, и проверить выявленные ими расхождения.
+- Known-broken scenario backlog: отдельно привести семь pre-roll fixtures к законному roll → action → end; отдельно подготовить legal ship connection в scenario_seafarers_pirate_move. Затем проверить ранее замаскированные assertions/возможные gameplay mismatches без их ослабления. Это отдельная задача, здесь не выполнялась.
 - Дальнейшие ограничения Phase 1 и результаты — [[plans/server-authority-hardening]].
 - Уточнить gameplay-композицию, состояния и visual tokens актуального clean tabletop направления в [[Design System]].
 - Продолжать UI только по отдельной задаче; актуальная композиция и границы — [[plans/game-ui-redesign]]. Старый [[plans/web-ui-redesign|план React redesign]] остаётся историческим.

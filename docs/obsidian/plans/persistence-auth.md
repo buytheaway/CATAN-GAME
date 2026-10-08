@@ -1,6 +1,6 @@
 ---
 tags: [catan, architecture, persistence, auth, plan]
-updated: 2026-10-07
+updated: 2026-10-08
 status: auth-phase-1-completed
 ---
 
@@ -9,6 +9,18 @@ status: auth-phase-1-completed
 [[Project State]] · [[Architecture Decisions]] · [[Сервер и протокол]] · [[Состояние игры]] · [[Инварианты движка]] · [[Deployment]]
 
 ## Status and boundary
+
+## F2 — match ruleset compatibility (Strategy C)
+
+Approved 2026-10-08: snapshot format compatibility does not establish gameplay compatibility. Add nullable, immutable `matches.ruleset_id`; only new matches explicitly receive the current S1 marker. Existing rows stay unknown, regardless of codec v1/v2. Recovery decodes without running rules, preserves historical scores and marks unknown rulesets as restricted, not corrupted.
+
+**Completed/verified 2026-10-08; READY FOR CHECKPOINT.** [match_rulesets.py](../../../app/match_rulesets.py) centralizes the marker/policy/commit fence. [f2a001](../../../migrations/versions/f2a001_match_ruleset.py) adds one nullable column with no backfill. Recovery reads it independently of engine/Room codecs. Server gates command/lifecycle/legal/private snapshot/timer paths; Coordinator/Repository gate commits and keep restricted match/head/result rows intact during metadata-only Continue/claim/chat/leave. PostgreSQL row locks check stored provenance; ambiguous commit verification includes it.
+
+Frontend uses public compatibility metadata, a simple LegacyMatchPage and existing Home/Create/Continue paths. Valid credentials remain valid; no misleading play controls, conversion form or legacy deletion. Existing unmarked S1 matches are conservatively restricted too. Finished winner/results/head remain unchanged, and a new game uses a separate room.
+
+Verification: **749 pytest/no skips**, including **132 real PostgreSQL** and **17 new F2** cases; **241 web** (+6), TS/production build. Five real Chrome/PostgreSQL acceptance groups cover legacy v1/v2 and account Continue/refresh, malicious raw command rejection, retained ownership, Home and new two-player current match/2D display. SQL comparison confirms three legacy browser heads/result metadata unchanged. F1's 38 authorization/publication tests still pass. No production DB was started; prior isolated F1 fixtures were inventoried read-only, F2 tests/browser used separate disposable DBs. Browser artifacts are temporary, not a session note.
+
+Compatibility policy — [[Architecture Decisions#ADR-015 — Match ruleset provenance and safe legacy restriction]], format distinction — [[Состояние игры#Snapshot format versus match ruleset — F2]], protocol — [[Сервер и протокол#Match compatibility gate — F2]]. Strategy D is a possible future **explicit maintenance operation**, requiring separately approved reconciliation/transaction/idempotency/failure/rollback design. **No conversion machinery or dual legacy engine is implemented.** Do not stamp old records current by hand or roll back to binaries ignoring the gate; dropping/re-adding the marker safely loses provenance and restricts old records.
 
 ## Auth Phase 1 — completed 2026-10-07
 

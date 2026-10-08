@@ -56,7 +56,10 @@ def assert_private_summary(result, token, status, *, winner=False):
     assert result["status"] == "available"
     game = result["game"]
     assert set(game) == {"room_code", "map_name", "own_name", "own_color", "player_count", "max_players",
-                         "connected_count", "status", "target_vp", "updated_at", "can_continue"} | ({"winner"} if winner else set())
+                         "connected_count", "status", "target_vp", "updated_at", "can_continue"} | ({"winner"} if winner else set()) | ({"ruleset_compatibility"} if status != "lobby" else set())
+    if status != "lobby":
+        assert game["ruleset_compatibility"] == {"status": "compatible", "ruleset_id": server.CURRENT_RULESET,
+                                                "current_ruleset_id": server.CURRENT_RULESET}
     assert token not in json.dumps(result)
     assert game["status"] == status
     assert game["own_name"] == "Alice"

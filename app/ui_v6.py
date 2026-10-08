@@ -365,6 +365,8 @@ class Game:
     turn: int = 0
     phase: str = "setup"  # setup/main
     rolled: bool = False
+    ships_built_this_turn: Set[Tuple[int,int]] = field(default_factory=set)
+    ship_moved_this_turn: bool = False
 
     setup_order: List[int] = field(default_factory=lambda: [0,1,1,0])
     setup_idx: int = 0
@@ -472,6 +474,8 @@ def _convert_base_state(base) -> Game:
     g.turn = int(base.turn)
     g.phase = base.phase
     g.rolled = bool(base.rolled)
+    g.ships_built_this_turn = set(base.ships_built_this_turn)
+    g.ship_moved_this_turn = bool(base.ship_moved_this_turn)
     g.setup_order = list(base.setup_order)
     g.setup_idx = int(base.setup_idx)
     g.setup_need = base.setup_need
@@ -532,6 +536,8 @@ def _ui_game_to_engine_dict(g: Game) -> Dict[str, Any]:
         "phase": g.phase,
         "turn": g.turn,
         "rolled": bool(g.rolled),
+        "ships_built_this_turn": [list(edge) for edge in sorted(g.ships_built_this_turn)],
+        "ship_moved_this_turn": bool(g.ship_moved_this_turn),
         "setup_order": list(g.setup_order),
         "setup_idx": int(g.setup_idx),
         "setup_need": g.setup_need,
@@ -2489,6 +2495,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.selected_action = None
         self._move_ship_from = None
         self._gold_modal_open = False
+        # scene.clear() deletes C++ items; drop cached handles before redrawing.
+        self.overlay_nodes.clear()
+        self.overlay_edges.clear()
+        self.overlay_hex.clear()
+        self.piece_items.clear()
         self._draw_static_board()
         self._refresh_all_dynamic()
         self._fit_map()

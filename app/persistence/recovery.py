@@ -11,6 +11,7 @@ from app.engine import get_preset_map, list_presets
 from app.room_options import RoomSettings, TurnTimer, COLORS, BALANCED_ALGORITHM
 from .errors import RecoveryError
 from .snapshots import encode_snapshot, decode_snapshot
+from app.match_rulesets import restricted
 
 
 def checksum(payload):
@@ -143,6 +144,7 @@ def restore_room(bundle):
     _require(room.game.max_players == len(named) and room.game.map_id == match["map_id"]
              and room.game.game_over == (match["status"] == "finished"))
     room.match_uuid = match["id"]
+    room.ruleset_id = match.get("ruleset_id")  # Never infer provenance from codec v1/v2.
     participants = bundle["participants"]
     _require(len(participants) == len(named))
     for mp in participants:
@@ -196,7 +198,7 @@ def restore_room(bundle):
 
 def resume_timer(room):
     """Only a verified participant calls this; downtime never chains auto-turns."""
-    if not room.timer_paused:
+    if restricted(room) or not room.timer_paused:
         return False
     room.timer_paused = False
     if room.timer and room.timer.stage in ("turn", "grace"):

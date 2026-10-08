@@ -111,6 +111,7 @@ def error_message(code: str, message: str, detail: Optional[Dict[str, Any]] = No
 
 
 def room_state_message(room) -> Dict[str, Any]:
+    from app.match_rulesets import compatibility
     msg = {
         "type": "room_state",
         "room_code": room.room_code,
@@ -136,6 +137,8 @@ def room_state_message(room) -> Dict[str, Any]:
         msg["map_presets"] = getattr(room, "map_presets")
     if hasattr(room, "selected_rules_config"):
         msg["map_rules"] = getattr(room, "selected_rules_config")
+    if room.game is not None:
+        msg["ruleset_compatibility"] = compatibility(room.ruleset_id)
     return msg
 
 

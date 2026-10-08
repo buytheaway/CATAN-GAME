@@ -4,6 +4,7 @@ from collections import OrderedDict
 from datetime import datetime, timezone
 
 from .credentials import utcnow, valid_token
+from app.match_rulesets import compatibility
 
 MAX_CREDENTIALS = 10
 MAX_BODY_BYTES = 16_384
@@ -33,7 +34,7 @@ class InspectionLimiter:
 
 
 def safe_game(*, room_code, map_name, name, color, player_count, max_players,
-              connected_count, status, target_vp, updated_at, winner=None):
+              connected_count, status, target_vp, updated_at, winner=None, ruleset=None):
     # Closed allowlist; never pass a Room, database row or private checkpoint through.
     game = dict(room_code=room_code, map_name=map_name, own_name=name, own_color=color,
                 player_count=player_count, max_players=max_players,
@@ -41,6 +42,8 @@ def safe_game(*, room_code, map_name, name, color, player_count, max_players,
                 updated_at=updated_at.isoformat(), can_continue=True)
     if winner is not None:
         game["winner"] = {"name": winner["name"], "color": winner["color"]}
+    if ruleset is not None:
+        game["ruleset_compatibility"] = ruleset
     return {"status": "available", "game": game}
 
 
@@ -71,5 +74,6 @@ async def inspect_memory(manager, credentials):
                     connected_count=sum(bool(p.name and p.connected) for p in room.players),
                     status="game_over" if finished else "active" if room.game else "lobby",
                     target_vp=room.selected_rules_config.get("target_vp", 10),
-                    updated_at=datetime.fromtimestamp(room.last_activity_ts, timezone.utc), winner=winner))
+                    updated_at=datetime.fromtimestamp(room.last_activity_ts, timezone.utc), winner=winner,
+                    ruleset=compatibility(room.ruleset_id) if room.game else None))
     return results

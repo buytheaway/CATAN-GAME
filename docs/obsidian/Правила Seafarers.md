@@ -4,6 +4,21 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
+## Core implementation verified — S1, 2026-10-08
+
+Existing rules were hardened against the user specification and [official Seafarers FAQ](https://www.catan.com/faq/seafarers)/[2025 rulebook](https://www.catan.com/sites/default/files/2025-03/CN3083%20CATAN%E2%80%93Seafarers%20Rulebook%202025%20secured%20reduced.pdf). No new expansion or universal scenario bonus was introduced.
+
+- Ship placement requires a sea/coastal edge, free occupancy and an own building or own ship connection; a foreign building blocks extension. Road↔ship transitions need an own settlement/city.
+- Initial route may be an anchored free ship. Road Building credits support ships/roads/mixed placement in the current turn and expire on End Turn as already approved.
+- One old open ship may move during an ordinary action phase to any legal new ship placement, checked after excluding its source. Newly constructed ships, closed lines and pirate-adjacent sources/targets cannot move. Official circular-shipping exceptions are handled; foreign buildings do not reopen a closed line. Trade-route blocking and maritime closure are different questions.
+- Longest Trade Route counts a maximum continuous edge trail over roads/ships; branches are not simply added, edges cannot repeat. Own buildings permit changes of piece kind; opponent buildings interrupt the trail. The existing ≥5/2VP award retains a qualified tied incumbent and transfers only to a stronger eligible route. Final movement state determines ownership; victory waits for the winner's own turn.
+- A connected ship permits a coastal destination-island settlement with ordinary costs, piece supply and distance rule. Core scoring grants only its ordinary 1VP; start-island discovery rewards require explicit scenario rules.
+- Gold produces one manual choice per settlement or two per city, supports different chosen resources, and is blocked by robber. Second-settlement setup Gold is a mandatory choice before the initial route. Empty/exhausted bank cannot leave an impossible pending obligation; unavailable requested quantities reject atomically. Existing numeric recipient queue is preserved, not presented as an official scarcity arbitration policy.
+
+Seven/Knight still create one robber-or-pirate choice after required discards; land/sea/current tile/victim checks precede mutation. One accepted figure move allows at most one theft, then clears pending; nonparticipants see no stolen resource type. Theft's existing deterministic selection is unchanged and remains separate gameplay work.
+
+S2: actual multi-island presets/start islands, bonuses/fog/exploration, coastal ports, and no-desert initial robber offboard handling. S3: complete natural matches, scarce Gold arbitration/card sequencing and broader clients. Current presets remain one land component; actual two-island geometry is tested only in [test_seafarers_islands.py](../../tests/test_seafarers_islands.py). Exact proof and limitations — [[plans/seafarers-s1]].
+
 Источник: [[Спецификация пользователя]]. Дополнение сохраняет [[Правила Base Game]], если механика или сценарий их явно не переопределяет.
 
 | Механика | Требование |

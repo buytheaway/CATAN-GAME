@@ -4,6 +4,7 @@ from copy import deepcopy
 import pytest
 
 from app import server_mp as server
+from app.match_rulesets import CURRENT_RULESET
 from app.engine import rules
 from tests.test_pirate_lifecycle import finish_setup
 
@@ -13,7 +14,8 @@ def room():
     g = rules.build_game(1, 2, map_id="base_standard")
     finish_setup(g)
     return server.Room("DICE", 2, 0, [server.PlayerSlot(pid=i) for i in range(2)],
-                       status="in_match", game=g, settings=server.RoomSettings(bank_visibility="hidden"))
+                       status="in_match", game=g, ruleset_id=CURRENT_RULESET,
+                       settings=server.RoomSettings(bank_visibility="hidden"))
 
 
 def test_generation_preserves_the_two_independent_server_faces(monkeypatch):

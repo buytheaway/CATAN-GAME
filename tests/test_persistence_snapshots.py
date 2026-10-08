@@ -95,7 +95,17 @@ def restore(g):
 
 def main_game(map_id="base_standard", players=2):
     g = rules.build_game(1, players, map_id=map_id)
-    finish_setup(g)
+    while g.phase == "setup":
+        pid = g.turn
+        if g.pending_action == "choose_gold":
+            rules.apply_cmd(g, g.pending_pid, {"type": "choose_gold", "res": "ore", "qty": 1})
+        elif g.setup_need == "settlement":
+            legal = [v for v in sorted(g.vertices) if rules.can_place_settlement(g, pid, v, False)]
+            coast = [v for v in legal if any(g.tiles[t].terrain == "sea" for t in g.vertex_adj_hexes[v])]
+            rules.apply_cmd(g, pid, {"type": "place_settlement", "vid": (coast or legal)[0]})
+        else:
+            edge = next(e for e in sorted(g.edges) if rules.can_place_road(g, pid, e, g.setup_anchor_vid))
+            rules.apply_cmd(g, pid, {"type": "place_road", "eid": edge})
     return g
 
 
@@ -108,6 +118,17 @@ def give_card(g, kind, pid=0, new=False):
 
 def roll(g, total=2):
     rules.apply_cmd(g, g.turn, {"type": "roll", "roll": total})
+
+
+def age_ship_through_turns(g):
+    owner = g.turn
+    benign = next(n for n in (2, 3, 4, 5, 6, 8, 9, 10, 11, 12)
+                  if n not in {t.number for t in g.tiles if t.terrain == "gold"})
+    rules.apply_cmd(g, owner, {"type": "end_turn"})
+    while g.turn != owner:
+        roll(g, benign)
+        rules.apply_cmd(g, g.turn, {"type": "end_turn"})
+    roll(g, benign)
 
 
 def free_road(g):
@@ -227,6 +248,7 @@ def seafarers_case(name):
     if name == "ship":
         return g
     if name == "moved_ship":
+        age_ship_through_turns(g)
         for edge in sorted(g.edges):
             probe = deepcopy(g)
             try:
@@ -253,18 +275,207 @@ def test_seafarers_ship_and_pirate_lifecycle(case):
     restore(seafarers_case(case))
 
 
+def released_v1_payload(g):
+    payload = snapshots.encode_snapshot(g)
+    payload["snapshot_version"] = 1
+    del payload["state"]["ships_built_this_turn"]
+    del payload["state"]["ship_moved_this_turn"]
+    return payload
+
+
+def test_v2_preserves_new_ship_history_and_rejected_move_after_json_restore():
+    g = seafarers_case("ship")
+    source = next(iter(g.occupied_ships))
+    assert g.ships_built_this_turn == {source}
+    payload = snapshots.encode_snapshot(g)
+    assert payload["snapshot_version"] == 2 and payload["engine_compatibility"] == 1
+    assert payload["state"]["ships_built_this_turn"] == [list(source)]
+    r = restore(g)
+    destination = next(edge for edge in g.edges if rules.can_place_ship(g, 0, edge, excluded_edge=source))
+    cmd = {"type": "move_ship", "from_eid": source, "to_eid": destination}
+    for state in (g, r):
+        before = deepcopy(state)
+        with pytest.raises(rules.RuleError):
+            rules.apply_cmd(state, 0, cmd)
+        assert_equivalent(before, state)
+    age_ship_through_turns(g)
+    age_ship_through_turns(r)
+    assert not g.ships_built_this_turn and not g.ship_moved_this_turn
+    assert_equivalent(g, r)
+
+
+def test_v2_preserves_move_used_and_mixed_route_achievements():
+    g = seafarers_case("moved_ship")
+    assert g.ship_moved_this_turn and not g.ships_built_this_turn
+    assert g.occupied_e and g.occupied_ships
+    r = restore(g)
+    source = next(iter(g.occupied_ships))
+    destination = next(edge for edge in g.edges if rules.can_place_ship(g, 0, edge, excluded_edge=source))
+    cmd = {"type": "move_ship", "from_eid": source, "to_eid": destination}
+    for state in (g, r):
+        before = deepcopy(state)
+        with pytest.raises(rules.RuleError):
+            rules.apply_cmd(state, 0, cmd)
+        assert_equivalent(before, state)
+    assert_equivalent(g.achievements, r.achievements)
+
+
+@pytest.mark.parametrize("phase,rolled,seafarers,movable,locked", [
+    ("setup", False, True, True, False), ("main", False, True, True, True),
+    ("main", True, True, True, True), ("main", True, False, True, False),
+    ("main", True, True, False, False), ("main", True, False, False, False),
+])
+def test_exact_v1_migration_preserves_state_and_locks_only_unknown_active_ship_history(
+        phase, rolled, seafarers, movable, locked):
+    g = rules.build_game(1, 2, map_id="seafarers_gold_haven") if phase == "setup" else main_game("seafarers_gold_haven")
+    g.rolled = rolled
+    g.rules_config.enable_seafarers, g.rules_config.enable_move_ship = seafarers, movable
+    payload = released_v1_payload(g)
+    before = deepcopy(payload)
+    migrated = snapshots.loads_snapshot(json.dumps(payload))
+    expected = deepcopy(g)
+    expected.ships_built_this_turn = set()
+    expected.ship_moved_this_turn = locked
+    assert_equivalent(expected, migrated)
+    assert_equivalent(before, payload)
+    assert snapshots.encode_snapshot(migrated)["snapshot_version"] == 2
+
+
+def test_v1_conservative_ship_lock_expires_only_on_normal_end_turn():
+    g = seafarers_case("ship")
+    age_ship_through_turns(g)
+    migrated = snapshots.decode_snapshot(released_v1_payload(g))
+    assert migrated.ship_moved_this_turn
+    source = next(iter(migrated.occupied_ships))
+    before = deepcopy(migrated)
+    with pytest.raises(rules.RuleError):
+        rules.apply_cmd(migrated, 0, {"type": "move_ship", "from_eid": source, "to_eid": next(
+            e for e in g.edges if rules.can_place_ship(g, 0, e, excluded_edge=source))})
+    assert_equivalent(before, migrated)
+    age_ship_through_turns(migrated)
+    assert not migrated.ship_moved_this_turn
+    accepted = False
+    for edge in sorted(migrated.edges):
+        try:
+            rules.apply_cmd(deepcopy(migrated), 0, {"type": "move_ship", "from_eid": source, "to_eid": edge})
+        except rules.RuleError:
+            continue
+        accepted = True
+        break
+    assert accepted
+
+
+def test_v1_unrolled_free_ship_history_cannot_be_erased_by_recovery():
+    g = main_game("seafarers_gold_haven")
+    give_card(g, "road_building")
+    rules.apply_cmd(g, 0, {"type": "play_dev", "card": "road_building"})
+    source = next(e for e in sorted(g.edges) if rules.can_place_ship(g, 0, e))
+    rules.apply_cmd(g, 0, {"type": "build_ship", "eid": source, "free": True})
+    assert not g.rolled
+    migrated = snapshots.decode_snapshot(released_v1_payload(g))
+    assert migrated.ship_moved_this_turn
+    roll(migrated, 2)
+    before = deepcopy(migrated)
+    target = next(e for e in sorted(g.edges) if rules.can_place_ship(g, 0, e, excluded_edge=source))
+    with pytest.raises(rules.RuleError):
+        rules.apply_cmd(migrated, 0, {"type": "move_ship", "from_eid": source, "to_eid": target})
+    assert_equivalent(before, migrated)
+
+
+@pytest.mark.parametrize("pending", ["discard", "robber_move", "choose_gold"])
+def test_v2_pending_choices_preserve_ship_lifecycle_without_new_entitlement(pending):
+    g = seafarers_case("ship")
+    g.pending_action, g.pending_pid = pending, g.turn
+    if pending == "choose_gold":
+        g.pending_gold, g.pending_gold_queue = {g.turn: 1}, [g.turn]
+    elif pending == "discard":
+        g.discard_required = {g.turn: 1}
+    restore(g)
+
+
+@pytest.mark.parametrize("corruption", ["unknown", "new_field", "missing", "type"])
+def test_v1_migration_rejects_nonreleased_shape_before_defaults(corruption):
+    payload = released_v1_payload(main_game("seafarers_gold_haven"))
+    state = payload["state"]
+    if corruption == "unknown":
+        state["future_history"] = []
+    elif corruption == "new_field":
+        state["ship_moved_this_turn"] = False
+    elif corruption == "missing":
+        del state["dev_deck"]
+    else:
+        state["rolled"] = 1
+    with pytest.raises(snapshots.SnapshotValidationError):
+        snapshots.decode_snapshot(payload)
+
+
+@pytest.mark.parametrize("corruption", ["missing", "foreign", "unoccupied", "duplicate", "reversed", "boolean", "setup", "moved_type"])
+def test_v2_ship_lifecycle_references_fail_closed(corruption):
+    g = seafarers_case("ship")
+    payload = snapshots.encode_snapshot(g)
+    state = payload["state"]
+    source = state["ships_built_this_turn"][0]
+    if corruption == "missing":
+        state["ships_built_this_turn"] = [[9998, 9999]]
+    elif corruption == "foreign":
+        state["board"]["occupied_ships"][",".join(map(str, source))] = 1
+    elif corruption == "unoccupied":
+        state["board"]["occupied_ships"] = {}
+    elif corruption == "duplicate":
+        state["ships_built_this_turn"].append(source)
+    elif corruption == "reversed":
+        state["ships_built_this_turn"] = [list(reversed(source))]
+    elif corruption == "boolean":
+        state["ships_built_this_turn"] = [[False, source[1]]]
+    elif corruption == "setup":
+        payload = snapshots.encode_snapshot(rules.build_game(1, 2, map_id="seafarers_gold_haven"))
+        payload["state"]["ship_moved_this_turn"] = True
+    else:
+        state["ship_moved_this_turn"] = 1
+    with pytest.raises(snapshots.SnapshotValidationError):
+        snapshots.decode_snapshot(payload)
+
+
+@pytest.mark.parametrize("case", ["ship", "moved_ship"])
+def test_offline_ship_lifecycle_round_trip_stays_private_on_network(case):
+    g = seafarers_case(case)
+    data = json.loads(json.dumps(serialize.to_dict(g)))
+    r = serialize.from_dict(data)
+    assert_equivalent(g.ships_built_this_turn, r.ships_built_this_turn)
+    assert_equivalent(g.ship_moved_this_turn, r.ship_moved_this_turn)
+    for pid in (0, 1):
+        assert {"ships_built_this_turn", "ship_moved_this_turn"}.isdisjoint(serialize.to_player_dict(g, pid))
+    del data["ships_built_this_turn"]
+    del data["ship_moved_this_turn"]
+    legacy = serialize.from_dict(data)
+    assert not legacy.ships_built_this_turn and legacy.ship_moved_this_turn
+
+
+def test_qt_compatible_serializer_defaults_do_not_grant_old_ship_movement():
+    g = seafarers_case("ship")
+    class OlderModel:
+        def __getattr__(self, key):
+            if key in ("ships_built_this_turn", "ship_moved_this_turn"):
+                raise AttributeError(key)
+            return getattr(g, key)
+    view = serialize.to_dict(OlderModel())
+    assert view["ships_built_this_turn"] == [] and view["ship_moved_this_turn"]
+
+
 def gold_game():
     g = rules.build_game(1, 2, map_id="seafarers_gold_haven")
     while g.phase == "setup":
         pid = g.turn
-        if g.setup_need == "settlement":
+        if g.pending_action == "choose_gold":
+            rules.apply_cmd(g, g.pending_pid, {"type": "choose_gold", "res": "ore", "qty": 1})
+        elif g.setup_need == "settlement":
             candidates = [v for v in sorted(g.vertices) if rules.can_place_settlement(g, pid, v, False)]
             gold = [v for v in candidates if any(g.tiles[t].terrain == "gold" for t in g.vertex_adj_hexes[v])]
             rules.apply_cmd(g, pid, {"type": "place_settlement", "vid": (gold or candidates)[0]})
         else:
             edge = next(e for e in sorted(g.edges) if rules.can_place_road(g, pid, e, g.setup_anchor_vid))
             rules.apply_cmd(g, pid, {"type": "place_road", "eid": edge})
-    number = next(t.number for i, t in enumerate(g.tiles) if t.terrain == "gold"
+    number = next(t.number for i, t in enumerate(g.tiles) if t.terrain == "gold" and i not in g.robbers
                   and any(i in g.vertex_adj_hexes[v] for v in g.occupied_v))
     roll(g, number)
     assert g.pending_action == "choose_gold" and g.pending_gold
@@ -396,7 +607,8 @@ def test_private_codec_never_changes_network_projection(finished):
     g = build_case("hidden_vp")
     g.game_over, g.winner_pid = finished, 0 if finished else None
     room = server.Room("PRIVATE", 2, 0, [server.PlayerSlot(pid=i) for i in range(2)],
-                       settings=server.RoomSettings(bank_visibility="hidden"), game=g)
+                       settings=server.RoomSettings(bank_visibility="hidden"), game=g,
+                       ruleset_id=server.CURRENT_RULESET)
     views = [server._snapshot_state(g, room, pid) for pid in (0, 1)]
     payload = snapshots.encode_snapshot(g)
     assert payload["state"]["seed"] == g.seed
@@ -458,7 +670,7 @@ def test_corrupt_types_and_references_are_cleanly_rejected(path, value):
         snapshots.decode_snapshot(payload)
 
 
-@pytest.mark.parametrize("version", [-1, 0, 2, 999])
+@pytest.mark.parametrize("version", [-1, 0, 3, 999])
 def test_unsupported_snapshot_version_has_explicit_error(version):
     payload = snapshots.encode_snapshot(main_game())
     payload["snapshot_version"] = version
@@ -476,6 +688,7 @@ def test_unsupported_engine_compatibility_has_explicit_error(version):
 
 @pytest.mark.parametrize("path", [("snapshot_version",), ("engine_compatibility",), ("state",),
                                   ("state", "dev_deck"), ("state", "free_roads"),
+                                  ("state", "ships_built_this_turn"), ("state", "ship_moved_this_turn"),
                                   ("state", "board", "vertices"), ("state", "players", 0, "dev_cards")])
 def test_required_fields_never_silently_default(path):
     payload = snapshots.encode_snapshot(main_game())
@@ -583,7 +796,8 @@ def test_fixed_codec_preserves_imperfect_current_map_semantics():
 
 def test_encoder_rejects_python_type_changes_instead_of_normalizing_them():
     for field, value in (("edges", list(main_game().edges)), ("discard_submitted", [0]),
-                         ("ports", [[main_game().ports[0][0], "3:1"]])):
+                         ("ports", [[main_game().ports[0][0], "3:1"]]),
+                         ("ships_built_this_turn", []), ("ship_moved_this_turn", 1)):
         g = main_game()
         setattr(g, field, value)
         with pytest.raises(snapshots.SnapshotValidationError):

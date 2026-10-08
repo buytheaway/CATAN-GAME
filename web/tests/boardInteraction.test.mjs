@@ -57,7 +57,30 @@ test("road and ship payloads preserve server edge IDs and server free-road choic
   assert.deepEqual(road.sent, [{ type: "place_road", eid: [7, 9], setup: false, free: true }]);
   const ship = controller(s, "ship");
   ship.ui.onEdgeClick([11, 9]);
-  assert.deepEqual(ship.sent, [{ type: "build_ship", eid: [9, 11] }]);
+  assert.deepEqual(ship.sent, [{ type: "build_ship", eid: [9, 11], free: true }]);
+});
+
+test("Seafarers setup selects a ship from authoritative targets and keeps the original IDs", () => {
+  const s = { ...state(), phase: "setup", setup_need: "road" };
+  const c = controller(s);
+  c.ui.onSelectAction("ship");
+  assert.equal(c.ui.action, "ship");
+  assert.deepEqual(c.ui.targets.edges, s.legal.ships);
+  c.ui.onEdgeClick([7, 9]);
+  assert.deepEqual(c.sent, []);
+  c.ui.onEdgeClick([11, 9]);
+  assert.deepEqual(c.sent, [{ type: "build_ship", eid: [9, 11], setup: true }]);
+  c.synchronize({ ...s, setup_need: "settlement" });
+  assert.equal(c.ui.action, "settlement");
+});
+
+test("paid ship command stays unchanged and missing personal targets never sends a setup ship", () => {
+  const c = controller(state(), "ship");
+  c.ui.onEdgeClick([9, 11]);
+  assert.deepEqual(c.sent, [{ type: "build_ship", eid: [9, 11] }]);
+  const invalid = controller({ ...state(), phase: "setup", setup_need: "road", legal: undefined }, "ship");
+  invalid.ui.onEdgeClick([9, 11]);
+  assert.deepEqual(invalid.sent, []);
 });
 
 test("move ship selects source then only a server-provided destination", () => {

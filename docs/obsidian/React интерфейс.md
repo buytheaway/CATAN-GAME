@@ -4,6 +4,26 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Verification scope after S1/F1/F2/F3
+
+Последняя полная **web verification — F2, 2026-10-08: 241 passed**, TypeScript/production build и пять focused Chrome/PostgreSQL compatibility groups. Последняя полная **Python verification — F3: 757 passed, 0 skipped**. F3 затронул только Qt и не повторял web/build/browser; текущая документационная сверка не является новым полным запуском. Все меньшие числа и browser evidence в sections ниже — результаты названных исторических checkpoint. Последний scenario baseline S1 — 348/508, с 140 pre-roll и 20 pirate-connectivity отказами; они не закрыты frontend tests. Сводка/границы — [[Project State#Current verification and status]].
+
+Текущая архитектура: App/AudioProvider/AuthProvider → LobbyPage Home/room либо GamePage; F2 LegacyMatchPage имеет приоритет для restricted room. GamePage владеет drafts/overlays, useBoardInteraction — board selection/callbacks, useGameCommand — command waiting. BoardRenderer default 3D и сохранённый SVG получают один snapshot/controller; GLB/audio/presentation не исполняют правила. Полный command/COMMIT/publication путь — [[Сценарий сетевой партии]].
+
+## Legacy match compatibility UX — F2
+
+Verified **2026-10-08**, 241 web tests, TypeScript/production build and real Chrome/PostgreSQL acceptance. Server room_state supplies ruleset_compatibility; [App.tsx](../../web/src/App.tsx) prioritizes [LegacyMatchPage.tsx](../../web/src/components/LegacyMatchPage.tsx) over GamePage when compatibility_required. The panel explains older/unverified rules, preserved state/scores, disabled play/timers/rematch, and Back to Home → ordinary Host. It shows only safe room/map/player metadata, not a legacy board/private hand or a conversion form.
+
+[WSClient](../../web/src/wsClient.ts) clears stale match/pending command/lifecycle state on restriction, ignores late match_state and suppresses sendCmd/start/rematch/replay. Guest/account seat_identity and saved proofs remain intact; compatibility_required is not credential expiry. Home clears the current pointer/socket while retaining guest Recent or account membership. GameCard labels the safe summaries Compatibility required/View saved match, keeping Continue available for the notice. New room resets the previous restriction; current matches retain ordinary GamePage/controller/Board3D/2D behavior.
+
+No gameplay inference, board rendering, CSS redesign, migration UI or rules changes. Backend gate remains authoritative, including raw socket commands. Five browser groups cover v1/v2 guest Continue/refresh, account Continue/refresh, Home/new two-player match and preserved heads; limits — [[Project State#Match ruleset compatibility — F2]], network contract — [[Сервер и протокол#Match compatibility gate — F2]].
+
+## Seafarers setup/legal compatibility — S1, 2026-10-08
+
+Runtime UI changes are limited to [interaction.ts](../../web/src/board/interaction.ts), [BoardControls.tsx](../../web/src/board/BoardControls.tsx) and [presentation.ts](../../web/src/game/presentation.ts). Setup settlement stays mandatory; the following route step offers existing Road/Ship buttons under current rules, uses only personalized targets and sends original edge IDs plus setup=true. Main free Ship uses existing road_free/free=true and the same no-cost presentation as Road. Context prompts mention road or ship. Base setup still offers Road only.
+
+GamePage → shared controller → WSClient → Python executor/commit → personalized legal snapshot → SVG/Three remains unchanged. No board/terrain rendering, art, styles, audio, HUD redesign or client rules engine. New unit tests verify initial/free ship payloads, personal target membership, setup buttons/costs and frozen snapshot preservation. **Historical S1 web result: 235/235**; later F2 full result is 241/241. Full S1 browser proof/fixture limitations — [[plans/seafarers-s1]].
+
 ## Audio — Phase 4
 
 Implemented/verified **2026-10-08**: 231 web tests, TypeScript/production build and real native Chrome audio acceptance. [AudioProvider.tsx](../../web/src/audio/AudioProvider.tsx) wraps the existing AuthProvider at App's boundary and owns one [AudioManager.ts](../../web/src/audio/AudioManager.ts). Its trusted pointer/keyboard and visibility listeners unlock/resume lazily, clean up on unmount and tolerate React StrictMode's immediate effect replay. No audio context is created before the first gesture; Home unlock itself stays silent. Browser restrictions/unavailable API produce status/silent fallback, never block commands or automatically retry in a loop.
@@ -126,7 +146,7 @@ Evidence/limits — [[Design System#Game UX 2.3 — implemented playtest feedbac
 
 [[Web клиент]] · [[Состояние игры]] · [[Стили и визуальные границы]] · [[Design System]]
 
-Last verified **2026-10-06 — Game / Room UX 2.2**: 119 web tests, 234 pytest, TypeScript/production/Docker builds и 19 Chrome cases. Двухклиентские настройки/цвета/Balanced/countdown/Visible и Hidden bank/chat/refresh/rematch проходят. Результаты ниже относятся к прежним этапам; текущие limits — [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]].
+**Historical checkpoint verification — 2026-10-06, Game / Room UX 2.2:** 119 web tests, 234 pytest, TypeScript/production/Docker builds и 19 Chrome cases. Тогда проверены двухклиентские настройки/цвета/Balanced/countdown/Visible и Hidden bank/chat/refresh/rematch. Это не последняя verification приложения; актуальные результаты/границы — в начале заметки. Исторический scope — [[plans/game-ui-redesign#Game / Room UX 2.2 — Match Settings, Timer and Chat]].
 
 ## Game / Room UX 2.2 — settings, colors, timer and chat
 

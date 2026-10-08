@@ -160,6 +160,37 @@ test("selected build mode exposes Cancel and delegates removal without a command
   assert.equal(setupView.button("Cancel"), undefined);
 });
 
+test("Seafarers setup offers road and ship with no costs, using shared server targets", () => {
+  const s = snapshot({ phase: "setup", setup_need: "road", rules_config: { enable_seafarers: true },
+    legal: { ...snapshot().legal, roads: [[1, 2]], ships: [[2, 3]] } });
+  const changes = [], selection = { ...emptySelection(), action: "ship" };
+  const ui = createBoardInteraction(s, 0, selection, next => changes.push(next), () => {});
+  const view = render(loaded.exports.BoardControls, { state: s, interaction: ui, resources: {} });
+  assert.equal(view.button("Ship").disabled, false);
+  assert.equal(view.button("Ship")["aria-pressed"], true);
+  assert.equal(view.button("Road").disabled, false);
+  view.button("Road").onClick();
+  assert.equal(changes.at(-1).action, "road");
+  assert.equal((view.html.match(/Free placement/g) || []).length, 2);
+  assert.doesNotMatch(view.html, /cost-resource/);
+  assert.equal(contextPrompt(s, 0, ui).title, "Choose a road or ship");
+  const base = { ...s, rules_config: { enable_seafarers: false }, legal: { ...s.legal, ships: [] } };
+  const baseView = render(loaded.exports.BoardControls, { state: base,
+    interaction: createBoardInteraction(base, 0, emptySelection(), () => {}, () => {}) });
+  assert.equal(baseView.button("Ship"), undefined);
+});
+
+test("free ship presentation needs neither Roll nor resources and never changes the snapshot", () => {
+  const s = snapshot({ rules_config: { enable_seafarers: true }, free_roads: { "0": 2 },
+    legal: { ...snapshot().legal, ships: [[2, 3]], road_free: true } });
+  const before = JSON.stringify(s), ui = createBoardInteraction(s, 0,
+    { ...emptySelection(), action: "ship" }, () => {}, () => {});
+  const view = render(loaded.exports.BoardControls, { state: s, interaction: ui, resources: {} });
+  assert.equal(view.button("Ship").disabled, false);
+  assert.equal(contextPrompt(s, 0, ui).title, "Place road or ship 1 of 2");
+  assert.equal(JSON.stringify(s), before);
+});
+
 test("drawer exposes a named close control and delegates dismissal; mandatory choices have modal semantics", () => {
   let closed = 0;
   const view = render(GameOverlay, { id: "game-log", title: "Event log", children: "kept event",

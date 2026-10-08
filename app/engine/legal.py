@@ -59,15 +59,17 @@ def board_legal_moves(g: GameState, pid: int) -> dict:
             road["free"] = True
         if can_place_road(g, pid, edge) and accepts(road):
             legal["roads"].append(list(edge))
-        if can_place_ship(g, pid, edge) and accepts({"type": "build_ship", "eid": list(edge)}):
+        ship = {"type": "build_ship", "eid": list(edge), "setup": setup}
+        if legal["road_free"]:
+            ship["free"] = True
+        if can_place_ship(g, pid, edge) and accepts(ship):
             legal["ships"].append(list(edge))
     if not setup:
         for source, owner in sorted(g.occupied_ships.items()):
             if owner != pid:
                 continue
             destinations = [list(edge) for edge in sorted(g.edges)
-                            if any(v in source for v in edge)
-                            and accepts({"type": "move_ship", "from_eid": list(source), "to_eid": list(edge)})]
+                            if accepts({"type": "move_ship", "from_eid": list(source), "to_eid": list(edge)})]
             if destinations:
                 key = ",".join(map(str, source))
                 legal["move_ship"]["sources"].append(list(source))

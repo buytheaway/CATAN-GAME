@@ -1,4 +1,5 @@
 /** Guest proofs only: no pid, match epoch, snapshot or private gameplay cache. */
+import type { RulesetCompatibility } from "./matchCompatibility";
 export const RECENT_GAMES_KEY = "catan_recent_games";
 export const CURRENT_GAME_KEY = "catan_current_game";
 export const MAX_RECENT_GAMES = 10;
@@ -11,6 +12,7 @@ export type GameSummary = {
   player_count: number; max_players: number; connected_count: number;
   status: "lobby" | "active" | "game_over"; target_vp: number;
   updated_at: string; can_continue: boolean;
+  ruleset_compatibility?: RulesetCompatibility;
   winner?: { name: string; color: string };
 };
 export type Inspection = { status: "available"; game: GameSummary }

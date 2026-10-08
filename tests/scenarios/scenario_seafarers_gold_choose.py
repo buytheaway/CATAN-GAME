@@ -51,6 +51,15 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         if not res.get("ok"):
             driver.fail("setup settlement failed", kind="assertion", details=res)
 
+        # Second-settlement Gold is a real mandatory setup choice. Resolve it
+        # through the same command path before placing the anchored route.
+        while g.pending_action == "choose_gold":
+            recipient = g.pending_pid
+            resource = next(r for r in engine_rules.RESOURCES if g.bank[r] > 0)
+            result = driver.do({"type": "choose_gold", "pid": recipient, "res": resource, "qty": 1})
+            if not result.get("ok"):
+                driver.fail("setup gold choice failed", kind="assertion", details=result)
+
         anchor = int(g.setup_anchor_vid) if g.setup_anchor_vid is not None else vid
         edges = driver.legal_road_edges(pid, must_touch_vid=anchor)
         if not edges:
@@ -63,6 +72,16 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     g.phase = "main"
     g.turn = 0
     g.rolled = False
+
+    # Some seeds replaced the only desert with Gold; the existing no-desert
+    # map fallback then starts the robber on tile 0. Production requires an
+    # unblocked Gold hex. Move it with a real Knight, retaining deck conservation.
+    if g.robber_tile == 0:
+        g.dev_deck.remove("knight")
+        g.players[0].dev_cards.append({"type": "knight", "new": False})
+        driver.do({"type": "play_dev", "pid": 0, "card": "knight"})
+        target = next(i for i, tile in enumerate(g.tiles) if i != 0 and tile.terrain != "sea")
+        driver.do({"type": "move_robber", "pid": 0, "tile": target})
 
     res = driver.do({"type": "roll", "pid": 0, "roll": 6})
     if not res.get("ok"):

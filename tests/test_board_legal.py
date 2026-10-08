@@ -51,7 +51,8 @@ def test_required_roll_and_free_road_command_are_projected_by_engine(funded):
     g.free_roads[0] = 2
     legal = board_legal_moves(g, 0)
     assert legal["road_free"] and legal["roads"]
-    assert legal["cities"] == legal["ships"] == legal["settlements"] == []
+    assert legal["ships"]  # The same Road Building credit can pay for a ship.
+    assert legal["cities"] == legal["settlements"] == []
     probe = deepcopy(g)
     rules.apply_cmd(probe, 0, {"type": "place_road", "eid": legal["roads"][0], "free": True})
     assert probe.free_roads[0] == 1 and g.free_roads[0] == 2
@@ -114,6 +115,16 @@ def test_ship_sources_and_destinations_match_current_executor(funded):
     g = funded
     source = board_legal_moves(g, 0)["ships"][0]
     rules.apply_cmd(g, 0, {"type": "build_ship", "eid": source})
+    assert source not in board_legal_moves(g, 0)["move_ship"]["sources"]
+    rules.apply_cmd(g, 0, {"type": "end_turn"})
+    rules.apply_cmd(g, 1, {"type": "roll", "roll": 2})
+    if g.pending_action == "choose_gold":
+        while g.pending_action == "choose_gold":
+            rules.apply_cmd(g, g.pending_pid, {"type": "choose_gold", "res": "ore"})
+    rules.apply_cmd(g, 1, {"type": "end_turn"})
+    rules.apply_cmd(g, 0, {"type": "roll", "roll": 2})
+    while g.pending_action == "choose_gold":
+        rules.apply_cmd(g, g.pending_pid, {"type": "choose_gold", "res": "ore"})
     before = deepcopy(g)
     movement = board_legal_moves(g, 0)["move_ship"]
     assert movement["sources"]
@@ -150,7 +161,7 @@ def test_personal_snapshot_does_not_reveal_another_players_affordability(funded,
 def test_execution_revalidates_an_affordable_hint_after_state_changes(funded):
     road = board_legal_moves(funded, 0)["roads"][0]
     funded.players[0].res = {r: 0 for r in funded.players[0].res}
-    room = server.Room("TEST", 2, 0, [], game=funded)
+    room = server.Room("TEST", 2, 0, [], game=funded, ruleset_id=server.CURRENT_RULESET)
     before = deepcopy(funded)
     error = server._apply_cmd(room, 0, {"type": "place_road", "eid": road})
     assert error["code"] == "illegal" and funded == before

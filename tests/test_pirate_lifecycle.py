@@ -9,6 +9,11 @@ from app.engine.state import RESOURCES
 
 def finish_setup(g):
     while g.phase == "setup":
+        if g.pending_action == "choose_gold":
+            resource = next(r for r in RESOURCES if g.bank[r] > 0)
+            rules.apply_cmd(g, g.pending_pid,
+                            {"type": "choose_gold", "res": resource, "qty": 1})
+            continue
         pid = g.turn
         if g.setup_need == "settlement":
             legal = [v for v in sorted(g.vertices)

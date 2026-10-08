@@ -17,6 +17,7 @@ from typing import Any, Deque, Dict, List, Optional, Set
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from app.persistence.coordinator import Coordinator
 from app.persistence.db import configured_database
 from app.persistence.credentials import utcnow, issue_token, token_hash, valid_token, renewed_expiry
@@ -24,11 +25,12 @@ from app.persistence.errors import PersistenceUnavailable, RecoveryError
 from app.persistence.recovery import clone_room, resume_timer, checksum
 from app.persistence.inspection import MAX_CREDENTIALS, MAX_BODY_BYTES, InspectionLimiter, inspect_memory
 from app.auth.routes import router as auth_router
-from app.auth.security import AuthError, COOKIE, allowed_origin, same_origin_guest, authorization
+from app.auth.security import AuthError, COOKIE, allowed_origin, same_origin_guest, authorization, authorize_transaction
 from app.auth.service import AuthService
 
 from app import net_protocol
 from app import game_events, test_tools
+from app.match_rulesets import CURRENT_RULESET, COMPATIBILITY_MESSAGE, restricted
 from app.engine import (
     DEFAULT_PRESET_ID,
     GameState,
@@ -114,6 +116,7 @@ class Room:
     last_activity_ts: float = field(default_factory=lambda: time.time())
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     match_uuid: Optional[uuid.UUID] = None
+    ruleset_id: Optional[str] = None
     durable_revision: int = 0
     created_at: datetime = field(default_factory=utcnow)
     closed_at: Optional[datetime] = None
@@ -313,6 +316,7 @@ MULTIPLAYER_COMMANDS = frozenset({
 
 
 def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
+    _require_compatible(room)
     state = to_player_dict(game, pid)
     state["you_pid"] = pid
     state["legal"] = _legal_moves(game, pid)
@@ -359,36 +363,101 @@ async def _send_room_state(room: Room, request_id: Optional[str] = None) -> None
 async def _send_match_state(room: Room) -> None:
     if not room.game:
         return
+    if restricted(room):
+        await _send_room_state(room)
+        return
     # Freeze all views before the first await so another command cannot make
     # recipients observe different ticks/states from this one update.
     messages = [
-        (ws, conn.pid, net_protocol.match_state_message(room, _snapshot_state(room.game, room, conn.pid)))
+        (conn, conn.pid, room.players[conn.pid].id,
+         net_protocol.match_state_message(room, _snapshot_state(room.game, room, conn.pid)))
         for ws, conn in list(manager.connections.items())
-        if conn.room_code == room.room_code and conn.pid is not None
+        if conn.room_code == room.room_code and conn.pid is not None and 0 <= conn.pid < len(room.players)
     ]
-    for ws, pid, message in messages:
-        conn = manager.connections.get(ws)
-        if (not conn or conn.room_code != room.room_code or conn.pid != pid
-                or room.match_id != message["match_id"] or room.players[pid].active_ws is not ws):
-            continue
-        if not await account_socket_valid(conn):
-            continue
-        try:
-            await _send(ws, message)
-        except (WebSocketDisconnect, RuntimeError, OSError):
-            pass
+    for conn, pid, slot_id, message in messages:
+        await _publish_match_state(conn, room, pid, slot_id, message)
 
 
 async def _send_match_state_to(ws: WebSocket, room: Room) -> None:
     if not room.game:
         return
     conn = manager.connections.get(ws)
-    if not conn or conn.room_code != room.room_code or conn.pid is None:
+    if (not conn or conn.room_code != room.room_code or conn.pid is None
+            or not 0 <= conn.pid < len(room.players)):
         return
-    if not _owns(conn, room) or not await account_socket_valid(conn):
+    pid = conn.pid
+    if restricted(room):
+        await _send(ws, net_protocol.room_state_message(room))
         return
-    state = _snapshot_state(room.game, room, conn.pid)
-    await _send(ws, net_protocol.match_state_message(room, state))
+    message = net_protocol.match_state_message(room, _snapshot_state(room.game, room, pid))
+    await _publish_match_state(conn, room, pid, room.players[pid].id, message)
+
+
+async def _publish_match_state(conn: ClientConn, room: Room, pid: int, slot_id: uuid.UUID, message: Dict) -> None:
+    # Production callers hold room.lock through publication: claim, reconnect,
+    # rematch and durable guest revocation cannot interleave with this send.
+    def current_recipient():
+        return (manager.connections.get(conn.ws) is conn and manager.rooms.get(room.room_code) is room
+                and not restricted(room)
+                and conn.room_code == room.room_code and conn.pid == pid
+                and room.match_id == message["match_id"] and 0 <= pid < len(room.players)
+                and room.players[pid].id == slot_id and room.players[pid].active_ws is conn.ws)
+
+    async def invalidate(code="forbidden", close_code=4401):
+        if not current_recipient():
+            return  # Never disconnect a replacement controller or a new match.
+        manager.leave_room(conn)  # Fence synchronously, even if error/close fails.
+        await _send(conn.ws, net_protocol.error_message(code, "Private state authorization unavailable"))
+        await conn.ws.close(code=close_code)
+
+    async def send_owned():
+        raw = json.dumps(message)
+        if not current_recipient():
+            return
+        if not _owns(conn, room):
+            await invalidate()
+            return
+        if not persistence.ready or room.persistence_blocked:
+            await invalidate("persistence_unavailable", 1013)
+            return
+        # No task scheduling between the final ownership check and handing the
+        # frame to WebSocket. The surrounding task bounds checks + send together.
+        await conn.ws.send_text(raw)
+
+    async def publish():
+        if not current_recipient():
+            return
+        if not _owns(conn, room):
+            await invalidate()
+            return
+        if not await account_socket_valid(conn):
+            if current_recipient():
+                manager.leave_room(conn)
+            return
+        if not current_recipient():
+            return
+        if conn.session_hash is None:
+            await send_owned()
+            return
+        context = authorization.set({"user_id": conn.user_id, "session_id": conn.session_id})
+        try:
+            # Reuse the command commit gate's session/user share locks. A logout
+            # or account disable UPDATE must order before or after this frame.
+            async with persistence.database.sessions() as session, session.begin():
+                await authorize_transaction(session)
+                await send_owned()
+        except AuthError:
+            await invalidate("session_expired")
+        except SQLAlchemyError:
+            await invalidate("persistence_unavailable", 1013)
+        finally:
+            authorization.reset(context)
+
+    try:
+        await asyncio.wait_for(publish(), timeout=2)
+    except (WebSocketDisconnect, RuntimeError, OSError, asyncio.TimeoutError):
+        if current_recipient():
+            manager.leave_room(conn)
 
 
 async def _send_reconnect_token(ws: WebSocket, room: Room, pid: int) -> None:
@@ -429,6 +498,7 @@ def _rematch_host_pid(room: Room) -> Optional[int]:
 
 
 def _start_match(room: Room, *, rebind: bool = True) -> None:
+    _require_compatible(room)
     participants = [p for p in room.players if p.name and p.connected]
     host_pid = _rematch_host_pid(room)
     if len(participants) < 2 or host_pid not in [p.pid for p in participants]:
@@ -469,6 +539,7 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     room.seed = seed
     room.match_id += 1
     room.match_uuid = uuid.uuid4()
+    room.ruleset_id = CURRENT_RULESET
     room.tick = 0
     room.dice = None
     room.roll_count = 0
@@ -488,7 +559,14 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     room.status = "in_match"
 
 
+def _require_compatible(room: Room) -> None:
+    if restricted(room):
+        raise RuleError("compatibility_required", COMPATIBILITY_MESSAGE)
+
+
 def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
+    if restricted(room):
+        return net_protocol.error_message("compatibility_required", COMPATIBILITY_MESSAGE)
     g = room.game
     if not g:
         return net_protocol.error_message("no_match", "Match not started")
@@ -567,7 +645,7 @@ async def _notify_start(room: Room) -> None:
 
 
 def _sync_timer(room: Room) -> None:
-    if room.timer_paused:
+    if restricted(room) or room.timer_paused:
         return
     g = room.game
     if not g or g.game_over or g.phase != "main" or not room.settings.turn_timer:
@@ -584,7 +662,7 @@ async def _process_room_timer(room: Room) -> None:
 async def _process_room_timer_locked(room: Room) -> None:
     if manager.rooms.get(room.room_code) is not room:
         return
-    if not persistence.ready or room.persistence_blocked or room.timer_paused:
+    if restricted(room) or not persistence.ready or room.persistence_blocked or room.timer_paused:
         return
     if room.timer is None and (not room.game or not room.settings.turn_timer
                               or room.game.game_over or room.game.phase != "main"):
@@ -932,6 +1010,8 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             return
         if not _owns(conn, room):
             raise RuleError("forbidden", "Room membership required")
+        if kind not in ("leave_room", "chat"):
+            _require_compatible(room)
         if kind == "leave_room":
             candidate = clone_room(room)
             candidate.last_activity_ts = time.time()

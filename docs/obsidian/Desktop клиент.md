@@ -38,6 +38,18 @@ OnlineGameController применяет серверные данные; лок�
 
 Сохранения доступны в offline: `_save_game` и `_load_game`. Они используют отдельный `_offline_hidden` для колоды, рук и флагов. Особенности восстановления описаны в [[Результаты аудита]].
 
+## Ship lifecycle persistence — F3
+
+**Исправлено и проверено 2026-10-08.** [ui_v6.py](../../app/ui_v6.py): Qt-модель `Game` объявляет `ships_built_this_turn` (set edge tuples) и `ship_moved_this_turn` (bool). `_convert_base_state` копирует оба значения из общего GameState; `_ui_game_to_engine_dict` записывает их в корень offline JSON как список пар и bool, с теми же именами, которые читает общий `engine.serialize.from_dict`. Отдельных копий этих полей в `_offline_hidden` нет.
+
+Путь восстановления: `MainWindow._load_game` → чтение JSON → `engine.serialize.from_dict` → `_convert_base_state` → Qt `Game`. Qt не вычисляет историю и не определяет правила движения. Уже построенные корабли и оба ограничения сохраняются; отклонённый ход их не изменяет. Общий `rules.end_turn_cleanup` сбрасывает историю, оставляя корабли на карте; после наступления следующего собственного хода обычное разрешённое движение снова работает.
+
+Старый save без истории использует существующую политику общего decoder: для main Seafarers с разрешённым перемещением выставляется `ship_moved_this_turn=True` до End Turn, в том числе до Roll. Точная история не восстанавливается; повторное сохранение сохраняет защитный флаг. Base и setup не получают эту блокировку. Это не конверсия правил/VP и не перевод Qt на PostgreSQL codec или F2 ruleset metadata; прочие ограничения старого save остаются отдельными задачами.
+
+При реальной загрузке обнаружен дополнительный сбой: `scene.clear()` удаляет C++ items, а старые `overlay_nodes/edges/hex` и `piece_items` ещё ссылались на них. `_load_game` очищает эти четыре коллекции перед перерисовкой; иначе save/load завершался `Internal C++ object ... already deleted`.
+
+Доказательства: [test_desktop_ship_persistence.py](../../tests/test_desktop_ship_persistence.py), **8 cases**, PySide6/Qt **6.10.1**, offscreen. Настоящие `QApplication`, `MainWindow`, Qt-координаты, `_save_game`, `_load_game`, файловый JSON и `_apply_cmd`; заменён только выбор пути в файловых диалогах. Проверены новый корабль, повторное движение, legacy история до/после Roll с повторным save, End Turn/следующий собственный ход, валидное движение, Base setup/main. Полный pytest с изолированной PostgreSQL — **757 passed, 0 skipped**. Видимые нативные файловые диалоги и полная ручная Qt-партия не проверялись. Общий движок, web и durable persistence не изменены.
+
 ## Phase 1 compatibility — 2026-10-02
 
 NetClient привязывает pending queue к room+match, очищает consumed entries на reconnect и сбрасывает команды на rematch. OnlineGameController использует you_pid из снимка и last consumed seq из токена, включая первый reconnect к начавшейся партии. Старые ACK/snapshots не меняют новую очередь; snapshot с меньшим tick игнорируется.

@@ -1,6 +1,6 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-06
+updated: 2026-10-08
 ---
 
 # Architecture Decisions
@@ -8,6 +8,32 @@ updated: 2026-10-06
 [[00 Главная]] · [[Project State]] · [[Documentation Policy]]
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
+
+## ADR-015 — Match ruleset provenance and safe legacy restriction
+
+Status: **Accepted by user; implemented/verified 2026-10-08, F2 Strategy C.**
+
+Decision: nullable `matches.ruleset_id` is immutable match-level provenance, separate from `snapshot_version`, `engine_compatibility` and GameState.state_version. Only new matches receive `catan-seafarers-s1`. Additive Alembic `f2a001` leaves existing markers NULL, including v2 heads; absent/unrecognized markers require compatibility review. No timestamp, codec version or successful decode establishes S1 provenance.
+
+Recovery decodes v1/v2 without running gameplay rules. Valid restricted matches load as in_match with ownership intact, not quarantined/corrupted. Backend blocks commands before seq/receipt consumption, legal projection, timer processing/resumption and start/rematch. The commit fence prevents rewriting GameState, timer, epoch or snapshot. Metadata-only Continue, guest renewal, account claim, chat and leave remain possible; restricted writes skip match/result/participant upserts, preserving old VP/achievements/winner/final scores. No personalized match_state is published; public room/inspection metadata describes `compatibility_required`.
+
+Reason: pre-S1 road-only scoring, mixed routes and lost incumbent history cannot safely be reconciled merely by decoding. V2 may contain pre-S1 derived scores after an earlier recovery/write. Format compatibility allows reading, not executing current rules.
+
+Consequences: even a genuine S1 match created before the marker existed is restricted without verified provenance. Finished historical results stay unchanged; restricted rooms cannot rematch, but users can retain their seat, return Home and create a separate current match. No automatic conversion, dual engine, backfill or deletion. Strategy D is a possible future **explicit maintenance operation**, requiring a separate decision and transaction/idempotency/rollback design; it is **not implemented**. Do not manually stamp existing matches current. Older backends ignore this gate and must not be used for rollback. Downgrading the column loses provenance; re-upgrade leaves existing matches unknown.
+
+Evidence — [[plans/persistence-auth#F2 — match ruleset compatibility (Strategy C)]], [[Состояние игры#Snapshot format versus match ruleset — F2]], [[Сервер и протокол#Match compatibility gate — F2]]. ADR-014's v1→v2 progression applies only to independently verified current rulesets after F2; unmarked legacy cannot reach End Turn to clear unknown history.
+
+## ADR-014 — Seafarers turn history and codec v2
+
+Status: **Implemented/verified 2026-10-08, authorized Seafarers S1.** Existing full codec v1 remains a frozen released schema; new writes use snapshot_version=2 / engine_compatibility=1, covering 42 GameState fields.
+
+Decision: keep active-player `ships_built_this_turn` (original edge tuples) and `ship_moved_this_turn` in shared engine state. Successful main-phase ship construction records its edge; accepted movement consumes one move; normal turn cleanup clears both. Setup ships do not populate main-turn history. Legal projection probes the same executor rather than reconstructing these restrictions in React.
+
+Persistence validates exact new types, board references and current-player ownership. Strict v1 decode supplies an empty built set and a conservative movement lock for any main-phase Seafarers/movement-enabled save: even an unrolled turn may contain free ships from Road Building. Only normal End Turn resets unknown legacy history. Input is copied; migrations do not rebuild maps, execute rules or guess historical moves. Offline views preserve known fields and conservatively handle missing history; personalized network views remove both fields.
+
+Reason: deriving age/used movement from occupied ships, renderer, socket connection or current dice status permits illegal movement after refresh/restart. Extending released v1 in place silently loses state or rejects valid old checkpoints.
+
+Consequences: no SQL migration, new public field, alternate model or Room lifecycle redesign. Existing atomic commit/rejected receipt/replay/takeover rules remain. Real PostgreSQL fresh-coordinator hydration checks both account and guest ownership, Gold setup anchor, route/VP/privacy and v1→v2 progression. A legacy player may lose an otherwise legitimate move for the remainder of the restored turn; old backend binaries cannot read v2 writes. Full verification evidence — [[plans/seafarers-s1]].
 
 ## ADR-013 — Account sessions and durable seat ownership
 
@@ -27,15 +53,15 @@ Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1B.** Use
 
 Decision: one active backend worker/replica keeps committed Room/GameState in RAM; SQLAlchemy 2 async sessions + Alembic + psycopg 3 commit durable aggregates to PostgreSQL. Every command, timer, config/chat mutation, reconnect and lifecycle transition uses the same Room lock. Execute on detached candidate, save head/private runtime/seq/receipt/metadata in one transaction, COMMIT, promote RAM, then personal broadcast/ACK. Failed writes discard candidate. Ambiguous COMMIT requires exact revision/head/receipt lookup; until resolved room is fenced. Never re-roll/re-steal or load an older ACKed head. Final engine RuleError persists consumed seq/receipt only; pre-engine ownership/epoch/gap/no_match failures are unconsumed.
 
-Decision: guest token uses 256-bit secure entropy, DB SHA-256 only, constant-time comparison, 30-day authenticated inactivity expiry, no reconnect rotation. Retained RoomPlayer UUID follows compact rematch pid; excluded/closed members revoked in same transaction. UUID/name/pid/room code are not credentials. Account/session identity remains future work. Start/rematch use additive request_id + expected_match_id, persisted bounded operations; legacy controls without fields remain accepted but cannot express replay-safe rematch intent.
+Decision: guest token uses 256-bit secure entropy, DB SHA-256 only, constant-time comparison, 30-day authenticated inactivity expiry, no reconnect rotation. Retained RoomPlayer UUID follows compact rematch pid; excluded/closed members revoked in same transaction. UUID/name/pid/room code are not credentials. **Historical scope at 1B:** account/session identity was future work; it is now implemented by ADR-013, without replacing guest ownership. Start/rematch use additive request_id + expected_match_id, persisted bounded operations; legacy controls without fields remain accepted but cannot express replay-safe rematch intent.
 
 Decision: recovery validates current head and reconstructs exact board/deck/bag/dice/pending/feed/config without generation. Lobby, live and finished rooms load disconnected. Test/closed/expired/abandoned rooms are excluded; corrupt head quarantined, healthy rooms recover independently. Timed matches wait for first valid participant reconnect. For turn/grace, resume remaining = max(20s, min(configured duration, saved UTC deadline minus current UTC)); blocked/stopped preserve meaning. No offline automatic turn chain or automatic mandatory choices.
 
-Consequences: startup Alembic is safe only under the one-worker/replica deployment assumption. Readiness is 503 until DB/schema/recovery ready; failed write/outage blocks mutations, WS emits retryable persistence_unavailable/1013. Recovery reads committed state and forces ordinary verified reconnect after same-process outage. Head + 2 predecessors, receipts 256/participant and operations 256/room are bounded; no retention scheduler, auth/Continue UI, backup or multi-worker coordination. RAM-only dev remains compatible mode; durable Compose never falls back. Verification: full pytest 508, web 130, real PostgreSQL/process/Chrome restart and isolated volume retention/deletion. Details — [[plans/persistence-auth#Persistence Phase 1B — implementation and verification]], [[Deployment]].
+Consequences: startup Alembic is safe only under the one-worker/replica deployment assumption. Readiness is 503 until DB/schema/recovery ready; failed write/outage blocks mutations, WS emits retryable persistence_unavailable/1013. Recovery reads committed state and forces ordinary verified reconnect after same-process outage. Head + 2 predecessors, receipts 256/participant and operations 256/room are bounded. **Historical exclusions at 1B:** auth/Continue UI were not yet present; guest Continue arrived in 1C and account Auth/Continue in ADR-013. Retention scheduler, backup and multi-worker coordination remain future work. RAM-only dev remains compatible mode; durable Compose never falls back. Historical 1B verification: full pytest 508, web 130, real PostgreSQL/process/Chrome restart and isolated volume retention/deletion. Details — [[plans/persistence-auth#Persistence Phase 1B — implementation and verification]], [[Deployment]].
 
 ## ADR-011 — Separate full trusted GameState codec
 
-Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A.** Codec remains unchanged in 1B; durable Room adapter now uses it. Auth/Continue remain unimplemented.
+Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A. Historical checkpoint description below.** Codec remained unchanged in 1B; durable Room adapter uses it. Auth/Continue were unimplemented at 1A, subsequently completed in 1C/ADR-013. Current codec v2 and ruleset gate are described in ADR-014/015; released v1 remains readable and immutable.
 
 Decision: full private engine persistence has its own `app/persistence/snapshots.py` surface, separate from existing network/offline serialize.to_dict/from_dict/to_player_dict. Envelope snapshot_version=1 / engine_compatibility=1 contains all shared GameState fields, explicit known dataclass construction and stored materialized geometry; it contains no Room/DB metadata. Restore does not execute commands, generate board or shuffle. Required/unknown fields, primitive types, references and versions fail closed; field-coverage guard prevents silent new engine field loss. v1 is immutable after release; future schemas need explicit version compatibility/migration.
 
@@ -45,7 +71,7 @@ Consequences: full payload is never a client projection; 1B coordinator is its p
 
 ## ADR-010 — Durable room state and optional account identity
 
-Status: **Architecture direction approved by user for staged work — 2026-10-06; codec 1A and durable guest backend 1B implemented.** Audit base `745d749` / `game-ux-2-3`. Account/auth/Continue/history proposals below remain future scope. Current implemented contract — ADR-012; full rationale/schema — [[plans/persistence-auth]].
+Status: **Architecture direction approved by user for staged work — 2026-10-06. Historical proposal below, audited at `745d749` / `game-ux-2-3`.** Codec 1A, durable guest backend 1B, guest Continue 1C and Auth Phase 1/account Continue are implemented and tested. Profiles, richer history and password reset remain planned. Current contracts — ADR-012/013/014/015; full rationale/schema — [[plans/persistence-auth]].
 
 Decision proposed: retain one backend worker, Room/RoomManager and shared Python GameState as committed active runtime; PostgreSQL provides durability. Normalize room/seat/account/match identity, metadata, sessions and safe final results; use a separate versioned full trusted GameState codec plus private Room checkpoint data. Candidate execution → DB transaction/commit → runtime promotion → personal broadcast/ACK. Persist consumed sequence and bounded receipts including final rejection; serialize timer/lifecycle/commands under a room lock and resolve ambiguous commits before retry. No Redis, broker or event-sourced rules engine.
 
@@ -53,7 +79,7 @@ Reason: process-local rooms/tokens/RNG/timers disappear on restart. Current to_d
 
 Identity proposed: stable RoomPlayer/MatchPlayer UUIDs coexist with current room code, compact pid and room-local match_id. Guest seat uses hashed bearer credential; optional account uses opaque hashed server session and HttpOnly/Secure/SameSite cookie. Account binding requires both session and guest proof, revokes guest credentials and preserves match membership. New authorized connection fences old owner. No mandatory registration or JWT stack.
 
-Consequences: codec-only 1A and DB/adapters/recovery/guest credentials 1B are complete; Continue UI, Auth and Profile remain separate proposals. DB failure blocks mutations; no success ACK before commit and no silent fallback to an older ACKed checkpoint. Hash-only credential storage and lifecycle request IDs are implemented; timer grace/guest expiry are accepted in ADR-012. Future room retention/account takeover still require product decisions. Plain HTTP Docker needs TLS before production cookie auth. ADR-001/002/005/006/007/008/009 remain constraints; gameplay is unchanged.
+Consequences: the original stages separated codec 1A and DB/adapters/recovery/guest credentials 1B from later Continue/Auth/Profile. **Superseded implementation assumptions:** Continue UI and Auth are complete, including verified account controlling-socket takeover (ADR-013); Profile/history/reset remain future scope. DB failure blocks mutations; no success ACK before commit and no silent fallback to an older ACKed checkpoint. Hash-only credential storage and lifecycle request IDs are implemented; timer grace/guest expiry are accepted in ADR-012. Room retention remains future work. Plain HTTP Docker needs TLS before production cookie auth. ADR-001/002/005/006/007/008/009 remain constraints; this persistence decision does not change gameplay rules.
 
 ## ADR-009 — Server-owned room policy, independent presentation colors
 
@@ -73,7 +99,7 @@ Decision: Nginx с production React build и FastAPI/Uvicorn с общим Pytho
 
 Reason: Пользователь запросил production-like запуск одной командой. RoomManager/GameState являются process-local, поэтому несколько workers/replicas разделили бы пользователей одной комнаты между независимыми состояниями.
 
-Consequences: Backend readiness проверяется HTTP healthcheck до запуска web. Production WS URL выводится из страницы; local Vite сохраняет VITE_WS_URL. Base images закреплены digest, server dependencies — точными версиями, frontend использует npm ci. Исходная Infrastructure Phase 1 была RAM-only; Phase 1B сохраняет rooms/matches/guest credentials в PostgreSQL. Account auth не реализован. TLS и горизонтальное масштабирование — отдельная задача. Инструкции — [[Deployment]], исторический план — [[plans/containerization]].
+Consequences: Backend readiness проверяется HTTP healthcheck до запуска web. Production WS URL выводится из страницы; local Vite сохраняет VITE_WS_URL как опциональный override и backend для proxy. Base images закреплены digest, server dependencies — точными версиями, frontend использует npm ci. **Historical:** исходная Infrastructure Phase 1 была RAM-only и без account auth. Phase 1B добавила PostgreSQL, затем ADR-013 — работающие account sessions/ownership/Continue. TLS deployment и горизонтальное масштабирование — отдельные задачи. Инструкции — [[Deployment]], исторический план — [[plans/containerization]].
 
 ## ADR-001 — Server-authoritative game state
 
@@ -105,7 +131,9 @@ Reason: Browser-клиент уже существует; подготовка �
 
 Consequences: Сначала документировать состояния и references, затем отдельная задача на реализацию. Концептуальный дизайн не меняет правила/протокол сам по себе. [[Design System]] не является списком уже реализованных экранов.
 
-2026-10-04, Board3D Phase 1: пользователь отдельно утвердил experimental R3F/Three renderer. BoardRenderer сохраняет default SVG; 3D получает тот же player-specific snapshot, вычисляет только визуальные позиции и не получает command callbacks. Python authority и network contract сохранены. Правила/полный interaction не переносятся в meshes; Phase 2 требует отдельного решения. Доказательства — [[plans/board3d]].
+**Historical checkpoint — 2026-10-04, Board3D Phase 1:** пользователь отдельно утвердил experimental R3F/Three renderer. На этом этапе BoardRenderer сохранял default SVG, а 3D был view-only без command callbacks. Python authority и network contract были сохранены.
+
+**Superseded visual/interaction scope:** отдельно утверждённая Board3D Phase 2 подключила общий `useBoardInteraction` controller с персональными server legal targets; Game UI Phase 1 сделала 3D default. Сейчас SVG/Three вызывают одинаковые callbacks и не определяют правила. Terrain/building GLB integration и Product Polish Phases 1–4, включая audio, реализованы; полные natural matches/mobile/performance certification не заявлены. Доказательства — [[plans/board3d]], [[plans/game-ui-redesign]], [[React интерфейс]].
 
 ## ADR-004 — Base, Seafarers and scenario rules
 

@@ -1,7 +1,7 @@
-"""Full trusted GameState codec v1; never use this payload as a client snapshot.
+"""Full trusted GameState codec; never use this payload as a client snapshot.
 
 Only engine state is encoded here. Room ownership, transport, dice bag, timer,
-chat and personalized event history require the future durable Room adapter.
+chat and personalized event history belong to the separate durable Room adapter.
 No map generation, rules execution, randomness or dynamic classes on restore.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from app.engine.state import (
     RESOURCES, RulesConfig, Tile, TradeOffer,
 )
 
-SNAPSHOT_VERSION = 1
+SNAPSHOT_VERSION = 2
 ENGINE_COMPATIBILITY = 1
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_JSON_NODES = 200_000
@@ -247,7 +247,7 @@ _BOARD = {"tiles": _list(lambda v, p: Tile(**_record(v, _TILE, p))),
           "occupied_v": _map(_id_key, _pair(_nonnegative, _choice(1, 2))),
           "occupied_e": _map(_edge_key, _nonnegative),
           "occupied_ships": _map(_edge_key, _nonnegative)}
-_GAME = {
+_GAME_V1 = {
     "seed": _integer, "size": _number, "max_players": _positive,
     "map_name": _string, "map_id": _string, "map_meta": _json_object, "rules": _json_object,
     "rules_config": lambda v, p: RulesConfig(**_record(v, _RULES, p)),
@@ -270,6 +270,8 @@ _GAME = {
     "trade_offers": _list(lambda v, p: TradeOffer(**_record(v, _OFFER, p))),
     "trade_offer_next_id": _positive,
 }
+_GAME = {**_GAME_V1, "ships_built_this_turn": _unique_set(_edge),
+         "ship_moved_this_turn": _boolean}
 # Also used as a fail-closed field-coverage guard; never infer schema from payload.
 _SCHEMAS = [(GameState, _GAME), (BoardState, _BOARD), (PlayerState, _PLAYER),
             (Tile, _TILE), (RulesConfig, _RULES), (AchievementState, _ACHIEVEMENTS), (TradeOffer, _OFFER)]
@@ -315,6 +317,12 @@ def _validate_references(g: GameState) -> None:
             ref(pid, pids, "state.board.occupancy.owner")
     if set(g.occupied_e) & set(g.occupied_ships):
         _fail("state.board", "road and ship occupy the same edge")
+    if g.phase == "setup" and (g.ships_built_this_turn or g.ship_moved_this_turn):
+        _fail("state.ship_lifecycle", "setup cannot retain main-turn ship lifecycle")
+    for edge in g.ships_built_this_turn:
+        ref(edge, edges, "state.ships_built_this_turn")
+        if g.occupied_ships.get(edge) != g.turn:
+            _fail("state.ships_built_this_turn", "built ship must belong to current player")
     for field in ("turn", "pending_pid", "winner_pid"):
         ref(getattr(g, field), pids, "state." + field)
     for owner in (g.longest_road_owner, g.largest_army_owner):
@@ -375,12 +383,17 @@ def encode_snapshot(game: GameState) -> dict:
     board = state["board"] = _encode_record(game.board, _BOARD)
     if any(type(value) is not list for value in (game.tiles, game.players, game.trade_offers)):
         _fail("state", "expected engine lists")
-    if type(game.edges) is not set or type(game.discard_submitted) is not set:
+    if any(type(value) is not set for value in
+           (game.edges, game.discard_submitted, game.ships_built_this_turn)):
         _fail("state", "expected engine sets")
     if any(type(edge) is not tuple for edge in game.edges):
         _fail("state.board.edges", "expected tuple edges")
     for edge in game.edges:
         _edge(list(edge), "state.board.edges")
+    for edge in game.ships_built_this_turn:
+        if type(edge) is not tuple:
+            _fail("state.ships_built_this_turn", "expected tuple edges")
+        _edge(list(edge), "state.ships_built_this_turn")
     if type(game.ports) is not list or any(
         type(port) is not tuple or len(port) != 2 or type(port[0]) is not tuple
         for port in game.ports
@@ -406,6 +419,7 @@ def encode_snapshot(game: GameState) -> dict:
     for field in ("discard_required", "pending_gold", "dev_played_turn", "free_roads"):
         state[field] = _encode_map(getattr(game, field))
     state["discard_submitted"] = sorted(game.discard_submitted)
+    state["ships_built_this_turn"] = [list(edge) for edge in sorted(game.ships_built_this_turn)]
     payload = _json_copy({"snapshot_version": SNAPSHOT_VERSION,
                           "engine_compatibility": ENGINE_COMPATIBILITY, "state": state})
     decode_snapshot(payload)  # Never persist a structurally invalid candidate.
@@ -418,11 +432,20 @@ def decode_snapshot(payload: Any) -> GameState:
     payload = _json_copy(payload)
     envelope = _record(payload, {"snapshot_version": _integer,
                                 "engine_compatibility": _integer, "state": _json_object}, "snapshot")
-    if envelope["snapshot_version"] != SNAPSHOT_VERSION:
-        raise UnsupportedSnapshotVersion("Unsupported snapshot_version; supported version is 1")
+    version = envelope["snapshot_version"]
+    if version not in (1, SNAPSHOT_VERSION):
+        raise UnsupportedSnapshotVersion("Unsupported snapshot_version; supported versions are 1 and 2")
     if envelope["engine_compatibility"] != ENGINE_COMPATIBILITY:
         raise UnsupportedEngineCompatibility("Unsupported engine_compatibility; supported version is 1")
-    game = GameState(**_record(envelope["state"], _GAME, "state"))
+    state = _record(envelope["state"], _GAME_V1 if version == 1 else _GAME, "state")
+    if version == 1:
+        # Released v1 has no ship history. It cannot safely grant another move
+        # in a Seafarers turn (free ships can precede Roll). End Turn removes it.
+        cfg = state["rules_config"]
+        state["ships_built_this_turn"] = set()
+        state["ship_moved_this_turn"] = (state["phase"] == "main"
+                                        and cfg.enable_seafarers and cfg.enable_move_ship)
+    game = GameState(**state)
     _validate_references(game)
     return game
 

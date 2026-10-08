@@ -2,6 +2,8 @@ import type { GameState } from "./components/BoardView.types";
 import { clearCurrentGame, currentGame, readRecentGames, removeRecentGame, saveRecentGame, setCurrentGame } from "./recentGames";
 import { accountCurrent, setAccountCurrent } from "./auth/api";
 import type { RecentGame } from "./recentGames";
+import { needsCompatibility } from "./matchCompatibility";
+import type { RulesetCompatibility } from "./matchCompatibility";
 
 export type RoomSettings = {
   dice_mode: "random" | "balanced"; starting_player: "random" | "host";
@@ -34,6 +36,7 @@ export type RoomState = {
   players: { pid: number; name: string; connected: boolean; color?: string | null }[];
   max_players: number;
   status: "lobby" | "in_match";
+  ruleset_compatibility?: RulesetCompatibility;
   map_id?: string;
   map_meta?: { id?: string; name?: string; description?: string };
   map_presets?: { id: string; name: string; description?: string }[];
@@ -320,6 +323,7 @@ export class WSClient {
   }
 
   private sendMatchOperation(type: "start_match" | "rematch") {
+    if (needsCompatibility(this.roomState)) return;
     if (!this.isOpen() || !this.roomCode || this.pendingMatchOperation) return;
     this.pendingMatchOperation = { roomCode: this.roomCode, type, request_id: genId(), expected_match_id: this.matchId };
     const { roomCode: _room, ...payload } = this.pendingMatchOperation;
@@ -390,6 +394,7 @@ export class WSClient {
   }
 
   sendCmd(cmd: Record<string, any>) {
+    if (needsCompatibility(this.roomState)) return;
     if (!this.matchId) {
       this.onLog?.("No match yet");
       return;
@@ -482,6 +487,11 @@ export class WSClient {
         data.chat_revision = this.roomState.chat_revision;
       }
       this.roomState = data;
+      if (needsCompatibility(data)) {
+        this.matchState = null;
+        this.pendingCmds.clear();
+        this.pendingMatchOperation = null;
+      }
       this.roomCode = data.room_code;
       const you = data.players.find((p) => p.name === this.name);
       if (you) this.youPid = you.pid;
@@ -546,6 +556,7 @@ export class WSClient {
       return;
     }
     if (data.type === "match_state") {
+      if (needsCompatibility(this.roomState)) return;
       if (this.roomCode && data.room_code !== this.roomCode) return;
       if (data.room_code === this.roomCode && data.match_id < this.matchId) return;
       if (this.matchState?.match_id === data.match_id && data.room_code === this.matchState.room_code

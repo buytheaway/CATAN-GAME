@@ -5,6 +5,8 @@ import GamePage from "./components/GamePage";
 import { AuthProvider, AccountControls } from "./auth/AuthUI";
 import { PageShell } from "./shell/PageShell";
 import { AudioProvider } from "./audio/AudioProvider";
+import LegacyMatchPage from "./components/LegacyMatchPage";
+import { needsCompatibility } from "./matchCompatibility";
 
 const WS_DEFAULT = defaultWebSocketUrl();
 
@@ -24,6 +26,7 @@ export default function App() {
     client.onRoomState = (rs) => {
       if (rs.status === "lobby") lobbyRoom.current = rs.room_code;
       setRoom(rs);
+      if (needsCompatibility(rs)) setMatch(null);
       setError(null);
     };
     client.onMatchState = (ms) => {
@@ -50,7 +53,14 @@ export default function App() {
 
   return (
     <AudioProvider><AuthProvider client={client} onExit={() => { lobbyRoom.current = null; freshStart.current = null; setMatch(null); setRoom(null); setError(null); }}>
-      {match ? (
+      {room && needsCompatibility(room) ? (
+        <PageShell status={status} account={<AccountControls shell />}>
+          <LegacyMatchPage room={room} onHome={() => {
+            client.leaveRoom(); lobbyRoom.current = null; freshStart.current = null;
+            setMatch(null); setRoom(null); setError(null); setLog([]);
+          }} />
+        </PageShell>
+      ) : match ? (
         <div className="app app--match">
         <GamePage
           client={client}

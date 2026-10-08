@@ -14,6 +14,7 @@ from .inspection import safe_game
 from .errors import PersistenceUnavailable, CommitUncertain
 from app.auth.security import AuthError, authorize_transaction
 from .recovery import room_config, match_checkpoint, checksum
+from app.match_rulesets import compatibility, restricted, validate_transition
 
 
 class Repository:
@@ -38,7 +39,7 @@ class Repository:
             m.rooms.c.updated_at, m.room_players.c.name, m.room_players.c.color, m.seat_tokens.c.token_hash,
             m.rooms.c.config["map_meta"]["name"].astext.label("map_name"),
             m.rooms.c.config["rules"]["target_vp"].astext.cast(Integer).label("target_vp"),
-            m.matches.c.status.label("match_status"), count.label("player_count"),
+            m.matches.c.status.label("match_status"), m.matches.c.ruleset_id, count.label("player_count"),
             winner.c.name.label("winner_name"), winner.c.color.label("winner_color"),
         ).select_from(m.rooms.join(m.room_players, m.room_players.c.room_id == m.rooms.c.id)
                       .join(m.seat_tokens, m.seat_tokens.c.room_player_id == m.room_players.c.id)
@@ -74,10 +75,12 @@ class Repository:
                     status="game_over" if row["match_status"] == "finished" else
                            "active" if row["match_status"] == "active" else "lobby",
                     target_vp=row["target_vp"], updated_at=row["updated_at"],
+                    ruleset=compatibility(row["ruleset_id"]) if row["match_status"] else None,
                     winner={"name": row["winner_name"], "color": row["winner_color"]} if row["winner_name"] else None))
         return results
 
     async def save(self, before, candidate, *, snapshot=False, receipt=None, operation=None):
+        validate_transition(before, candidate, snapshot=snapshot, receipt=receipt, operation=operation)
         started = perf_counter()
         head = match_checkpoint(candidate) if snapshot and candidate.game else None
         head_checksum = checksum(head) if head else None
@@ -107,6 +110,11 @@ class Repository:
                                .where(m.rooms.c.id == candidate.id).with_for_update())).scalar_one()
                     if revision != before.durable_revision:
                         raise PersistenceUnavailable("Durable revision conflict")
+                    if before.match_uuid:
+                        marker = (await session.execute(select(m.matches.c.ruleset_id).where(
+                            m.matches.c.id == before.match_uuid).with_for_update())).scalar_one()
+                        if marker != before.ruleset_id:
+                            raise PersistenceUnavailable("Durable ruleset conflict")
                     await session.execute(update(m.rooms).where(m.rooms.c.id == candidate.id).values(**values))
                 named = [p for p in candidate.players if p.name]
                 ids = [p.id for p in named]
@@ -138,10 +146,13 @@ class Repository:
                 if before and before.match_uuid and before.match_uuid != candidate.match_uuid:
                     await session.execute(update(m.matches).where(m.matches.c.id == before.match_uuid,
                         m.matches.c.status == "active").values(status="superseded", updated_at=now))
-                if candidate.game:
+                # Reconnect/claim/chat may update ownership metadata for a restricted
+                # match, but must not rewrite its head, scores or historical results.
+                if candidate.game and not restricted(before):
                     game = candidate.game
                     winner_id = candidate.players[game.winner_pid].match_player_id if game.game_over and game.winner_pid is not None else None
                     match = dict(id=candidate.match_uuid, room_id=candidate.id, match_no=candidate.match_id,
+                                 ruleset_id=candidate.ruleset_id,
                                  status="finished" if game.game_over else "active", tick=candidate.tick,
                                  map_id=game.map_id, map_name=game.map_name, settings=config["settings"],
                                  is_test=candidate.test_mode, started_at=now, updated_at=now,

@@ -20,6 +20,14 @@ def _edge_key(e: Tuple[int, int]) -> str:
     return f"{a},{b}"
 
 
+def _legacy_ship_movement_lock(phase: str, rolled: bool, cfg) -> bool:
+    # Road Building may have built ships before rolling, so an unrolled legacy
+    # turn also has unknown history. Only normal End Turn can establish a reset.
+    return (phase == "main"
+            and bool(getattr(cfg, "enable_seafarers", False))
+            and bool(getattr(cfg, "enable_move_ship", False)))
+
+
 def to_dict(g: GameState) -> Dict:
     cfg = getattr(g, "rules_config", RulesConfig())
     return {
@@ -95,6 +103,9 @@ def to_dict(g: GameState) -> Dict:
         "occupied_v": {str(k): [v[0], v[1]] for k, v in g.occupied_v.items()},
         "occupied_e": {_edge_key((a, b)): owner for (a, b), owner in g.occupied_e.items()},
         "occupied_ships": {_edge_key((a, b)): owner for (a, b), owner in g.occupied_ships.items()},
+        "ships_built_this_turn": [list(edge) for edge in sorted(getattr(g, "ships_built_this_turn", set()))],
+        "ship_moved_this_turn": bool(getattr(g, "ship_moved_this_turn",
+            _legacy_ship_movement_lock(g.phase, g.rolled, cfg))),
         "tiles": [
             {
                 "q": t.q,
@@ -118,6 +129,9 @@ def to_player_dict(g: GameState, pid: int) -> Dict:
     if type(pid) is not int or not 0 <= pid < len(g.players):
         raise ValueError("A valid player is required for a private snapshot")
     state = to_dict(g)
+    # Lifecycle history is private executor/persistence data, not a wire addition.
+    state.pop("ships_built_this_turn")
+    state.pop("ship_moved_this_turn")
     # Exact bank counts + own hand reveal the other hand in a two-player game.
     state.pop("bank")
     state["bank_available"] = {r: n > 0 for r, n in g.bank.items()}
@@ -220,6 +234,9 @@ def from_dict(data: Dict) -> GameState:
     g.phase = data.get("phase", "setup")
     g.turn = int(data.get("turn", 0))
     g.rolled = bool(data.get("rolled", False))
+    g.ships_built_this_turn = {(int(a), int(b)) for a, b in data.get("ships_built_this_turn", [])}
+    g.ship_moved_this_turn = bool(data["ship_moved_this_turn"]) if "ship_moved_this_turn" in data else (
+        _legacy_ship_movement_lock(g.phase, g.rolled, g.rules_config))
     g.setup_order = [int(x) for x in data.get("setup_order", [])]
     g.setup_idx = int(data.get("setup_idx", 0))
     g.setup_need = data.get("setup_need", "settlement")

@@ -31,6 +31,7 @@ export function buildTools(interaction: BoardInteraction) {
 export function contextPrompt(state: GameSnapshot, pid: number, interaction: BoardInteraction) {
   const current = state.players.find(p => p.pid === state.turn)?.name || `Player ${state.turn + 1}`;
   const { action, selection, legal } = interaction;
+  const route = state.rules_config?.enable_seafarers ? "road or ship" : "road";
   if (selection.waiting) return { title: "Waiting for server", detail: "Your action is being confirmed." };
   if (state.game_over) return { title: "Match complete", detail: "Final scores are shown above." };
   const discard = state.discard_required?.[String(pid)] ?? 0;
@@ -41,15 +42,15 @@ export function contextPrompt(state: GameSnapshot, pid: number, interaction: Boa
     return { title: `Choose ${gold} gold resources`, detail: "Complete your resource choice to continue." };
   if (selection.victim) return { title: "Choose a player to steal from", detail: "Select a player in the choice panel." };
   if (state.turn !== pid) return { title: `${current}'s turn`, detail: state.phase === "setup"
-    ? `Waiting for a ${state.setup_need === "settlement" ? "settlement" : "road"} placement.` : "Waiting for their next action." };
+    ? `Waiting for a ${state.setup_need === "settlement" ? "settlement" : route} placement.` : "Waiting for their next action." };
   if (state.pending_action === "robber_move") return { title: action === "pirate" ? "Move the pirate"
     : action === "robber" || !legal?.pirate_tiles?.length ? "Move the robber" : "Move the robber or pirate",
     detail: "Choose a highlighted tile on the board." };
   if (state.pending_action) return { title: "Waiting for player choices", detail: "The turn continues once all choices are complete." };
   const freeRoads = state.free_roads?.[String(pid)] ?? 0;
-  if (freeRoads > 0 && legal?.road_free) return { title: `Place road ${freeRoads >= 2 ? 1 : 2} of 2`,
-    detail: legal.roads.length ? "Choose a highlighted edge for your free road." : "No legal road targets remain." };
-  if (state.phase === "setup") return { title: state.setup_need === "settlement" ? "Place a settlement" : "Choose a road",
+  if (freeRoads > 0 && legal?.road_free) return { title: `Place ${route} ${freeRoads >= 2 ? 1 : 2} of 2`,
+    detail: legal.roads.length || legal.ships.length ? `Choose a highlighted edge for your free ${route}.` : "No legal route targets remain." };
+  if (state.phase === "setup") return { title: state.setup_need === "settlement" ? "Place a settlement" : `Choose a ${route}`,
     detail: "Select a small highlighted target on the board." };
   if (action === "move_ship") return { title: selection.shipSource ? "Choose its destination" : "Select a ship to move",
     detail: selection.shipSource ? "Choose a highlighted edge, or cancel the move." : "Choose one of your highlighted ships." };

@@ -22,6 +22,10 @@ def initialize(room, *, rebind=True):
     desired = "3:1" if mode == "bank3" else "wood" if mode == "bank2" else None
     while g.phase == "setup":
         pid = g.turn
+        if g.pending_action == "choose_gold":
+            resource = next(r for r in rules.RESOURCES if g.bank[r] > 0)
+            rules.apply_cmd(g, g.pending_pid, {"type": "choose_gold", "res": resource})
+            continue
         legal = board_legal_moves(g, pid)
         if g.setup_need == "settlement":
             choices = legal["settlements"]

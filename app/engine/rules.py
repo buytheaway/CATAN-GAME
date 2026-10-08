@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.engine import maps as map_loader
+from app.engine.shipping import is_open_ship
 from app.engine.state import (
     AchievementState,
     COST,
@@ -210,6 +211,9 @@ def can_place_settlement(g: GameState, pid: int, vid: int, require_road: bool) -
     for e in g.edges:
         if vid in e and g.occupied_e.get(e) == pid:
             return True
+        if (getattr(g.rules_config, "enable_seafarers", False)
+                and vid in e and g.occupied_ships.get(e) == pid):
+            return True
     return False
 
 
@@ -253,7 +257,11 @@ def _edge_blocked_by_pirate(g: GameState, e: Tuple[int, int]) -> bool:
     return g.pirate_tile in g.edge_adj_hexes.get(e, [])
 
 
-def can_place_ship(g: GameState, pid: int, e: Tuple[int, int]) -> bool:
+def can_place_ship(
+    g: GameState, pid: int, e: Tuple[int, int],
+    must_touch_vid: Optional[int] = None,
+    excluded_edge: Optional[Tuple[int, int]] = None,
+) -> bool:
     if not getattr(g.rules_config, "enable_seafarers", False):
         return False
     if e not in g.edges or e in g.occupied_e or e in g.occupied_ships:
@@ -263,16 +271,17 @@ def can_place_ship(g: GameState, pid: int, e: Tuple[int, int]) -> bool:
     if getattr(g.rules_config, "enable_pirate", False) and _edge_blocked_by_pirate(g, e):
         return False
     a, b = e
+    if must_touch_vid is not None and must_touch_vid not in e:
+        return False
     for v in (a, b):
         occ = g.occupied_v.get(v)
         if occ and occ[0] == pid:
             return True
-    for ee, owner in g.occupied_e.items():
-        if owner == pid and (a in ee or b in ee):
-            return True
-    for ee, owner in g.occupied_ships.items():
-        if owner == pid and (a in ee or b in ee):
-            return True
+        if occ:
+            continue
+        for ee, owner in g.occupied_ships.items():
+            if ee != excluded_edge and owner == pid and v in ee:
+                return True
     return False
 
 
@@ -316,28 +325,6 @@ def _count_ships(g: GameState, pid: int) -> int:
     return sum(1 for owner in g.occupied_ships.values() if owner == pid)
 
 
-def _route_degree(g: GameState, pid: int, vid: int) -> int:
-    deg = 0
-    for e, owner in g.occupied_e.items():
-        if owner == pid and vid in e:
-            deg += 1
-    for e, owner in g.occupied_ships.items():
-        if owner == pid and vid in e:
-            deg += 1
-    return deg
-
-
-def _is_endpoint_ship(g: GameState, pid: int, e: Tuple[int, int]) -> bool:
-    a, b = e
-    for v in (a, b):
-        occ = g.occupied_v.get(v)
-        if occ and occ[0] == pid:
-            continue
-        if _route_degree(g, pid, v) <= 1:
-            return True
-    return False
-
-
 def pay_to_bank(g: GameState, pid: int, cost: Dict[str, int]) -> None:
     for r, q in cost.items():
         g.players[pid].res[r] -= q
@@ -375,12 +362,16 @@ def _is_blocked_vertex(g: GameState, vid: int, pid: int) -> bool:
 
 
 def longest_road_length(g: GameState, pid: int) -> int:
-    road_edges = [e for e, owner in g.occupied_e.items() if owner == pid]
-    if not road_edges:
+    # Keep the existing API/achievement. Seafarers extends the counted edges,
+    # not the rule that a route must be one trail without reusing an edge.
+    kinds = {e: "road" for e, owner in g.occupied_e.items() if owner == pid}
+    if getattr(g.rules_config, "enable_seafarers", False):
+        kinds.update({e: "ship" for e, owner in g.occupied_ships.items() if owner == pid})
+    if not kinds:
         return 0
 
     adj: Dict[int, List[Tuple[int, int]]] = {}
-    for e in road_edges:
+    for e in kinds:
         a, b = e
         adj.setdefault(a, []).append(e)
         adj.setdefault(b, []).append(e)
@@ -391,6 +382,9 @@ def longest_road_length(g: GameState, pid: int) -> int:
         best = 0
         for e in adj.get(v, []):
             if e in used:
+                continue
+            if (came_from is not None and kinds[e] != kinds[came_from]
+                    and _vertex_owner(g, v) != pid):
                 continue
             a, b = e
             nxt = b if a == v else a
@@ -412,9 +406,13 @@ def update_longest_road(g: GameState) -> None:
     if lens:
         max_len = max(lens)
         leaders = [i for i, ln in enumerate(lens) if ln == max_len]
-        if max_len >= 5 and len(leaders) == 1:
-            new_owner = leaders[0]
-            new_len = max_len
+        if max_len >= 5:
+            if g.longest_road_owner in leaders:
+                new_owner = g.longest_road_owner
+            elif len(leaders) == 1:
+                new_owner = leaders[0]
+            if new_owner is not None:
+                new_len = max_len
 
     if new_owner == g.longest_road_owner and new_len == g.longest_road_len:
         return
@@ -461,11 +459,11 @@ def check_win(g: GameState) -> None:
     if g.game_over:
         return
     target = _target_vp(g)
-    for i, p in enumerate(g.players):
-        if p.vp >= target:
-            g.game_over = True
-            g.winner_pid = i
-            return
+    # An opponent can receive the route achievement during this turn, but may
+    # win only when their own turn begins (including before the dice roll).
+    if g.players[g.turn].vp >= target:
+        g.game_over = True
+        g.winner_pid = g.turn
 
 
 def _normalize_port_kind(kind: Optional[str]) -> Optional[str]:
@@ -582,6 +580,8 @@ def end_turn_cleanup(g: GameState, pid: int) -> None:
     _clear_dev_new_flags(g, pid)
     g.dev_played_turn[pid] = False
     g.free_roads[pid] = 0
+    g.ships_built_this_turn = set()
+    g.ship_moved_this_turn = False
 
 
 def buy_dev(g: GameState, pid: int) -> str:
@@ -751,16 +751,49 @@ def _collect_gold_yields(g: GameState, roll: int) -> Dict[int, int]:
     if not getattr(g.rules_config, "enable_gold", False):
         return {}
     gold: Dict[int, int] = {}
+    robbers = set(getattr(g, "robbers", []) or [g.robber_tile])
     for vid, (pid, level) in g.occupied_v.items():
         for ti in g.vertex_adj_hexes.get(vid, []):
             t = g.tiles[ti]
-            if t.number != roll:
+            if t.number != roll or ti in robbers:
                 continue
             if t.terrain != "gold":
                 continue
             amount = 2 if level == 2 else 1
             gold[pid] = int(gold.get(pid, 0)) + int(amount)
     return gold
+
+
+def _advance_gold_choice(g: GameState) -> None:
+    # Preserve the numeric recipient order. If no resource cards remain, no
+    # possible command could satisfy the outstanding requests: finish them.
+    if not any(g.bank.get(r, 0) > 0 for r in RESOURCES):
+        g.pending_gold = {}
+    g.pending_gold_queue = [pid for pid in g.pending_gold_queue
+                            if g.pending_gold.get(pid, 0) > 0]
+    if g.pending_gold_queue:
+        g.pending_action = "choose_gold"
+        g.pending_pid = g.pending_gold_queue[0]
+    else:
+        g.pending_action = None
+        g.pending_pid = None
+
+
+def _begin_gold_choice(g: GameState, gold: Dict[int, int]) -> None:
+    g.pending_gold = dict(gold)
+    g.pending_gold_queue = sorted(gold)
+    _advance_gold_choice(g)
+
+
+def _finish_setup_route(g: GameState) -> None:
+    g.setup_need = "settlement"
+    g.setup_anchor_vid = None
+    g.setup_idx += 1
+    if g.setup_idx >= len(g.setup_order):
+        g.phase = "main"
+        g.turn = g.setup_order[0]
+    else:
+        g.turn = g.setup_order[g.setup_idx]
 
 
 def _steal_one(g: GameState, thief_pid: int, victim_pid: int) -> Optional[str]:
@@ -888,6 +921,11 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
                     "vertex": vid,
                     "granted": granted,
                 })
+                if getattr(g.rules_config, "enable_gold", False):
+                    gold = sum(g.tiles[ti].terrain == "gold"
+                               for ti in g.vertex_adj_hexes.get(vid, []))
+                    if gold:
+                        _begin_gold_choice(g, {pid: gold})
             events.append({"type": "place_settlement", "pid": pid, "vid": vid})
             return g, events
 
@@ -924,14 +962,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             g.occupied_e[e] = pid
             update_longest_road(g)
             check_win(g)
-            g.setup_need = "settlement"
-            g.setup_anchor_vid = None
-            g.setup_idx += 1
-            if g.setup_idx >= len(g.setup_order):
-                g.phase = "main"
-                g.turn = g.setup_order[0]
-            else:
-                g.turn = g.setup_order[g.setup_idx]
+            _finish_setup_route(g)
             events.append({"type": "place_road", "pid": pid, "eid": [a, b]})
             return g, events
 
@@ -963,19 +994,40 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
     if ctype == "build_ship":
         e = _edge(g, cmd.get("eid"))
         a, b = e
-        if g.turn != pid or g.phase != "main":
-            raise RuleError("illegal", "Not your turn")
-        _require_rolled(g)
+        setup = _setup_mode(g, cmd)
         if not getattr(g.rules_config, "enable_seafarers", False):
             raise RuleError("illegal", "Seafarers not enabled")
-        if not can_place_ship(g, pid, e):
+        if setup:
+            if g.setup_order and pid != g.setup_order[g.setup_idx]:
+                raise RuleError("illegal", "Not your setup turn")
+            if g.setup_need != "road" or g.setup_anchor_vid is None:
+                raise RuleError("illegal", "Not road/ship step")
+        elif g.turn != pid or g.phase != "main":
+            raise RuleError("illegal", "Not your turn")
+        if not can_place_ship(g, pid, e, must_touch_vid=g.setup_anchor_vid if setup else None):
             raise RuleError("illegal", "Ship not allowed")
         if _count_ships(g, pid) >= int(getattr(g.rules_config, "max_ships", 15)):
             raise RuleError("illegal", "Ship limit reached")
-        if not can_pay(g.players[pid], COST["ship"]):
-            raise RuleError("illegal", "Not enough resources")
-        pay_to_bank(g, pid, COST["ship"])
+        if not setup:
+            use_free = cmd.get("free", False)
+            if type(use_free) is not bool:
+                raise RuleError("invalid", "free must be a boolean")
+            if use_free:
+                if int(g.free_roads.get(pid, 0)) <= 0:
+                    raise RuleError("illegal", "No free roads available")
+                g.free_roads[pid] -= 1
+            else:
+                _require_rolled(g)
+                if not can_pay(g.players[pid], COST["ship"]):
+                    raise RuleError("illegal", "Not enough resources")
+                pay_to_bank(g, pid, COST["ship"])
         g.occupied_ships[e] = pid
+        update_longest_road(g)
+        check_win(g)
+        if setup:
+            _finish_setup_route(g)
+        else:
+            g.ships_built_this_turn = set(getattr(g, "ships_built_this_turn", set())) | {e}
         events.append({"type": "build_ship", "pid": pid, "eid": [a, b]})
         return g, events
 
@@ -1034,12 +1086,10 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         distribute_for_roll(g, roll)
         gold = _collect_gold_yields(g, roll)
         if gold:
-            g.pending_action = "choose_gold"
-            g.pending_gold = dict(gold)
-            g.pending_gold_queue = sorted(int(k) for k in gold.keys())
-            g.pending_pid = g.pending_gold_queue[0] if g.pending_gold_queue else None
-            events.append({"type": "roll", "roll": roll, "pending": "choose_gold", "gold": dict(gold)})
-            return g, events
+            _begin_gold_choice(g, gold)
+            if g.pending_action:
+                events.append({"type": "roll", "roll": roll, "pending": "choose_gold", "gold": dict(gold)})
+                return g, events
         events.append({"type": "roll", "roll": roll})
         return g, events
 
@@ -1102,11 +1152,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             g.pending_gold_queue = [p for p in g.pending_gold_queue if p != pid]
         else:
             g.pending_gold[pid] = remaining
-        if g.pending_gold_queue:
-            g.pending_pid = g.pending_gold_queue[0]
-        else:
-            g.pending_action = None
-            g.pending_pid = None
+        _advance_gold_choice(g)
         events.append({"type": "choose_gold", "pid": pid, "res": res, "qty": qty})
         return g, events
 
@@ -1257,18 +1303,21 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         to_e = _edge(g, te, "to_eid")
         if g.occupied_ships.get(from_e) != pid:
             raise RuleError("illegal", "Ship not owned by player")
-        if to_e in g.occupied_ships or to_e in g.occupied_e:
-            raise RuleError("illegal", "Target edge occupied")
-        if not _edge_has_sea(g, to_e):
-            raise RuleError("illegal", "Target is not sea edge")
-        if getattr(g.rules_config, "enable_pirate", False) and _edge_blocked_by_pirate(g, to_e):
-            raise RuleError("illegal", "Target blocked by pirate")
-        if not _is_endpoint_ship(g, pid, from_e):
-            raise RuleError("illegal", "Ship is not an endpoint")
-        if not (from_e[0] in to_e or from_e[1] in to_e):
-            raise RuleError("illegal", "Target not adjacent to ship")
+        if getattr(g, "ship_moved_this_turn", False):
+            raise RuleError("illegal", "Ship already moved this turn")
+        if from_e in getattr(g, "ships_built_this_turn", set()):
+            raise RuleError("illegal", "Cannot move a ship built this turn")
+        if getattr(g.rules_config, "enable_pirate", False) and _edge_blocked_by_pirate(g, from_e):
+            raise RuleError("illegal", "Source blocked by pirate")
+        if not is_open_ship(g, pid, from_e):
+            raise RuleError("illegal", "Ship is not open")
+        if not can_place_ship(g, pid, to_e, excluded_edge=from_e):
+            raise RuleError("illegal", "Target is not a legal ship placement")
         g.occupied_ships.pop(from_e, None)
         g.occupied_ships[to_e] = pid
+        g.ship_moved_this_turn = True
+        update_longest_road(g)
+        check_win(g)
         events.append({"type": "move_ship", "from_eid": [from_e[0], from_e[1]], "to_eid": [to_e[0], to_e[1]]})
         return g, events
 
@@ -1306,6 +1355,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         g.turn = (g.turn + 1) % len(g.players)
         g.rolled = False
         g.last_roll = None
+        check_win(g)
         events.append({"type": "end_turn", "pid": pid})
         return g, events
 

@@ -13,7 +13,8 @@ export function interactionTargets(state: GameState, pid: number, selection: Boa
   const movement = !!(legal?.robber_tiles?.length || legal?.pirate_tiles?.length);
   const action = movement
     ? (["robber", "pirate"].includes(selection.action ?? "") ? selection.action : null)
-    : state.phase === "setup" ? state.setup_need === "settlement" ? "settlement" : "road" : selection.action;
+    : state.phase === "setup" ? state.setup_need === "settlement" ? "settlement"
+      : selection.action === "ship" ? "ship" : "road" : selection.action;
   const targets: BoardTargets = { vertices: [], edges: [], sources: [], tiles: [] };
   if (!legal || selection.waiting || selection.victim) return { action, targets };
   if (movement) {
@@ -58,7 +59,9 @@ export function createBoardInteraction(state: GameState, pid: number, selection:
       if (!target) return;
       if (action === "road") submit({ type: "place_road", eid: target, setup: state.phase === "setup",
         ...(legal?.road_free ? { free: true } : {}) });
-      else if (action === "ship") submit({ type: "build_ship", eid: target });
+      else if (action === "ship") submit({ type: "build_ship", eid: target,
+        ...(state.phase === "setup" ? { setup: true } : {}),
+        ...(legal?.road_free ? { free: true } : {}) });
       else if (action === "move_ship") {
         if (selection.shipSource) submit({ type: "move_ship", from_eid: selection.shipSource, to_eid: target });
         else change({ ...selection, shipSource: target });

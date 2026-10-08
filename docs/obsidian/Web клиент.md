@@ -10,9 +10,11 @@ tags: [catan, web]
 
 [index.html](../../web/index.html) загружает [main.tsx](../../web/src/main.tsx). main монтирует App и импортирует styles.css.
 
-App создаёт один WSClient через useMemo и хранит `room`, `match`, `status`, `error`, `log`. В useEffect назначает сетевые callbacks. Наличие match определяет экран: LobbyPage или GamePage. React Router в текущем приложении не используется.
+App создаёт один WSClient через useMemo и хранит `room`, `match`, `status`, `error`, `log`. В useEffect назначает callbacks и один раз запускает restoreCurrentGame. AudioProvider/AuthProvider окружают приложение. При F2 compatibility_required приоритет имеет LegacyMatchPage без игровых controls; иначе match показывает GamePage, отсутствие match — LobbyPage с Home/Host/Join/Recent/Active Games либо текущей комнатой. React Router не используется.
 
-Deployment compatibility, 2026-10-04: App и WSClient.connect fallback используют defaultWebSocketUrl из wsClient.ts. Production выбирает ws/wss по protocol страницы, сохраняет её host/port и добавляет /ws. Development использует VITE_WS_URL либо ws://127.0.0.1:8000/ws. UI/layout и transport semantics не менялись; Docker Nginx proxy и local commands — [[Deployment]]. Проверены 25 web cases, включая четыре URL cases, и реальная партия до первого Roll в двух браузерных контекстах.
+Текущий `defaultWebSocketUrl` в [wsClient.ts](../../web/src/wsClient.ts) выбирает **page-origin /ws**: protocol страницы определяет ws/wss, её host/port сохраняются. В обычном development запрос идёт, например, на ws://localhost:5173/ws; [vite.config.ts](../../web/vite.config.ts) проксирует `/ws` и `/api` в backend, по умолчанию на 127.0.0.1:8000. Это позволяет cookie auth использовать тот же origin. Production /ws и /api обслуживаются через Nginx.
+
+Development `VITE_WS_URL` остаётся явным override browser URL и определяет backend для Vite proxy; отдельное прямое guest-подключение к ws://127.0.0.1:8000/ws возможно через Advanced connection. Этот адрес также служит fallback без page host, но не является обычным browser development default. **Historical — Infrastructure Phase 1, 2026-10-04:** direct-backend development default и 25 web cases описывали тот checkpoint; same-origin development proxy добавлен для Auth Phase 1. Настройка и ограничения — [[Deployment#Account cookies and HTTPS — Auth Phase 1]].
 
 ## WSClient
 
@@ -25,12 +27,14 @@ Deployment compatibility, 2026-10-04: App и WSClient.connect fallback испо�
 | join | Код комнаты | Отправляет join_room или сохраняет намерение |
 | startMatch | — | Отправляет start_match |
 | setMap | ID и/или JSON | Отправляет set_map |
+| continueGame / restoreCurrentGame | Recent entry / URL и сохранённый pointer | Guest proof → verified reconnect; без fallback по имени |
+| continueAccount | Код комнаты, имя, URL | account_continue; сервер определяет owned seat по cookie session |
 | sendCmd | Объект игрового действия | Добавляет match_id, cmd_id, seq и сохраняет ожидающую команду |
 | handleMessage | Строка JSON | Разбирает сообщение, меняет поля клиента и вызывает callbacks |
 
 Методы не возвращают новое состояние игры. Оно приходит отдельным сообщением.
 
-Проверено 2026-10-02, Phase 1: MatchState описывает персональный network view; seed удалён, чужая res отсутствует, добавлены private dev_cards/public counts/bank_available/you_pid. TypeScript проходит. PendingCmds/seq сбрасываются при смене room_code+match_id. ACK, включая applied=false, удаляет intent; reconnect pruning убирает номера ≤ last consumed, остальные отправляются с исходным cmd_id. Старые ACK, snapshots других комнат/матчей и меньшего tick не возвращают прежнее состояние. `npm.cmd test` проверяет 7 transport cases; дизайн компонентов не менялся.
+Historical verification 2026-10-02, Phase 1: персональный network view, consumed-seq/ACK/reconnect ordering проверялись прежним suite. Эти семантики сохранены, но 7 transport cases не являются сегодняшним числом тестов. Последний полный web результат — **241 passed, F2, 2026-10-08**; последний полный Python — **757 passed, F3**. Даты/границы — [[Project State]]. F1 защищает каждую private publication актуальным ownership; F2 подавляет playable match_state/commands для restricted rulesets, сохраняя Continue notice и ownership.
 
 ```mermaid
 sequenceDiagram
@@ -38,12 +42,13 @@ sequenceDiagram
     participant WS as WSClient
     participant S as Сервер
     participant A as App
-    UI->>WS: sendCmd({type: roll})
+    UI->>WS: useGameCommand.submit → sendCmd({type: roll})
     WS->>S: JSON команды
-    S-->>WS: match_state
+    S->>S: validate → room lock → candidate → DB COMMIT → promote
+    S-->>WS: F1-authorized personalized match_state
     WS->>A: onMatchState(snapshot)
     A->>A: setMatch(snapshot)
     A-->>UI: новые props
 ```
 
-Выбранный инструмент, содержимое форм и выбор корабля меняются локально. Баланс ресурсов и постройки приходят в серверном снимке. Полный путь — [[Сценарий сетевой партии]].
+Выбранный инструмент/ship source/victim хранятся в useBoardInteraction, draft формы — в UI. Default BoardRenderer 3D и сохранённый SVG получают один state/controller. Баланс ресурсов и постройки приходят в committed персональном снимке. Полный путь — [[Сценарий сетевой партии]], состав UI — [[React интерфейс]].

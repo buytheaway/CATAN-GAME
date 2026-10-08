@@ -90,8 +90,12 @@ def test_upgrade_previous_schema_preserves_guest_room_match_head_and_token(datab
                 await conn.run_sync(downgrade)
             await coord.database.migrate()
             after = await coord.repository.load(room.id)
+            # This test deliberately discarded newer schema metadata. Upgrade
+            # preserves the old data but cannot reconstruct ruleset provenance.
+            before["match"]["ruleset_id"] = None
             assert after["head"] == before["head"] and after["match"] == before["match"] and after["tokens"] == before["tokens"]
             restored = restore_room(after)
+            assert restored.ruleset_id is None
             assert all(p.user_id is None for p in restored.players)
             assert valid_token(restored.players[0], raw)
     asyncio.run(run())
