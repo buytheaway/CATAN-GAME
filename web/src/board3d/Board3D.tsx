@@ -11,7 +11,7 @@ import type { BoardInteraction } from "../board/interaction";
 import InteractionOverlay3D from "./InteractionOverlay3D";
 import { VisualResources, useVisualResources } from "./VisualResources";
 import { VISUAL } from "./materials";
-import { cameraFootprint } from "./coordinates";
+import { cameraFootprint, coastVisualPosition } from "./coordinates";
 import GameIcon from "../game/GameIcon";
 import DiceRoll3D from "./DiceRoll3D";
 import type { DiceRollVisual } from "../game/dice";
@@ -19,11 +19,14 @@ import { colorForPlayer } from "../board/colors";
 import DecorativeOcean from "./DecorativeOcean";
 import AmbientShips from "./AmbientShips";
 import { decorativeShipsEnabled, oceanClearance } from "./environment";
+import { buildPreview, replacesSettlement } from "./preview";
+import { usePieceFeedback } from "./pieceFeedback";
+import { edgeId } from "../board/constants";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
   const pool = useVisualResources();
-  return <>{coast.map(c => <mesh key={c.edge.join(",")} position={c.position} rotation={[0, c.rotation, 0]}
+  return <>{coast.map(c => <mesh key={c.edge.join(",")} position={coastVisualPosition(c.position)} rotation={[0, c.rotation, 0]}
     scale={[c.length, .05, .12]} receiveShadow raycast={ignoreRaycast} userData={{ coastEdge: c.edge }}
     geometry={pool.geometry("box")} material={pool.standard(VISUAL.sandShade)} />)}</>;
 }
@@ -46,11 +49,16 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
     shadow-camera-far={reach * 4} shadow-bias={-0.0005} shadow-normalBias={0.025} />;
 }
 
-export default function Board3D({ state, interaction, diceRoll }: {
+export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
+  matchKey?: string; connected?: boolean;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
+  const [targetHover, setTargetHover] = useState<string | null>(null);
+  const preview = buildPreview(state, interaction, targetHover);
+  const feedback = usePieceFeedback(model, matchKey, connected);
+  useEffect(() => { setTargetHover(null); }, [interaction.action, interaction.selection.waiting, connected, matchKey]);
   const [resetVersion, setResetVersion] = useState(0);
   const hover = useCallback((tileIndex: number | null) => setHoveredTile(tileIndex), []);
   const inspect = useCallback((tileIndex: number) => {
@@ -94,15 +102,18 @@ export default function Board3D({ state, interaction, diceRoll }: {
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
             onHover={hover} onInspect={inspect} />)}
           <Coastline coast={model.coast} />
-          {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} color={colorForPlayer(road.owner, state.players)} />)}
+          {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} color={colorForPlayer(road.owner, state.players)}
+            appearance={feedback.get(`e:${edgeId(road.edge)}`)} />)}
           {model.ships.map(ship => <Ship3D key={ship.edge.join(",")} ship={ship} color={colorForPlayer(ship.owner, state.players)} />)}
           {model.buildings.map(building => building.level === 1
-            ? <Settlement3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)} />
-            : <City3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)} />)}
+            ? <Settlement3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)}
+                appearance={feedback.get(`v:${building.vertexId}`)} visible={!replacesSettlement(preview, building)} />
+            : <City3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)}
+                appearance={feedback.get(`v:${building.vertexId}`)} />)}
           {model.ports.map(port => <Port3D key={port.edge.join(",")} port={port} />)}
           {model.robbers.map((robber, i) => <Robber3D key={i} {...robber} />)}
           {model.pirate && <Pirate3D {...model.pirate} />}
-          <InteractionOverlay3D state={state} interaction={interaction} />
+          <InteractionOverlay3D state={state} interaction={interaction} hover={targetHover} onHover={setTargetHover} />
           </VisualResources>
         </Canvas>
       </div>

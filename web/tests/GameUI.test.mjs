@@ -17,7 +17,7 @@ const compiled = await build({
     export {default as TradePanel,TradeOffers} from "./game/TradePanel";
     export {default as DevelopmentPanel,DevelopmentHand} from "./game/DevelopmentCards";
     export {default as ActionButton} from "./game/ActionButton";
-    export {default as BoardControls} from "./board/BoardControls";
+    export {default as BoardControls,buildUnavailableReason} from "./board/BoardControls";
     export {default as DiceHUD} from "./game/DiceHUD";
     export {default as DiscardPicker} from "./game/DiscardPicker";
     export {default as Endgame} from "./game/Endgame";
@@ -132,6 +132,32 @@ test("direct build tools retain zero counts from personal legal lists without in
     [["road", 0], ["settlement", 1], ["city", 1], ["ship", 0]]);
   assert.ok(buildTools({ legal: null }).every(t => t.count === 0));
   assert.deepEqual(legal.roads, []);
+});
+
+test("build controls explain turn, Roll, missing resources and absence of legal upgrades without inventing targets", () => {
+  const { buildUnavailableReason } = loaded.exports;
+  const s = snapshot({ rolled: true }), ui = createBoardInteraction(s, 0, emptySelection(), () => {}, () => {});
+  assert.equal(buildUnavailableReason({ ...s, turn: 1 }, ui, "city", {}), "Wait for your turn.");
+  assert.equal(buildUnavailableReason({ ...s, rolled: false }, ui, "city", {}), "Roll the dice first.");
+  assert.equal(buildUnavailableReason(s, ui, "city", { wheat: 2, ore: 1 }), "Missing resources: 2 ore.");
+  assert.equal(buildUnavailableReason(s, ui, "city", { wheat: 2, ore: 3 }), "No settlements available to upgrade.");
+  const free = { ...ui, legal: { ...ui.legal, road_free: true } };
+  assert.equal(buildUnavailableReason({ ...s, rolled: false }, free, "road", {}), "No legal edges available.");
+  assert.equal(buildUnavailableReason(s, { ...ui, legal: undefined }, "road", {}), "Waiting for server availability.");
+  assert.equal(buildUnavailableReason({ ...s, phase: "setup", turn: 1 }, ui, "settlement", {}), "Wait for your turn.");
+  assert.deepEqual(s.legal.cities, []); assert.deepEqual(s.legal.roads, []);
+});
+
+test("selected build mode exposes Cancel and delegates removal without a command; setup remains mandatory", () => {
+  const s = snapshot({ rolled: true, legal: { ...snapshot().legal, cities: [7] } }), sent = [], changed = [];
+  const selected = { ...emptySelection(), action: "city" };
+  const ui = createBoardInteraction(s, 0, selected, value => changed.push(value), cmd => sent.push(cmd));
+  const view = render(loaded.exports.BoardControls, { state: s, interaction: ui, resources: { wheat: 2, ore: 3 } });
+  assert.equal(view.button("City")["aria-pressed"], true);
+  view.button("Cancel").onClick(); assert.equal(changed.at(-1).action, null); assert.deepEqual(sent, []);
+  const setup = { ...s, phase: "setup", setup_need: "settlement" };
+  const setupView = render(loaded.exports.BoardControls, { state: setup, interaction: createBoardInteraction(setup, 0, selected, () => {}, () => {}) });
+  assert.equal(setupView.button("Cancel"), undefined);
 });
 
 test("drawer exposes a named close control and delegates dismissal; mandatory choices have modal semantics", () => {

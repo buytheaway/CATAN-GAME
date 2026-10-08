@@ -3,6 +3,7 @@ import {
   IcosahedronGeometry, MeshBasicMaterial, MeshStandardMaterial, OctahedronGeometry,
   PlaneGeometry, RingGeometry, Shape, SphereGeometry, TorusGeometry,
 } from "three";
+import { createPieceMaterials } from "./pieceAssets";
 
 function extrude(points: [number, number][], depth: number, bevel: number) {
   const shape = new Shape();
@@ -71,14 +72,17 @@ const factories = {
 export function createVisualResources() {
   const geometries = new Map<string, BufferGeometry>();
   const materials = new Map<string, MeshStandardMaterial | MeshBasicMaterial>();
+  const pieces = createPieceMaterials();
   let leases = 0;
   const dispose = () => {
     geometries.forEach(g => g.dispose());
     materials.forEach(m => m.dispose());
     geometries.clear();
     materials.clear();
+    pieces.dispose();
   };
   return {
+    pieces,
     geometry(kind: keyof typeof factories) {
       if (!geometries.has(kind)) geometries.set(kind, factories[kind]());
       return geometries.get(kind)!;

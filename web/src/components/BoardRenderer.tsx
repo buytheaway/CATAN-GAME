@@ -17,7 +17,7 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null }) {
+export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean }) {
   const [mode, setMode] = useState<"2d" | "3d">("3d");
   return (
     <div className="board-renderer">
@@ -29,7 +29,8 @@ export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceR
       {mode === "2d" ? <BoardView {...props} /> : (
         <Board3DErrorBoundary>
           <Suspense fallback={<div className="board3d-fallback" role="status">Loading 3D board…</div>}>
-            <Board3D state={props.state} interaction={props.interaction} diceRoll={props.diceRoll} />
+            <Board3D state={props.state} interaction={props.interaction} diceRoll={props.diceRoll}
+              matchKey={props.matchKey} connected={props.connected} />
           </Suspense>
         </Board3DErrorBoundary>
       )}

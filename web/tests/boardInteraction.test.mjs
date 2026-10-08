@@ -114,3 +114,18 @@ test("one controller supplies renderer-neutral targets without mutating the froz
   threeProps.onEdgeClick([12, 13]);
   assert.equal(JSON.stringify(s), before);
 });
+
+test("City targets exclude empty/opponent vertices and rejection restores targeting without optimistic occupancy", () => {
+  const s = { ...state(), vertices: { 7: [0, 0], 9: [58, 0], 11: [0, 58] },
+    occupied_v: { 7: [0, 1], 9: [1, 1] } };
+  s.legal.cities = [7];
+  const before = JSON.stringify(s), c = controller(s, "city");
+  assert.deepEqual(c.ui.targets.vertices, [7]);
+  c.ui.onVertexClick(9); c.ui.onVertexClick(11); assert.deepEqual(c.sent, []);
+  c.ui.onVertexClick(7); assert.deepEqual(c.sent, [{ type: "upgrade_city", vid: 7 }]);
+  assert.equal(c.selection().waiting, true); assert.deepEqual(c.ui.targets.vertices, []);
+  assert.equal(JSON.stringify(s), before);
+  // Rejected command supplies unchanged authoritative state. Selection is ready for retry.
+  c.synchronize(s); assert.equal(c.selection().waiting, false);
+  assert.deepEqual(c.ui.targets.vertices, [7]); assert.deepEqual(s.occupied_v[7], [0, 1]);
+});

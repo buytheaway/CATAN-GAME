@@ -2,6 +2,15 @@ import type { Tile } from "../components/BoardView.types";
 import type { BoardBounds, BoardRenderModel, Point3D, RenderPort } from "./types";
 
 export const TILE_TOP = 0.26;
+// Visible contact plane shared by finalized terrain rims and their procedural fallback.
+// Logical hit geometry continues to use TILE_TOP.
+export const BOARD_RIM_TOP = .21833333333333332;
+export const TERRAIN_FALLBACK_OFFSET: Point3D = [0, BOARD_RIM_TOP - TILE_TOP, 0];
+
+/** The .05-high coastal strip ends at the visible rim, below piece foundations. */
+export function coastVisualPosition(position: Point3D): Point3D {
+  return [position[0], BOARD_RIM_TOP - .05 / 2, position[2]];
+}
 
 function coordinateScale(size: number): number {
   return Number.isFinite(size) && size > 0 ? size : 58;

@@ -5,6 +5,18 @@ updated: 2026-10-08
 
 # Project State
 
+## Product / UX / Visual Polish — Phase 3B
+
+**Completed — verified 2026-10-08. READY FOR CHECKPOINT.** Finalized `settlement.glb`, `city.glb` and `road.glb` from Phase 3A are integrated into the existing Board3D pieces. One cached load per kind, shared geometry, stable local scene nodes and Canvas-owned PlayerColor clones preserve real owner colors and immutable neutral materials. Loading/missing assets use the existing procedural pieces. Original vertex/edge IDs, XZ positions, road length/orientation and controller callbacks remain intact; decorative piece meshes never raycast.
+
+Build ghosts use the same geometry as confirmed pieces and only existing server legal targets. A City hover hides its settlement visually without removing the authoritative occupancy or unmounting the original visual. Existing Cancel plus Escape cancel optional builds; setup stays mandatory and dialogs/text inputs retain their keyboard behavior. Compact cost/unavailability text reads existing snapshot data. A finite 260ms appearance effect starts only after a live committed placement/upgrade; rejection, restored snapshots, reconnect, rematch and 2D/3D switching do not replay historical construction. Reduced motion disables it.
+
+Piece contact is the shared terrain rim Y=.218333; original building/road anchors remain .26/.32. Only local piece visuals, the procedural terrain fallback surface and coastline strip height are aligned to that presentation floor. Logical hit meshes, terrain GLBs, models/Blender originals, rules and server state are unchanged.
+
+Verification: **204/204 web tests** (17 new behavior cases), TypeScript and production build; real Chrome 154 passes **10 acceptance groups covering all 20 requested cases**, 60 command attempts including 6 intentional rejections, and 9 layout checks at 1920×1080/1440×900/1280×720. Natural Base/Gold Haven setup and Roll/End, paid/free builds, colors, City replacement/cancel, refresh/reconnect, two-/three-player rematch with disconnected-host pid remapping, Test Mode, ship/move/pirate, reduced motion and missing piece/terrain GLBs pass. Gold's adjacent road is an existing setup road beside a newly built ship; a paid GLB road is separately exercised. Funded/dev/results states use the unchanged engine-built fixture server, not a full naturally played match.
+
+Approximate warm-frame GPU-completed medians, RTX 5050 Laptop: Base **3.45→3.55ms**, Gold **3.80→3.80ms**; separate generated room layouts, not a controlled benchmark. No confirmed new blocker; low-end/mobile/50-hex performance remains unverified and the existing lazy Three chunk warning remains (~947kB). All **123 protected runtime/assets/dependency files** retain their pre-task hashes; all **11 production GLBs** match source bytes. No dependency, Python, protocol, persistence/auth/database or Docker changes; pytest/scenarios/Docker were not rerun. Scope and evidence — [[plans/board3d#Product / UX / Visual Polish — Phase 3B]] and [[Design System#Product / UX / Visual Polish — Phase 3B]]. Further gameplay/art work requires a separate task.
+
 ## Product / UX / Visual Polish — Phase 2
 
 **Completed — verified 2026-10-08.** Active match reuses Phase 1 navy/sand/seafoam tokens and StatusBadge, with a 52px `CATAN.КОЛОНИЗАТОРЫ` header, real connection/map/room/VP goal/account access. Board viewport/controller/camera fitting remain in the existing flow. Sidebar is Bank → compact public Players/presence/host → permanent Chat → separately collapsible Game Log. Nonmodal info/dev/trade drawers sit over the board instead of covering Chat. At ≤1100px the bottom HUD uses two compact rows with actions on the right; at small heights Players/Log scroll internally while Chat input stays accessible.

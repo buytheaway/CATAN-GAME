@@ -1,11 +1,46 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 # Board3D
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[Карты и сценарии]]
+
+## Product / UX / Visual Polish — Phase 3B
+
+Authorized scope (2026-10-08): integrate the finalized settlement/city/road GLBs from Phase 3A, improve legal build previews/cancellation/feedback, without editing assets, Blender sources, Python, protocol, persistence/auth or Docker. This is a renderer integration, not a new controller.
+
+Pre-change audit: `Pieces3D.tsx` owns all three procedural visuals. `model.ts` preserves occupied_v/occupied_e IDs; server XY maps to Three XZ. Buildings anchor at TILE_TOP=.26, roads at TILE_TOP+.06 with local X along their original edge and length scaled by the real endpoint distance. All eight finalized terrain bases share a rim top at .218333 after their existing terrain transform. Piece GLBs already have Y=0 contact: use one presentation contact offset to that rim, subtract the historical extra .06 only inside the road visual; never apply the terrain asset's +.11 source correction to pieces. Keep the anchors and independent hit meshes unchanged.
+
+Implementation plan:
+
+1. Cache one GLTFLoader promise per piece type; clone only scene nodes, share geometry and preserve procedural loading/error fallback. Recolor only PlayerColor via the existing Canvas resource lifetime; keep neutral source materials immutable, clone neutral opacity only for ghosts. Decorative piece meshes never raycast.
+2. Lift the renderer-local target hover to Board3D so a legal City preview replaces its settlement visually. Legal lists, action/selection, setup/free-road payloads and callbacks remain controller-owned. Use the same final geometry for ghosts and confirmed pieces.
+3. Detect only newly committed occupancy/upgrade changes for short finite ref-based appearance feedback. Initial mount, reconnect, rematch, color changes and 2D/3D switching do not replay historical construction. Respect reduced motion, preserve logical transforms and avoid React updates per frame.
+4. Keep dock/cost UI compact. Improve build-specific disabled explanations from existing snapshot/presentation data and Escape cancellation through existing callbacks, preserving mandatory setup and choice flows.
+5. Run full web tests/TS/build plus focused asset/material/transform/preview/confirmation tests. Verify the requested Base/Seafarers/refresh/rematch/Test Mode/missing-asset cases in real Chrome against the existing isolated fixture server; record fixtures and limits explicitly. Update existing Project State/UI/design notes after verification.
+
+**Completed and verified 2026-10-08. READY FOR CHECKPOINT.** No GLB/Blender/Python/protocol/dependency/Docker edits. `pieceAssets.ts`, `PieceVisual.tsx` and `pieceFeedback.ts` implement the plan through existing Pieces3D/resources/preview/targets; GamePage and BoardRenderer pass only matchKey/connected. BoardControls adds existing-data disabled reasons and guarded Escape; existing controller, server legality, commands and ACK handling remain authoritative.
+
+Contact verification against all eight real terrain GLBs established rim Y=.218333. Buildings/roads retain original .26/.32 roots, XZ, length/orientation and IDs; only inner visuals move to that rim. City hover keeps its settlement mounted but invisible. Procedural terrain loading/error top and the legacy coastline strip cap are also aligned to the common rim so they do not bury the lower GLB foundations. All hit meshes stay on their prior coordinates. Loading/missing pieces preserve procedural commands, ownership and contact; failed loads are bounded/warn once. Shared original materials/geometries are immutable; Canvas-owned color/ghost clones are disposed through existing resource leases.
+
+Tests: **204/204 web tests** (187 baseline + 17 new cases), TypeScript and production build. New tests cover asset/concurrent/failing cache, six colors and neutral/ghost isolation, real raycast non-interception, GLB/contact/road/fallback transforms, legal own-city replacement/cancellation, committed/rejected/reset feedback, finite/reduced appearance, disposal and controller rejection/retry. 123 protected runtime/assets/dependency files retain pre-task SHA256; all 11 dist GLBs match source.
+
+Browser: [building-pieces.cjs](../../../web/e2e/building-pieces.cjs) passes **10 groups/all 20 requested acceptance conditions**, 60 real command attempts/6 intentional rejections and 9 layout checks. Actual Chrome 154 + production dist + unchanged FastAPI/WS fixture server: natural Base and Gold Haven first/second settlement/roads, coastal setup, Roll/End; paid City/road/settlement; legal ghosts/Escape/text-input safeguard; Road Building two free roads before Roll; rejected coordinate/unaffordable upgrade leaves state and existing visual nodes unchanged; two colors; refresh/reconnect; orbit/zoom/reset/2D↔3D/cache reuse; host Test Mode; game_over/rematch and disconnected-host three-player pid/color remap; reduced motion; all three piece GLBs missing and all eight terrain GLBs missing. Gold verifies existing setup road next to a newly placed ship, a separate paid road, ship movement/pirate and mixed terrain contact. It does not invent a legal adjacent paid road when the current fixture's coastal target has none.
+
+Base/Gold and missing-terrain Base are checked at 1920×1080, 1440×900 and 1280×720 with no HUD overlap/visible-piece clipping. Screenshots and `verification.json`, `baseline.json`, `performance-after.json` are outside the repository in `%TEMP%/catan-building-pieces-phase3b/`; inspected City ghost, Base/Gold 1280 and missing-terrain captures are actual browser output. No JS/WebGL errors or unexpected warnings; intentional missing-asset warnings and the fixture's existing auth DB-disabled `/api/auth/me` 503 are expected.
+
+Approximate performance, RTX 5050 Laptop, 1920×1080, 20 warm GPU-completed renders per map:
+
+| Map | Before → after median | Before → after draw calls | Before → after triangles |
+| --- | --- | --- | --- |
+| Base Standard | 3.45 → 3.55ms | 1152 → 1142 | 276,422 → 282,394 |
+| Seafarers Gold Haven | 3.80 → 3.80ms | 1064 → 1054 | 233,726 → 239,698 |
+
+Diagnostic `gl.finish()` timings use the same presets/piece types/counts but separately generated room layouts; they are not a controlled GPU benchmark or sustained FPS certification. No additional idle animation is introduced by pieces; existing capped Base ambient boats remain, Seafarers returns to demand-idle. No decimation/instancing/asset redesign. Low-end/mobile/50-hex performance remains unverified; lazy Board3D is ~947kB and retains Vite's size warning.
+
+Limits: funded/dev/results states are prepared by the existing engine initializer, while natural setup/Roll/End run real unprepared games; this is not a full natural-match or account/PostgreSQL acceptance run. Backend pytest/scenarios/Docker were not repeated because no backend/deployment code changed. No confirmed new blocker. Audio, terrain/asset optimization, Seafarers gameplay hardening and other gameplay/UI work remain outside this completed task. Current behavior — [[Project State]] and [[React интерфейс#Building GLBs / build feedback — 2026-10-08]].
 
 ## Terrain GLB integration — visual scope
 

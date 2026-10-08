@@ -4,6 +4,20 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Building GLBs / build feedback — 2026-10-08
+
+Product / UX / Visual Polish Phase 3B is completed. Flow remains **GamePage → useBoardInteraction/useGameCommand → WSClient → server/engine → personalized snapshot → App.match → GamePage → BoardRenderer → Board3D**. GamePage additionally passes the existing room/match key and connection flag through BoardRenderer for presentation baseline resets. No command, legal or wire contract is changed.
+
+Board3D projects existing occupied_v/occupied_e into the same [Pieces3D.tsx](../../web/src/board3d/Pieces3D.tsx), now wrapped by [PieceVisual.tsx](../../web/src/board3d/PieceVisual.tsx). [pieceAssets.ts](../../web/src/board3d/pieceAssets.ts) caches one GLTFLoader promise per piece type, clones scene nodes and shares geometry. The existing Canvas resource pool owns cached PlayerColor/ghost material clones and disposes only those clones; page-cached original materials/geometries are not disposed by individual primitives. Failed loads warn once per kind and retain local procedural fallback; late replies cannot update an unmounted component. All visible GLB/fallback piece meshes ignore raycasting.
+
+Original vertex/edge anchors and road length/rotation remain unchanged. coordinates.ts defines the common contact floor; pieceOffset adjusts only local visuals. The procedural terrain fallback and coastline strip use that same visible floor, leaving original hit meshes and tile coordinates intact. Ship/robber/pirate rendering is not replaced.
+
+Renderer-local target hover now lives in Board3D; InteractionOverlay3D receives hover/onHover while preserving targets and callbacks. Only an own, server-legal City hover hides its settlement visually; the settlement stays mounted, so cancellation restores the same nodes. [preview.ts](../../web/src/board3d/preview.ts) never decides legality. [BoardControls.tsx](../../web/src/board/BoardControls.tsx) adds snapshot-derived disabled reasons and Escape through existing cancellation callbacks; mandatory setup, busy/pending states, modal dialogs and text inputs keep their existing handling.
+
+[pieceFeedback.ts](../../web/src/board3d/pieceFeedback.ts) compares committed occupancy signatures (edge owner; vertex owner/level). Initial mount/new match/disconnection/reconnect establish a baseline. Live new occupancy or upgrades produce timestamped finite 260ms appearance tokens; command intent/rejection does not. PieceVisual updates only Three refs/invalidation while animating, honors reduced motion and skips expired tokens on remount. No alternate model, optimistic construction or permanent animation loop.
+
+Verified: **204 web tests**, TS/production build, [building-pieces.cjs](../../web/e2e/building-pieces.cjs) in actual Chrome with 10 groups/all 20 acceptance conditions, 60 command attempts/6 expected rejections, 9 desktop layout checks. Natural setup and prepared paid/dev/results/ship scenarios use real HTTP/WS commands; fixture auth has no DB. 2D/controller/ownership/reconnect remain intact. Evidence/limits — [[Design System#Product / UX / Visual Polish — Phase 3B]] and [[plans/board3d#Product / UX / Visual Polish — Phase 3B]]. Phase 2 below retains its dated verification.
+
 ## Active match polish — 2026-10-08
 
 Product / UX / Visual Polish Phase 2 is completed. [GamePage.tsx](../../web/src/components/GamePage.tsx) retains the same match/room/client props and useBoardInteraction/useGameCommand. Build/roll/trade/dev/pending path remains UI → original controller/WSClient → owning Room/executor → personalized snapshot → App.match → GamePage/BoardRenderer. No network/engine rule model is duplicated in presentation.
@@ -152,10 +166,10 @@ Game UI Redesign Phase 1 verified 2026-10-05: 73 web tests, TypeScript, producti
 | [DiceHUD](../../web/src/game/DiceHUD.tsx) | GamePage | exact faces, finite roll visual, legacy total | useDicePresentation хранит previous match/counter, reduced-motion preference и 2580ms cleanup timer; результат не вычисляет |
 | [DevelopmentHand / DevelopmentPanel](../../web/src/game/DevelopmentCards.tsx) | GamePage | state, pid; hand onCard, panel selected/submit/waiting/error/onClose/onBoardPlay | selected type, Year of Plenty counts, Monopoly resource; own cards/new из snapshot |
 | [Endgame](../../web/src/game/Endgame.tsx) | GamePage при game_over | state, pid, room, connected, matchKey, error, onRematch/onLobby | Только ожидание rematch; winner/scores/pids не вычисляются локально |
-| [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | state + interaction + diceRoll | mode=2d/3d, default 3d; lazy/failure boundary |
+| [BoardRenderer](../../web/src/components/BoardRenderer.tsx) | GamePage | state + interaction + diceRoll + matchKey/connected | mode=2d/3d, default 3d; lazy/failure boundary; passes construction feedback baseline metadata |
 | [BoardControls](../../web/src/board/BoardControls.tsx) | GamePage action dock, оба режима | state + interaction + own resources | Direct tools/cost preview/context/victim callbacks; Build menu и собственный selection отсутствуют |
 | [BoardView](../../web/src/components/BoardView.tsx) | BoardRenderer, режим 2D | state + interaction | SVG presentation, selection берётся из controller |
-| [Board3D](../../web/src/board3d/Board3D.tsx) | BoardRenderer, режим 3D | state geometry/occupancy + interaction + optional diceRoll | hovered tile index, reset camera; InteractionOverlay3D хранит только hover; DiceRoll3D обновляет transforms в конечной анимации |
+| [Board3D](../../web/src/board3d/Board3D.tsx) | BoardRenderer, режим 3D | state geometry/occupancy + interaction + optional diceRoll/matchKey/connected | renderer-local tile/target hover, reset camera, legal GLB ghosts, committed construction feedback; InteractionOverlay3D receives hover/callback; DiceRoll3D/PieceVisual use finite ref animations |
 
 ## Экраны
 

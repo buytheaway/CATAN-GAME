@@ -6,6 +6,7 @@ import {
   cloneTerrainScene, ignoreTerrainRaycast, loadTerrainAsset, terrainAssetName, TERRAIN_TRANSFORM,
 } from "./terrainAssets";
 import { useVisualResources } from "./VisualResources";
+import { TERRAIN_FALLBACK_OFFSET } from "./coordinates";
 
 /** Presentation only. The parent hex retains the original logical hit geometry and IDs. */
 export default function TerrainHexVisual({ terrain, tileIndex }: { terrain: string; tileIndex: number }) {
@@ -21,7 +22,7 @@ export default function TerrainHexVisual({ terrain, tileIndex }: { terrain: stri
   const pool = useVisualResources();
   const style = terrainStyle(name ?? terrain);
 
-  if (!scene) return <group userData={{ terrainFallback: name ?? terrain }}>
+  if (!scene) return <group position={TERRAIN_FALLBACK_OFFSET} userData={{ terrainFallback: name ?? terrain }}>
     <mesh geometry={pool.geometry("hex")} material={[pool.standard(style.color), pool.standard(style.side)]}
       receiveShadow castShadow raycast={ignoreTerrainRaycast} />
     <TerrainHints terrain={name ?? terrain} tileIndex={tileIndex} />

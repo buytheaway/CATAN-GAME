@@ -18,7 +18,7 @@ export function buildPreview(state: BoardSnapshot, interaction: Pick<BoardIntera
     const point = vid == null ? null : state.vertices[vid];
     return point && vid != null ? { kind: action, building: {
       vertexId: vid, owner, level: action === "city" ? 2 : 1,
-      position: toScenePosition(point, state.size, TILE_TOP + 0.035),
+      position: toScenePosition(point, state.size, TILE_TOP),
     } } : null;
   }
   if (action === "road" || action === "ship") {
@@ -29,4 +29,10 @@ export function buildPreview(state: BoardSnapshot, interaction: Pick<BoardIntera
     } } : null;
   }
   return null;
+}
+
+/** Only a legal hovered City replaces its current settlement; never hide another piece. */
+export function replacesSettlement(preview: BuildPreview | null, building: RenderBuilding) {
+  return preview?.kind === "city" && building.level === 1
+    && preview.building.vertexId === building.vertexId && preview.building.owner === building.owner;
 }

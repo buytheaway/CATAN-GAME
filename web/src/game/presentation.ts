@@ -56,7 +56,8 @@ export function contextPrompt(state: GameSnapshot, pid: number, interaction: Boa
   if (["settlement", "road", "city", "ship"].includes(action ?? "")) return {
     title: action === "city" ? "Upgrade a settlement" : action === "road" ? "Choose a road"
       : action === "ship" ? "Build a ship" : "Place a settlement",
-    detail: "Choose a highlighted target. Cancel to leave this tool.",
+    detail: action === "city" ? "Hover your highlighted settlement to preview. Click to upgrade · Esc to cancel."
+      : "Hover a highlighted target to preview. Click to place · Esc to cancel.",
   };
   return state.rolled ? { title: "Your turn", detail: state.rules_config?.enable_seafarers
     ? "Trade, build, play a card, move a ship, or end your turn." : "Trade, build, play a card, or end your turn." }

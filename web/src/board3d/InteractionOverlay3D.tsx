@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
 import type { BoardInteraction } from "../board/interaction";
 import { edgeId } from "../board/constants";
@@ -10,10 +10,10 @@ import { useVisualResources } from "./VisualResources";
 import type { BoardSnapshot } from "./types";
 import { colorForPlayer } from "../board/colors";
 
-export default function InteractionOverlay3D({ state, interaction }: {
+export default function InteractionOverlay3D({ state, interaction, hover, onHover }: {
   state: BoardSnapshot; interaction: BoardInteraction;
+  hover: string | null; onHover: (key: string | null) => void;
 }) {
-  const [hover, setHover] = useState<string | null>(null);
   const pool = useVisualResources();
   const gl = useThree(s => s.gl);
   const { targets, selection } = interaction;
@@ -34,7 +34,7 @@ export default function InteractionOverlay3D({ state, interaction }: {
       const hovered = hover === key;
       const position = toScenePosition(point, state.size, state.occupied_v[vid] ? TILE_TOP + 0.54 : TILE_TOP + 0.06);
       return <group key={key} position={position} userData={{ targetType: "vertex", vertexId: vid }}
-        onPointerOver={e => { e.stopPropagation(); setHover(key); }} onPointerOut={() => setHover(null)}
+        onPointerOver={e => { e.stopPropagation(); onHover(key); }} onPointerOut={() => onHover(null)}
         onClick={e => { e.stopPropagation(); if (e.delta < 5) interaction.onVertexClick(vid); }}>
         <mesh rotation={[-Math.PI / 2, 0, 0]} geometry={pool.ring(0.12, hovered ? 0.23 : 0.17)}
           material={pool.flat(targetColor(hovered), hovered ? 0.85 : 0.35)} />
@@ -54,7 +54,7 @@ export default function InteractionOverlay3D({ state, interaction }: {
       position[1] = source || selected ? TILE_TOP + 0.48 : TILE_TOP + 0.07;
       return <group key={key} position={position} rotation={[0, placement.rotation, 0]}
         userData={{ targetType: "edge", edge, source, selected }}
-        onPointerOver={e => { e.stopPropagation(); setHover(key); }} onPointerOut={() => setHover(null)}
+        onPointerOver={e => { e.stopPropagation(); onHover(key); }} onPointerOut={() => onHover(null)}
         onClick={e => { e.stopPropagation(); if (e.delta < 5) interaction.onEdgeClick(edge); }}>
         <mesh scale={[placement.length * 0.85, 0.055, 0.28]}
           geometry={pool.geometry("box")} material={pool.flat(targetColor(hovered, selected), 0)} />

@@ -1,29 +1,59 @@
-import type { GameState } from "../components/BoardView.types";
+import { useEffect } from "react";
 import type { BoardInteraction } from "./interaction";
-import { buildTools } from "../game/presentation";
+import { buildTools, type GameSnapshot } from "../game/presentation";
 import GameIcon from "../game/GameIcon";
 import GameOverlay from "../game/GameOverlay";
 import ActionButton from "../game/ActionButton";
-import { shipsEnabled } from "../game/actions";
-import type { CostAction } from "../game/costs";
+import { phaseReason, shipsEnabled } from "../game/actions";
+import { costPreview, type CostAction } from "../game/costs";
+
+export function buildUnavailableReason(state: GameSnapshot, interaction: BoardInteraction, action: CostAction,
+  resources: Record<string, number>) {
+  if (interaction.selection.waiting) return "Waiting for server confirmation.";
+  if (interaction.selection.victim) return "Complete the player choice first.";
+  if (!interaction.legal) return "Waiting for server availability.";
+  if (state.phase === "setup") return state.turn !== interaction.legal.pid ? "Wait for your turn."
+    : state.pending_action ? "Resolve the pending choice first." : "No legal placement targets available.";
+  const reason = phaseReason(state, interaction.legal.pid, !(action === "road" && interaction.legal.road_free));
+  if (reason) return reason;
+  const missing = costPreview(action, resources, action === "road" && !!interaction.legal.road_free)
+    .filter(cost => !cost.available).map(cost => `${cost.quantity - (resources[cost.resource] ?? 0)} ${cost.resource}`);
+  if (missing.length) return `Missing resources: ${missing.join(", ")}.`;
+  return action === "city" ? "No settlements available to upgrade."
+    : `No legal ${action === "road" || action === "ship" ? "edges" : "vertices"} available.`;
+}
 
 /** Direct presentation of the existing server targets and shared-controller tools. */
 export default function BoardControls({ state, interaction, resources = {} }: {
-  state: GameState; interaction: BoardInteraction; resources?: Record<string, number>;
+  state: GameSnapshot; interaction: BoardInteraction; resources?: Record<string, number>;
 }) {
   const { legal, action, selection } = interaction;
   const blocked = selection.waiting || !!selection.victim;
   const tools = buildTools(interaction).filter(t => t.id !== "ship" || shipsEnabled(state));
   const movement = !!(legal?.robber_tiles?.length || legal?.pirate_tiles?.length);
+  useEffect(() => {
+    if (state.phase === "setup" || blocked || !action || movement) return;
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector('[role="dialog"]')
+        || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable="true"]'))) return;
+      event.preventDefault();
+      if (selection.shipSource) interaction.onCancel();
+      else interaction.onSelectAction(null);
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [state.phase, blocked, action, movement, selection.shipSource, interaction.onCancel, interaction.onSelectAction]);
   return <div className="board-controls" role="group" aria-label="Board actions" data-movement={movement}>
     {state.phase === "setup" ? <ActionButton action={state.setup_need === "settlement" ? "settlement" : "road"}
       label={state.setup_need === "settlement" ? "Settlement" : "Road"} resources={resources} free selected
       disabled={blocked || !(state.setup_need === "settlement" ? legal?.settlements.length : legal?.roads.length)}
+      reason={blocked || !(state.setup_need === "settlement" ? legal?.settlements.length : legal?.roads.length)
+        ? buildUnavailableReason(state, interaction, state.setup_need === "settlement" ? "settlement" : "road", resources) : null}
       onClick={() => interaction.onSelectAction(state.setup_need === "settlement" ? "settlement" : "road")} />
       : !movement && tools.map(tool => <ActionButton key={tool.id} action={tool.id as CostAction}
         label={tool.label} resources={resources} selected={action === tool.id}
         free={tool.id === "road" && !!legal?.road_free} disabled={blocked || !tool.count}
-        reason={!tool.count ? "No available targets in the current state." : null}
+        reason={blocked || !tool.count ? buildUnavailableReason(state, interaction, tool.id as CostAction, resources) : null}
         onClick={() => interaction.onSelectAction(action === tool.id ? null : tool.id)} />)}
     <div className="board-context-actions">
       {!movement && state.phase !== "setup" && shipsEnabled(state) && !!legal?.move_ship?.sources.length

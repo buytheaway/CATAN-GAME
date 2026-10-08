@@ -7,6 +7,20 @@ updated: 2026-10-08
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Product / UX / Visual Polish — Phase 3B
+
+**Implemented/verified 2026-10-08; construction visuals and focused build UX only.** Accepted direction remains clean modern digital tabletop. The three finalized Phase 3A assets in `web/public/models/pieces/` now replace procedural settlement/city/road visuals; their Blender sources and GLB bytes are unchanged. Only the named `PlayerColor` material receives the existing ownership palette. Neutral foundation/roof materials keep their original colors. Ghosts clone opacity/depth presentation separately so shared source materials and other players never change.
+
+Buildings and roads rest on the terrain's common rim Y=.218333, with no per-terrain height patches. Original XZ/IDs and logical anchors are retained; the road follows the real edge direction/length. The existing coastline strips and procedural loading/error terrain surface share the contact floor, preventing a strip or fallback tile from burying the new foundations. Number tokens, ports, Sea/Gold art, ships, robber/pirate, camera fitting and HUD composition retain their existing behavior.
+
+Legal hover previews use the actual final piece geometry and owner color. City preview visually replaces its owned settlement, rather than stacking both. Pointer exit/Cancel/Escape restore it without changing GameState. Mandatory setup, pending choices, dialogs and Chat input are protected from accidental cancellation. The dock uses existing cost glyphs and concise snapshot-derived reasons for disabled builds. No new rules, targets or cost model are introduced.
+
+Confirmed new construction/upgrades have a restrained 260ms scale appearance from their unchanged contact floor. It follows authoritative occupancy, never command intent or a rejected ACK. Reduced motion gives the final visual immediately; reconnect, refresh, rematch and renderer remount establish a baseline. Animation ends and adds no permanent frame loop or per-frame React state.
+
+Actual Chrome evidence, production dist with the unchanged isolated HTTP/WS fixture server, is kept outside the repository at `%TEMP%/catan-building-pieces-phase3b/`: inspected `city-preview.png`, `base-buildings-1280.png`, `gold-buildings-1280.png` and `missing-terrain-piece-contact.png`; additional setup/results/missing-piece and 1920/1440 captures are there. These are browser captures, not concept mockups. Runner — [building-pieces.cjs](../../web/e2e/building-pieces.cjs). Natural Base/Gold setup plus prepared paid/dev/results cases cover all 20 requested acceptance conditions, including an existing coastal road beside a new ship. No full natural-match/account-backend/mobile acceptance claim.
+
+Verification: 204 web tests, TS/build, 10 browser groups, 60 commands/6 deliberate rejections and 9 desktop framing checks pass. Before→after diagnostic medians: Base 3.45→3.55ms, Gold 3.80→3.80ms on RTX 5050 Laptop, with separate room layouts. The existing Three chunk warning and low-end/50-hex uncertainty remain. Detailed cache/transform/verification boundaries — [[plans/board3d#Product / UX / Visual Polish — Phase 3B]]. Phase 2 below is the earlier dated composition checkpoint.
+
 ## Product / UX / Visual Polish — Phase 2
 
 **Implemented/verified 2026-10-08; active match only.** Direction stays clean modern digital tabletop. Match now shares Phase 1 navy/sand/seafoam, typography, borders, buttons and focus tokens through `.game-shell`, without the Home/Room PageShell width limit. Compact 52px header: `CATAN.КОЛОНИЗАТОРЫ`, confirmed map/room, real connection state, VP goal and unchanged account access. Board remains the main visual surface; no terrain, ownership palette, camera algorithm or building-model redesign.
