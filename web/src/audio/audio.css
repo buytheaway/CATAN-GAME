@@ -1,0 +1,18 @@
+.audio-speaker { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.audio-entry.is-muted { color: var(--shell-muted); border-color: var(--shell-border); }
+.game-shell .audio-settings-popover .game-drawer-layer { top: 60px; bottom: auto; width: min(300px, calc(100vw - 24px)); }
+.game-shell .audio-settings-popover .game-drawer { height: auto; max-height: calc(100dvh - 80px); gap: 16px; padding: 18px; }
+.audio-settings-popover p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--shell-muted); }
+.audio-slider { display: grid; gap: 8px; font-size: 12px; }
+.audio-slider > span { display: flex; justify-content: space-between; gap: 12px; }
+.audio-slider output { color: var(--shell-accent); font-variant-numeric: tabular-nums; }
+.audio-slider input { width: 100%; padding: 0; accent-color: var(--shell-accent); cursor: pointer; }
+.audio-mute { display: flex; gap: 9px; align-items: center; font-size: 12px; }
+.audio-mute input { width: 16px; height: 16px; padding: 0; accent-color: var(--shell-accent); }
+.audio-music { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--shell-border); }
+.audio-music > div { display: grid; gap: 5px; }.audio-music strong { font-size: 12px; }.audio-music span { font-size: 10px; color: var(--shell-muted); }
+.audio-music button { font-size: 11px; white-space: nowrap; padding: 8px 10px; }
+.audio-test { display: flex; gap: 8px; align-items: center; justify-content: center; font-size: 12px; }
+.audio-test svg { width: 17px; height: 17px; }
+.audio-settings-popover .audio-status { font-size: 11px; }
+@media (max-width: 700px) { .game-shell .audio-settings-popover .game-drawer-layer { right: 12px; } }

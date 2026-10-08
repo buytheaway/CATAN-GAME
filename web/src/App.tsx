@@ -4,12 +4,15 @@ import LobbyPage from "./components/LobbyPage";
 import GamePage from "./components/GamePage";
 import { AuthProvider, AccountControls } from "./auth/AuthUI";
 import { PageShell } from "./shell/PageShell";
+import { AudioProvider } from "./audio/AudioProvider";
 
 const WS_DEFAULT = defaultWebSocketUrl();
 
 export default function App() {
   const client = useMemo(() => new WSClient(), []);
   const restored = useRef(false);
+  const lobbyRoom = useRef<string | null>(null);
+  const freshStart = useRef<string | null>(null);
   const [status, setStatus] = useState("idle");
   const [room, setRoom] = useState<RoomState | null>(null);
   const [match, setMatch] = useState<MatchState | null>(null);
@@ -19,15 +22,20 @@ export default function App() {
   useEffect(() => {
     client.onStatus = setStatus;
     client.onRoomState = (rs) => {
+      if (rs.status === "lobby") lobbyRoom.current = rs.room_code;
       setRoom(rs);
       setError(null);
     };
     client.onMatchState = (ms) => {
+      if (lobbyRoom.current === ms.room_code) {
+        freshStart.current = `${ms.room_code}:${ms.match_id}`; lobbyRoom.current = null;
+      }
       setMatch(ms);
       setError(null);
     };
     client.onError = (err) => {
       if (["session_expired", "seat_taken_over", "seat_not_owned", "unauthenticated"].includes(err.code)) {
+        lobbyRoom.current = null; freshStart.current = null;
         setMatch(null); setRoom(null);
       }
       setError(err);
@@ -41,7 +49,7 @@ export default function App() {
   }, [client]);
 
   return (
-    <AuthProvider client={client} onExit={() => { setMatch(null); setRoom(null); setError(null); }}>
+    <AudioProvider><AuthProvider client={client} onExit={() => { lobbyRoom.current = null; freshStart.current = null; setMatch(null); setRoom(null); setError(null); }}>
       {match ? (
         <div className="app app--match">
         <GamePage
@@ -51,8 +59,10 @@ export default function App() {
           status={status}
           log={log}
           error={error}
+          freshStart={freshStart.current === `${match.room_code}:${match.match_id}`}
           onBackToLobby={() => {
             client.leaveRoom();
+            lobbyRoom.current = null; freshStart.current = null;
             setMatch(null); setRoom(null); setError(null); setLog([]);
           }}
         />
@@ -65,10 +75,10 @@ export default function App() {
           status={status}
           wsDefault={WS_DEFAULT}
           error={error}
-          onBackToHome={() => { client.leaveRoom(); setRoom(null); setError(null); setLog([]); }}
+          onBackToHome={() => { client.leaveRoom(); lobbyRoom.current = null; freshStart.current = null; setRoom(null); setError(null); setLog([]); }}
         />
         </PageShell>
       )}
-    </AuthProvider>
+    </AuthProvider></AudioProvider>
   );
 }

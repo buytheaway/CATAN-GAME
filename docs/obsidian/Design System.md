@@ -7,6 +7,23 @@ updated: 2026-10-08
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Product / UX / Visual Polish — Phase 4: Audio
+
+**Implemented/verified 2026-10-08.** Sound supports the clean digital tabletop direction: short low wooden taps, filtered card rustles, soft construction confirmations and restrained maritime movement. No hover beeps, continuous ocean/boat audio, arcade rewards, recordings or downloaded soundtrack. The 22 cue recipes and ambient composition are original procedural code in [sounds.ts](../../web/src/audio/sounds.ts); there are no third-party audio assets or licenses to attribute. This does not establish subjective listening quality across speakers/headphones.
+
+Dice roll/landing, grouped production/own hand, road/settlement/city, received/accepted/closed offers/bank trade, dev purchase/play, own turn, robber/pirate/theft, ship/move ship and start/victory/game-over have distinct brief motifs. Playback reflects authoritative facts, not selecting a tool or hovering a ghost. Private resource/card names never determine timbre. Reduced motion skips the rolling flourish and plays the confirmed result immediately; the game retains every existing visual notification and is playable muted.
+
+Audio entry is a small speaker button beside current header controls. The 300px navy/sand/seafoam settings popover sits over the board, clear of the permanent Chat/sidebar/footer; it uses existing GameOverlay close/Escape/focus restoration. Labelled 0–100% sliders, Mute all, explicit Play/Pause, Test sound and readable playback status remain keyboard accessible. The icon reflects mute and its preferences survive refresh. Defaults: master 70%, SFX 65%, music 12%. Mandatory choices/result dialogs retain priority, so settings are temporarily unavailable there. Game Log/Test Mode/board controls retain their existing behavior.
+
+Tabletop ambient is a nonrhythmic original sustained voicing with four slow swells, continuous without a short file-loop boundary, fade-in and a short Pause fade-out. Music requires explicit Play, pauses on hidden tab, resumes an already opted-in session on foreground, stays stable through reconnect/rematch and stops on leaving the match. Refresh restores volumes/mute but keeps music paused. No local playlist/streaming integration in this phase. Exact event/lifecycle mapping and validation limits — [[plans/game-ui-redesign#Product / UX / Visual Polish — Phase 4: Audio]].
+
+Actual production-dist Chrome captures, inspected at 1920×1080 and 1280×720; the intermediate 1440×900 layout also passes. These are UI evidence, not new design concepts or audio assets:
+
+- [Audio Settings](../design/references/product-polish-phase-4/audio-settings.png)
+- [Mute state](../design/references/product-polish-phase-4/audio-muted.png)
+- [Music playing](../design/references/product-polish-phase-4/audio-music-playing.png)
+- [Narrow desktop / focus](../design/references/product-polish-phase-4/audio-settings-1280.png)
+
 ## Product / UX / Visual Polish — Phase 3B
 
 **Implemented/verified 2026-10-08; construction visuals and focused build UX only.** Accepted direction remains clean modern digital tabletop. The three finalized Phase 3A assets in `web/public/models/pieces/` now replace procedural settlement/city/road visuals; their Blender sources and GLB bytes are unchanged. Only the named `PlayerColor` material receives the existing ownership palette. Neutral foundation/roof materials keep their original colors. Ghosts clone opacity/depth presentation separately so shared source materials and other players never change.

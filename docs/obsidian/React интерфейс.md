@@ -4,6 +4,18 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Audio — Phase 4
+
+Implemented/verified **2026-10-08**: 231 web tests, TypeScript/production build and real native Chrome audio acceptance. [AudioProvider.tsx](../../web/src/audio/AudioProvider.tsx) wraps the existing AuthProvider at App's boundary and owns one [AudioManager.ts](../../web/src/audio/AudioManager.ts). Its trusted pointer/keyboard and visibility listeners unlock/resume lazily, clean up on unmount and tolerate React StrictMode's immediate effect replay. No audio context is created before the first gesture; Home unlock itself stays silent. Browser restrictions/unavailable API produce status/silent fallback, never block commands or automatically retry in a loop.
+
+The path remains GamePage → useGameCommand/useBoardInteraction → WSClient → authoritative server/executor → player-specific snapshot/game_events → App.match. Only after this return path does `useMatchAudio` select presentation cues. Its cursor is a ref, not an alternative GameState. [SoundEvents.ts](../../web/src/audio/SoundEvents.ts) scopes committed IDs by room/match, keeps a high-water mark, ignores older ticks and consumes new baselines on first hydration/reconnect/hidden tab/ownership changes. App's optional `freshStart` means a known lobby-to-match transition; rematch uses the new match key. Fresh turn/result and addressed offer status use existing snapshot transitions, with separate deterministic keys because these have no dedicated complete event IDs.
+
+Both renderers share the same match audio hook. Dice waits for `useDicePresentation`'s confirmed visual start and schedules landing at remaining DICE_SETTLED_MS (900ms), then grouped production and own-hand cues. Reduced motion/no valid faces skip rolling and use immediate result. Resource/card types are not inspected; own resource_count only qualifies a generic hand cue after a committed resource-gaining dev action. Gold/bank/trade receipt use confirmed event/status, not inferred opponent hands or optimistic balances. Rejections/ACKs/errors/raw debug events do not map to success sounds. Public offer/turn/result transitions still follow actual snapshots if Test Tools changes those facts; resource grants and queued dice alone remain silent.
+
+Manager maintains master/SFX/music gain buses, bounded six voices, priorities/cooldowns and a shared compressor. Sources stop/disconnect after completion; seen IDs are bounded. There are no React state updates per voice/frame or JS music animation timers. Opted-in ambient stays stable during snapshot changes, reconnect, renderer switches and rematch. Hidden tab cancels pending effects, pauses ambient and suspends context; rapid foreground waits for a pending suspend before resuming. GamePage unmount cancels voices and music intent; provider's actual unmount closes context and removes listeners.
+
+[AudioSettings.tsx](../../web/src/audio/AudioSettings.tsx) supplies `AudioButton` through GameTopBar's optional `audioControls` slot and occupies GamePage's existing `drawer="audio"`. It uses GameOverlay's nonmodal keyboard/focus conventions and defers to mandatory/result dialogs. [preferences.ts](../../web/src/audio/preferences.ts) validates/clamps optional versioned localStorage values for master/SFX/music/mute only; music Play intent is session-only, never credentials/GameState/audio blobs. [audio.css](../../web/src/audio/audio.css) scopes the compact popover. Mapping, browser test method and unverified cases — [[plans/game-ui-redesign#Product / UX / Visual Polish — Phase 4: Audio]].
+
 ## Building GLBs / build feedback — 2026-10-08
 
 Product / UX / Visual Polish Phase 3B is completed. Flow remains **GamePage → useBoardInteraction/useGameCommand → WSClient → server/engine → personalized snapshot → App.match → GamePage → BoardRenderer → Board3D**. GamePage additionally passes the existing room/match key and connection flag through BoardRenderer for presentation baseline resets. No command, legal or wire contract is changed.
@@ -265,14 +277,14 @@ Build palette показывает только инструменты с сущ
 ## Текущее дерево
 
 ```text
-App / AuthProvider (existing cookie/ownership/claim flows)
+App / AudioProvider / AuthProvider (existing cookie/ownership/claim flows)
 ├── PageShell (no match) → Brand / connection status / AccountControls
 │   └── LobbyPage
 │       ├── Home → hero / AccountGames + RecentGames → GameCard / identity / Host + Join forms
 │       └── Room → code/map/presence / players + PlayerColors / Start / RoomChat / map + MatchSettings
 │           └── Enable Test Room (only host, flag ON, lobby)
 └── GamePage → one snapshot / useBoardInteraction / useGameCommand
-    ├── GameTopBar → brand / goal / info / event button
+    ├── GameTopBar → brand / goal / info / event button / AudioButton
     ├── ContextPrompt → header center, pointer-events none
     ├── BoardRenderer → compact 2D/3D/reset
     │   ├── BoardView → original SVG + shared callbacks
@@ -292,6 +304,8 @@ App / AuthProvider (existing cookie/ownership/claim flows)
     │   ├── DevelopmentHand → direct play / necessary picker / passive VP
     │   └── DiceHUD / Roll / Dev Card buy / End / shared BoardControls
     ├── CardFlights → personalized events, finite CSS, no state mutations
+    ├── useMatchAudio → fresh committed events/transitions → AudioManager (both renderers)
+    ├── AudioSettings → existing optional drawer / volume / mute / Play-Pause / Test
     ├── GameOverlay Info / victim chooser / gold choice
     ├── DiscardPicker → mandatory own-card selection
     ├── IncomingTrades / DevelopmentPanel (Monopoly/Plenty/VP only)

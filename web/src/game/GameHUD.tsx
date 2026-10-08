@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { colorForPlayer } from "../board/colors";
 import type { BoardInteraction } from "../board/interaction";
 import type { GameSnapshot } from "./presentation";
@@ -11,9 +11,10 @@ import { AccountControls } from "../auth/AuthUI";
 import type { RoomState } from "../wsClient";
 import { StatusBadge } from "../shell/PageShell";
 
-export function GameTopBar({ state, roomCode, onInfo, onLog, drawer, status = "connected", logOpen = false, onTest, testAvailable = false, waiting = false }: {
+export function GameTopBar({ state, roomCode, onInfo, onLog, drawer, status = "connected", logOpen = false, onTest, testAvailable = false, waiting = false, audioControls }: {
   state: GameSnapshot; pid: number; roomCode: string; drawer: string | null; onInfo: () => void; onLog: () => void;
   status?: string; logOpen?: boolean; onTest?: () => void; testAvailable?: boolean; waiting?: boolean;
+  audioControls?: ReactNode;
 }) {
   return <header className="game-topbar">
     <div className="game-brand"><strong>CATAN.КОЛОНИЗАТОРЫ</strong>
@@ -24,6 +25,7 @@ export function GameTopBar({ state, roomCode, onInfo, onLog, drawer, status = "c
         {status === "connected" ? "Online" : status === "reconnecting" ? "Reconnecting…" : status}
       </StatusBadge></span>
       <AccountControls />
+      {audioControls}
       {state.test_mode && (state.test_tools && onTest
         ? <button className="game-button test-mode-entry" aria-label="Test Tools" title="Non-production Test Room · open developer tools"
           disabled={!testAvailable || waiting} onClick={onTest}><b>TEST MODE</b><span>Tools</span></button>

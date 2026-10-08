@@ -22,10 +22,13 @@ import CardFlights from "../game/CardFlights";
 import DiscardPicker from "../game/DiscardPicker";
 import TestTools, { testModeAccess } from "../game/TestTools";
 import "../game/playtest.css";
+import AudioSettings, { AudioButton } from "../audio/AudioSettings";
+import { useMatchAudio } from "../audio/AudioProvider";
 
-export default function GamePage({ client, match, room, status, log, error, onBackToLobby }: {
+export default function GamePage({ client, match, room, status, log, error, onBackToLobby, freshStart = false }: {
   client: WSClient; match: MatchState; room: RoomState | null; status: string; log: string[]; error: ServerError | null;
   onBackToLobby?: () => void;
+  freshStart?: boolean;
 }) {
   const state: GameSnapshot = match.state;
   const youPid = client.youPid ?? 0;
@@ -41,7 +44,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const rules = state.rules_config || {};
   const [goldRes, setGoldRes] = useState<string>(RESOURCES[0]);
   const [goldQty, setGoldQty] = useState(1);
-  const [drawer, setDrawer] = useState<"info" | "dev" | "test" | null>(null);
+  const [drawer, setDrawer] = useState<"info" | "dev" | "test" | "audio" | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const testAccess = testModeAccess(state, status, client.testToolsAvailable);
   const [tradeDraft, setTradeDraft] = useState<TradeDraft | null>(null);
@@ -52,6 +55,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   const matchKey = `${match.room_code}:${match.match_id}`;
   const request = useGameCommand(client, matchKey);
   const dice = useDicePresentation(matchKey, state.dice, state.roll_count);
+  useMatchAudio(match, status === "connected", freshStart, dice);
   const interaction = useBoardInteraction(state, youPid, matchKey, error,
     cmd => client.sendCmd(cmd));
   const freeRoads = state.free_roads?.[String(youPid)] ?? 0;
@@ -96,6 +100,8 @@ export default function GamePage({ client, match, room, status, log, error, onBa
   return <main className="game-shell">
     <GameTopBar state={state} pid={youPid} roomCode={match.room_code} drawer={drawer === "info" ? drawer : null}
       status={status} logOpen={logOpen} testAvailable={testAccess.canUse} waiting={blocked} onTest={() => setDrawer("test")}
+      audioControls={<AudioButton open={drawer === "audio"} disabled={mandatoryChoice || !!state.game_over}
+        onClick={() => setDrawer(current => current === "audio" ? null : "audio")} />}
       onInfo={() => setDrawer(current => current === "info" ? null : "info")}
       onLog={() => setLogOpen(current => !current)} />
     <section className="board-stage" aria-label="Game board">
@@ -146,6 +152,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       </section>
     </footer>
 
+    {drawer === "audio" && !mandatoryChoice && !state.game_over && <AudioSettings onClose={closeDrawer} />}
     {drawer === "info" && !mandatoryChoice && !state.game_over && <GameOverlay id="game-info" title="Game info" onClose={closeDrawer}>
         <div className="info-map"><strong>{mapMeta.name || mapId || "Current map"}</strong>
           {mapMeta.description && <p>{mapMeta.description}</p>}</div>
