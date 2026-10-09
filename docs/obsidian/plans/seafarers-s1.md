@@ -7,6 +7,8 @@ updated: 2026-10-08
 
 Status: **Completed / READY FOR CHECKPOINT — verified 2026-10-08.** Authorized scope: existing core Seafarers rules, mixed routes, ship lifecycle, destination-island connectivity, Gold/pirate correctness and authoritative multiplayer/recovery. No production map redesign/generator, scenario rewards, new expansions, visual/audio/assets, auth/deployment work or automatic commit/tag.
 
+S1/F1/F2/F3 checkpoint subsequently recorded as `seafarers-hardening-s1` → `b5cc066`, verified 2026-10-09. This plan retains S1's dated scope/results. Production-map/coast/offboard limitations recorded below were subsequently addressed in [[plans/seafarers-s2a]]; scenario rewards/fog, natural full matches and other deferred mechanics remain future work.
+
 ## Initial audit and affected path
 
 Current checkpoint `0d1c455`; initial worktree clean. Read current engine/rules/legal/serializers, networking/commit/codec and existing tests rather than treating old audit notes as proof. React GamePage/shared board controller → WSClient existing command envelope → owning Room lock/candidate executor → shared Python apply_cmd → durable commit/receipt → personalized snapshot + legal projection → existing SVG/Three renderers. Rules belong only in Python; legal hints execute the same commands on copies.

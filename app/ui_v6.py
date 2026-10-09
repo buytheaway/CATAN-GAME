@@ -2019,6 +2019,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._show_legal_spots()
 
     def _draw_robber(self):
+        if not 0 <= self.game.robber_tile < len(self.game.tiles):
+            return  # Seafarers without a desert starts with the robber offboard.
         t = self.game.tiles[self.game.robber_tile]
         c = t.center
         size = int(self.game.size * 0.5)

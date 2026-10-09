@@ -65,6 +65,20 @@ def assert_move_rejected(game, command, reason):
     assert game == before
 
 
+def test_offboard_robber_survives_real_desktop_save_load_without_drawing_last_tile(desktop, monkeypatch):
+    game = rules.build_game(17, 2, map_id="seafarers_gold_haven")
+    assert game.robber_tile == -1
+    save_engine(desktop, game)
+    restored = load_engine(desktop)
+    assert restored.robber_tile == -1 and restored.robbers == [-1]
+    window, _ = desktop
+    # Real drawing entry must return before resolving any robber pixmap.
+    def forbidden(*args, **kwargs):
+        raise AssertionError("offboard robber must not draw on the last tile")
+    monkeypatch.setattr(ui_v6, "_svg_tinted_pixmap", forbidden)
+    window._draw_robber()
+
+
 def assert_desktop_move_rejected(desktop, command, reason):
     window, _ = desktop
     before = deepcopy(ui_v6._ui_game_to_engine_dict(window.game))

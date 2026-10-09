@@ -17,6 +17,7 @@ from app.persistence.snapshots import encode_snapshot
 from tests.test_auth import account, connection, http, auth_config
 from tests.test_persistence_postgres import database_url, runtime, pair, prepare, command
 from tests.test_private_publication_postgres import account_game
+from tests.test_persistence_snapshots import released_v1_payload
 
 
 async def legacy(coord, room, *, version=2, marker=None):
@@ -24,9 +25,7 @@ async def legacy(coord, room, *, version=2, marker=None):
     head = (await coord.repository.load(room.id))["head"]
     payload = deepcopy(head["payload"])
     if version == 1:
-        payload["engine"]["snapshot_version"] = 1
-        del payload["engine"]["state"]["ships_built_this_turn"]
-        del payload["engine"]["state"]["ship_moved_this_turn"]
+        payload["engine"] = released_v1_payload(room.game)
     async with coord.database.sessions() as session, session.begin():
         await session.execute(update(m.matches).where(m.matches.c.id == room.match_uuid).values(ruleset_id=marker))
         await session.execute(update(m.game_snapshots).where(m.game_snapshots.c.id == head["id"]).values(

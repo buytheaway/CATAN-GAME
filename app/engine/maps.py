@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.engine.board_geom import axial_to_pixel, build_graph_from_tiles
 from app.engine.state import RESOURCES, TERRAIN_TO_RES, Tile, BoardState
+from app.engine.topology import coastal_edges
 from app.resource_path import resource_path
 
 
@@ -71,19 +72,19 @@ PRESET_REGISTRY = [
     {
         "id": "seafarers_simple_2",
         "name": "Seafarers: Simple Sea Ring",
-        "description": "Coastal ring of sea tiles for ships (MVP).",
+        "description": "A standard-size land island surrounded by a complete sea ring.",
         "file": "seafarers_simple_2.json",
     },
     {
         "id": "seafarers_gold_haven",
         "name": "Seafarers: Gold Haven",
-        "description": "Gold tiles + pirate with ship movement enabled.",
+        "description": "Two islands separated by sea, with gold, pirate and ship movement.",
         "file": "seafarers_gold_haven.json",
     },
     {
         "id": "seafarers_pirate_lanes",
         "name": "Seafarers: Pirate Lanes",
-        "description": "Extra sea lanes with gold + pirate enabled.",
+        "description": "Two islands and a navigable pirate channel, with gold and ship movement.",
         "file": "seafarers_pirate_lanes.json",
     },
 ]
@@ -159,13 +160,18 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
 
     has_random_terrain = False
     has_random_number = False
+    coordinates = set()
     for idx, t in enumerate(tiles):
         if not isinstance(t, dict):
             raise MapValidationError("tile must be object", {"index": idx})
         if "q" not in t or "r" not in t:
             raise MapValidationError("tile missing q/r", {"index": idx})
-        if not isinstance(t["q"], int) or not isinstance(t["r"], int):
+        if type(t["q"]) is not int or type(t["r"]) is not int:
             raise MapValidationError("tile q/r must be int", {"index": idx})
+        coordinate = (t["q"], t["r"])
+        if coordinate in coordinates:
+            raise MapValidationError("duplicate tile coordinates", {"index": idx})
+        coordinates.add(coordinate)
         terrain = t.get("terrain")
         if terrain == "random":
             has_random_terrain = True
@@ -177,19 +183,27 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
         if num == "random":
             has_random_number = True
         elif num is not None:
-            if not isinstance(num, int):
+            if type(num) is not int:
                 raise MapValidationError("tile number must be int/None", {"index": idx})
             if num < 2 or num > 12 or num == 7:
                 raise MapValidationError("tile number out of range", {"index": idx, "number": num})
+            if terrain in ("sea", "desert"):
+                raise MapValidationError("sea/desert cannot have a number", {"index": idx})
 
     if has_random_terrain:
         deck = data.get("terrain_deck", DEFAULT_TERRAIN_DECK)
         if not isinstance(deck, list) or not deck:
             raise MapValidationError("terrain_deck must be list for random terrain")
+        if any(not isinstance(t, str) or t not in ALLOWED_TERRAIN for t in deck):
+            raise MapValidationError("terrain_deck contains unknown terrain")
+        if len(deck) < sum(t.get("terrain") == "random" for t in tiles):
+            raise MapValidationError("terrain_deck exhausted")
     if has_random_number:
         deck = data.get("number_deck", DEFAULT_NUMBER_DECK)
         if not isinstance(deck, list) or not deck:
             raise MapValidationError("number_deck must be list for random number")
+        if any(type(n) is not int or n < 2 or n > 12 or n == 7 for n in deck):
+            raise MapValidationError("number_deck contains invalid number")
 
     ports = data.get("ports")
     if ports is not None:
@@ -202,23 +216,27 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
             kind = p.get("type")
             if not isinstance(edge, list) or len(edge) != 2:
                 raise MapValidationError("port edge must be list[2]", {"index": idx})
-            if not all(isinstance(v, int) for v in edge):
+            if not all(type(v) is int for v in edge):
                 raise MapValidationError("port edge must be int pair", {"index": idx})
             if not isinstance(kind, str):
                 raise MapValidationError("port type must be string", {"index": idx})
+            if kind not in DEFAULT_PORT_DECK:
+                raise MapValidationError("unknown port type", {"index": idx})
 
     ports_auto = data.get("ports_auto")
     if ports_auto is not None:
         if not isinstance(ports_auto, dict):
             raise MapValidationError("ports_auto must be object")
-        if "count" in ports_auto and not isinstance(ports_auto.get("count"), int):
-            raise MapValidationError("ports_auto.count must be int")
+        if "count" in ports_auto and (type(ports_auto["count"]) is not int or ports_auto["count"] < 0):
+            raise MapValidationError("ports_auto.count must be nonnegative int")
         if "deck" in ports_auto:
             deck = ports_auto.get("deck")
             if not isinstance(deck, list):
                 raise MapValidationError("ports_auto.deck must be list")
             if not all(isinstance(x, str) for x in deck):
                 raise MapValidationError("ports_auto.deck must be list[str]")
+            if any(kind not in DEFAULT_PORT_DECK for kind in deck):
+                raise MapValidationError("ports_auto.deck contains unknown port type")
 
     rules = data.get("rules")
     if rules is not None and not isinstance(rules, dict):
@@ -249,12 +267,13 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
                     raise MapValidationError("rules.limits values must be int", {"key": key})
 
     robber_tile = data.get("robber_tile")
-    if robber_tile is not None and not isinstance(robber_tile, int):
+    if robber_tile is not None and type(robber_tile) is not int:
         raise MapValidationError("robber_tile must be int")
     pirate_tile = data.get("pirate_tile")
-    if pirate_tile is not None and not isinstance(pirate_tile, int):
+    if pirate_tile is not None and type(pirate_tile) is not int:
         raise MapValidationError("pirate_tile must be int")
-    if robber_tile is not None and (robber_tile < 0 or robber_tile >= len(tiles)):
+    offboard = robber_tile == -1 and isinstance(rules, dict) and rules.get("enable_seafarers") is True
+    if robber_tile is not None and not offboard and (robber_tile < 0 or robber_tile >= len(tiles)):
         raise MapValidationError("robber_tile out of range", {"robber_tile": robber_tile})
     if pirate_tile is not None and (pirate_tile < 0 or pirate_tile >= len(tiles)):
         raise MapValidationError("pirate_tile out of range", {"pirate_tile": pirate_tile})
@@ -314,15 +333,16 @@ def _materialize_tiles(
 
 
 def _auto_ports(
-    vertices: Dict[int, Tuple[float, float]],
-    edge_adj_hexes: Dict[Tuple[int, int], List[int]],
+    board: BoardState,
     deck: List[str],
     count: int,
     rng,
 ) -> List[Tuple[Tuple[int, int], str]]:
-    coast = [e for e, hx in edge_adj_hexes.items() if len(hx) == 1]
-    if not coast:
+    coast = sorted(coastal_edges(board))
+    count = min(count, len(deck))
+    if not coast or count == 0:
         return []
+    vertices = board.vertices
     center = (0.0, 0.0)
 
     def angle_of_edge(e: Tuple[int, int]) -> float:
@@ -331,11 +351,16 @@ def _auto_ports(
         return math.atan2(p[1] - center[1], p[0] - center[0])
 
     coast.sort(key=angle_of_edge)
-    if len(coast) >= count:
-        pick_idx = [int(i * len(coast) / count) for i in range(count)]
-        coast_pick = [coast[i % len(coast)] for i in pick_idx]
-    else:
-        coast_pick = coast
+    pick_idx = [int(i * len(coast) / count) for i in range(count)]
+    coast_pick, used_vertices = [], set()
+    # Try evenly spaced positions first, then fill from the same deterministic
+    # ordering. Small custom coasts may support fewer than the requested ports.
+    for edge in [coast[i] for i in pick_idx] + coast:
+        if used_vertices.isdisjoint(edge):
+            coast_pick.append(edge)
+            used_vertices.update(edge)
+        if len(coast_pick) == count:
+            break
 
     port_types = list(deck)
     rng.shuffle(port_types)
@@ -352,31 +377,38 @@ def build_board_from_map(
     tiles, desert_idx = _materialize_tiles(data, rng, size)
     vertices, v_hexes, edges, edge_hexes = build_graph_from_tiles(tiles, size)
 
+    board = BoardState(tiles=tiles, vertices=vertices, vertex_adj_hexes=v_hexes,
+                       edges=edges, edge_adj_hexes=edge_hexes)
     ports: List[Tuple[Tuple[int, int], str]] = []
     if data.get("ports") is not None:
+        coast = coastal_edges(board)
+        used_vertices = set()
         for p in data["ports"]:
             edge = p["edge"]
             a, b = int(edge[0]), int(edge[1])
             e = (a, b) if a < b else (b, a)
             if e not in edges:
                 raise MapValidationError("port edge not in graph", {"edge": [a, b]})
+            if e not in coast:
+                raise MapValidationError("port must be on a land coastline", {"edge": [a, b]})
+            if not used_vertices.isdisjoint(e):
+                raise MapValidationError("ports cannot share an endpoint", {"edge": [a, b]})
+            used_vertices.update(e)
             ports.append((e, str(p["type"])))
     else:
         ports_auto = data.get("ports_auto", {})
         count = int(ports_auto.get("count", 9))
         deck = list(ports_auto.get("deck", DEFAULT_PORT_DECK))
-        ports = _auto_ports(vertices, edge_hexes, deck, count, rng)
+        ports = _auto_ports(board, deck, count, rng)
 
-    board = BoardState(
-        tiles=tiles,
-        vertices=vertices,
-        vertex_adj_hexes=v_hexes,
-        edges=edges,
-        edge_adj_hexes=edge_hexes,
-        ports=ports,
-        occupied_v={},
-        occupied_e={},
-    )
+    board.ports = ports
     rules = dict(data.get("rules", {}))
-    robber_tile = int(data.get("robber_tile", desert_idx if desert_idx is not None else 0))
+    robber_tile = data.get("robber_tile")
+    if robber_tile is None:
+        robber_tile = desert_idx if desert_idx is not None else (-1 if rules.get("enable_seafarers") else 0)
+    if robber_tile != -1 and tiles[robber_tile].terrain == "sea":
+        raise MapValidationError("robber must start on land or offboard")
+    pirate_tile = data.get("pirate_tile")
+    if pirate_tile is not None and tiles[pirate_tile].terrain != "sea":
+        raise MapValidationError("pirate must start on sea")
     return board, robber_tile, rules

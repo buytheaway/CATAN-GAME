@@ -4,6 +4,16 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
+## Maps/coastlines and initial figures — S2A, 2026-10-09
+
+**Implemented/tested.** Gold Haven и Pirate Lanes теперь имеют два раздельных playable land components с navigable sea; Coastal Lanes/Sea Ring намеренно остаются одноостровными. Room поддерживает 2–6 игроков, обычный setup может ставить settlement на любой legal land vertex, затем anchored road или ship. Ни один preset не объявляет starting region; S2A не добавляет запрет поселиться на другом острове или бонус за него. Дистанция/cost/supply/ownership и ship-turn rules остаются в общем executor S1.
+
+Порты новых карт находятся на land↔sea/frame coastline и не делят endpoints. Своя settlement/city на исходном port endpoint даёт generic 3:1 либо specialized 2:1 как прежде. Derived island IDs не дают очков и не передаются новым state полем. Карты/decks/counts/проверка — [[Карты и сценарии]], [[plans/seafarers-s2a]].
+
+Seafarers без desert начинает с `robber_tile=-1` (вне board), согласно [официальному Seafarers FAQ](https://www.catan.com/faq/seafarers). После Seven/discard либо Knight игрок выбирает одну допустимую фигуру. Первый robber move ставит его на настоящий land tile; выбор pirate оставляет robber offboard. Pirate начинается только на sea. Gold Haven имеет -1 и не блокирует произвольный Gold при старте; Pirate Lanes содержит одну desert. -1 не принимается как command target. SVG/Three/Qt не рисуют offboard фигуру; trusted v2 сохраняет её, frozen v1 не получает нового domain. Historical saved positions/maps не переписываются.
+
+Full pytest **823**, web **250**, TypeScript/build; real two-client Gold Haven/Pirate Lanes acceptance включил setup/Gold/ships, funded expansion и Seven/Knight. Это focused flows/fixtures, не полный natural match и не сертификация arbitrary custom maps. S2B: scenario start islands/rewards/fog; S2C: последующая customization/balance по отдельной задаче; S3: полные партии/широкие clients и оставшиеся core limitations.
+
 ## Core implementation verified — S1, 2026-10-08
 
 Existing rules were hardened against the user specification and [official Seafarers FAQ](https://www.catan.com/faq/seafarers)/[2025 rulebook](https://www.catan.com/sites/default/files/2025-03/CN3083%20CATAN%E2%80%93Seafarers%20Rulebook%202025%20secured%20reduced.pdf). No new expansion or universal scenario bonus was introduced.
@@ -17,7 +27,7 @@ Existing rules were hardened against the user specification and [official Seafar
 
 Seven/Knight still create one robber-or-pirate choice after required discards; land/sea/current tile/victim checks precede mutation. One accepted figure move allows at most one theft, then clears pending; nonparticipants see no stolen resource type. Theft's existing deterministic selection is unchanged and remains separate gameplay work.
 
-S2: actual multi-island presets/start islands, bonuses/fog/exploration, coastal ports, and no-desert initial robber offboard handling. S3: complete natural matches, scarce Gold arbitration/card sequencing and broader clients. Current presets remain one land component; actual two-island geometry is tested only in [test_seafarers_islands.py](../../tests/test_seafarers_islands.py). Exact proof and limitations — [[plans/seafarers-s1]].
+**Historical S1 scope:** production archipelagos/coastal ports/offboard initialization тогда оставались S2, а two-island mechanics проверялись через [test_seafarers_islands.py](../../tests/test_seafarers_islands.py). Они реализованы в S2A выше. Bonuses/fog/exploration и утверждённые scenario start zones остаются future work; natural matches, scarce Gold arbitration/card sequencing и broader clients тоже не объявляются завершёнными. Исходное S1 доказательство — [[plans/seafarers-s1]].
 
 Источник: [[Спецификация пользователя]]. Дополнение сохраняет [[Правила Base Game]], если механика или сценарий их явно не переопределяет.
 

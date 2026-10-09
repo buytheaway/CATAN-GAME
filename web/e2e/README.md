@@ -108,3 +108,45 @@ resource cleanup. Reports may contain test command payloads; committed evidence
 is sanitized in docs/design/references/game-ux-2-3/verification.json, without
 reconnect tokens, hidden decks or raw personal snapshots. No full natural match,
 mobile or low-end/load certification is implied.
+
+## Seafarers S2A maps / real multiplayer
+
+`seafarers-s2a.cjs` runs the ordinary two-client lobby/setup flow on Gold Haven
+and Pirate Lanes against the actual FastAPI/WS/PostgreSQL application and built
+production frontend. It explicitly uses host Test Tools for deterministic dice,
+matured Knight and expansion funding. It does not manufacture map/state snapshots
+or claim a naturally played full match. No production database is needed.
+
+Use an isolated disposable PostgreSQL database whose name ends in `_test`, with
+`DATABASE_URL` already configured for that database. Apply the current migrations
+only to that test database, build the frontend, then start the local test server:
+
+```powershell
+# In web/: npm run build; at repository root with the test DATABASE_URL:
+.venv/Scripts/python.exe -B -m alembic upgrade head
+$env:CATAN_PERSISTENCE_MODE = 'durable'
+$env:CATAN_AUTH_MODE = 'development'
+$env:CATAN_AUTH_ORIGINS = 'http://127.0.0.1:18766'
+$env:CATAN_ENABLE_TEST_TOOLS = '1'
+.venv/Scripts/python.exe -B -m web.e2e.seafarers_s2a_server
+```
+
+The test launcher refuses a non-test database, mounts `web/dist`, listens on
+loopback only and selects psycopg's supported event loop on Windows. It adds no
+gameplay endpoints or fixtures. In another terminal, use an available external
+Playwright installation and Chrome, keeping output outside the repository:
+
+```powershell
+# If Playwright is installed externally, set NODE_PATH to its node_modules.
+$env:CATAN_E2E_ORIGIN = 'http://127.0.0.1:18766'
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-s2a-hardening/browser'
+node web/e2e/seafarers-s2a.cjs
+```
+
+Checks include setup ships/Gold, paid island crossing/settlement/city/road, an
+invalid coordinate rejection, real pirate and Seven/discard/robber actions,
+personalized privacy, 37 terrain GLBs/number tokens/ports/ownership IDs, SVG/3D,
+1920/1440/1280 framing, orbit/zoom/reset and durable guest refresh. Camera checks
+wait for the actual React reset effect. Summary/screenshots contain geometry and
+counts, without reconnect proofs or dumped private hands. Stop only the local
+test server/container you started after verification; leave other services alone.

@@ -270,7 +270,8 @@ _GAME_V1 = {
     "trade_offers": _list(lambda v, p: TradeOffer(**_record(v, _OFFER, p))),
     "trade_offer_next_id": _positive,
 }
-_GAME = {**_GAME_V1, "ships_built_this_turn": _unique_set(_edge),
+_GAME = {**_GAME_V1, "robber_tile": _integer, "robbers": _list(_integer),
+         "ships_built_this_turn": _unique_set(_edge),
          "ship_moved_this_turn": _boolean}
 # Also used as a fail-closed field-coverage guard; never infer schema from payload.
 _SCHEMAS = [(GameState, _GAME), (BoardState, _BOARD), (PlayerState, _PLAYER),
@@ -334,7 +335,12 @@ def _validate_references(g: GameState) -> None:
     if g.setup_idx > len(g.setup_order) or (g.phase == "setup" and g.setup_idx == len(g.setup_order)):
         _fail("state.setup_idx", "invalid setup cursor")
     ref(g.setup_anchor_vid, vids, "state.setup_anchor_vid")
-    for tile in [g.robber_tile, g.pirate_tile, *g.robbers]:
+    # V2 can store the no-desert Seafarers initial position. V1 remains frozen.
+    # Historical on-board positions/ports are not reconciled during recovery.
+    robber_ids = tids | {-1} if g.rules_config.enable_seafarers else tids
+    for tile in [g.robber_tile, *g.robbers]:
+        ref(tile, robber_ids, "state.robber")
+    for tile in [g.pirate_tile]:
         ref(tile, tids, "state.robber_or_pirate")
     offer_ids = set()
     for offer in g.trade_offers:

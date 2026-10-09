@@ -276,7 +276,13 @@ def test_seafarers_ship_and_pirate_lifecycle(case):
 
 
 def released_v1_payload(g):
-    payload = snapshots.encode_snapshot(g)
+    # V1 predates offboard initialization. Model its real on-board position,
+    # rather than relabeling a new S2A-only value as a released-v1 snapshot.
+    legacy = deepcopy(g)
+    if legacy.robber_tile == -1:
+        legacy.robber_tile = next(i for i, t in enumerate(legacy.tiles) if t.terrain != "sea")
+        legacy.robbers = [legacy.robber_tile if i == -1 else i for i in legacy.robbers]
+    payload = snapshots.encode_snapshot(legacy)
     payload["snapshot_version"] = 1
     del payload["state"]["ships_built_this_turn"]
     del payload["state"]["ship_moved_this_turn"]
@@ -334,6 +340,8 @@ def test_exact_v1_migration_preserves_state_and_locks_only_unknown_active_ship_h
     before = deepcopy(payload)
     migrated = snapshots.loads_snapshot(json.dumps(payload))
     expected = deepcopy(g)
+    expected.robber_tile = payload["state"]["robber_tile"]
+    expected.robbers = payload["state"]["robbers"]
     expected.ships_built_this_turn = set()
     expected.ship_moved_this_turn = locked
     assert_equivalent(expected, migrated)

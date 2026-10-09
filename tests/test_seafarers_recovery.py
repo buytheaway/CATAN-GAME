@@ -245,9 +245,8 @@ def test_verified_s1_match_with_v1_format_locks_unknown_history_then_end_upgrade
             await prepare(room, seafarers_case("ship"))
             head = (await coord.repository.load(room.id))["head"]
             payload = deepcopy(head["payload"])
-            payload["engine"]["snapshot_version"] = 1
-            del payload["engine"]["state"]["ships_built_this_turn"]
-            del payload["engine"]["state"]["ship_moved_this_turn"]
+            from tests.test_persistence_snapshots import released_v1_payload
+            payload["engine"] = released_v1_payload(room.game)
             async with coord.database.sessions() as session, session.begin():
                 await session.execute(update(m.game_snapshots).where(m.game_snapshots.c.id == head["id"]).values(
                     payload=payload, checksum=checksum(payload), snapshot_version=1))

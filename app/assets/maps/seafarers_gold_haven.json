@@ -5,45 +5,99 @@
   "tiles": [
     {
       "q": 0,
+      "r": -3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 1,
+      "r": -3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 2,
+      "r": -3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 3,
+      "r": -3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -1,
       "r": -2,
+      "terrain": "random",
+      "number": "random"
+    },
+    {
+      "q": 0,
+      "r": -2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 1,
+      "r": -2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 2,
+      "r": -2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 3,
+      "r": -2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": -1,
+      "terrain": "random",
+      "number": "random"
+    },
+    {
+      "q": -1,
+      "r": -1,
+      "terrain": "random",
+      "number": "random"
+    },
+    {
+      "q": 0,
+      "r": -1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 1,
+      "r": -1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 2,
+      "r": -1,
       "terrain": "gold",
       "number": "random"
     },
     {
-      "q": 1,
-      "r": -2,
-      "terrain": "random",
-      "number": "random"
-    },
-    {
-      "q": 2,
-      "r": -2,
-      "terrain": "sea",
-      "number": null
-    },
-    {
-      "q": -1,
+      "q": 3,
       "r": -1,
       "terrain": "random",
       "number": "random"
     },
     {
-      "q": 0,
-      "r": -1,
+      "q": -3,
+      "r": 0,
       "terrain": "random",
       "number": "random"
-    },
-    {
-      "q": 1,
-      "r": -1,
-      "terrain": "random",
-      "number": "random"
-    },
-    {
-      "q": 2,
-      "r": -1,
-      "terrain": "sea",
-      "number": null
     },
     {
       "q": -2,
@@ -60,8 +114,8 @@
     {
       "q": 0,
       "r": 0,
-      "terrain": "random",
-      "number": "random"
+      "terrain": "sea",
+      "number": null
     },
     {
       "q": 1,
@@ -72,32 +126,56 @@
     {
       "q": 2,
       "r": 0,
-      "terrain": "sea",
-      "number": null
-    },
-    {
-      "q": -2,
-      "r": 1,
-      "terrain": "random",
-      "number": "random"
-    },
-    {
-      "q": -1,
-      "r": 1,
       "terrain": "gold",
       "number": "random"
     },
     {
-      "q": 0,
+      "q": 3,
+      "r": 0,
+      "terrain": "random",
+      "number": "random"
+    },
+    {
+      "q": -3,
       "r": 1,
       "terrain": "random",
       "number": "random"
+    },
+    {
+      "q": -2,
+      "r": 1,
+      "terrain": "random",
+      "number": "random"
+    },
+    {
+      "q": -1,
+      "r": 1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 0,
+      "r": 1,
+      "terrain": "sea",
+      "number": null
     },
     {
       "q": 1,
       "r": 1,
       "terrain": "random",
       "number": "random"
+    },
+    {
+      "q": 2,
+      "r": 1,
+      "terrain": "random",
+      "number": "random"
+    },
+    {
+      "q": -3,
+      "r": 2,
+      "terrain": "sea",
+      "number": null
     },
     {
       "q": -2,
@@ -108,14 +186,44 @@
     {
       "q": -1,
       "r": 2,
-      "terrain": "random",
-      "number": "random"
+      "terrain": "sea",
+      "number": null
     },
     {
       "q": 0,
       "r": 2,
-      "terrain": "random",
-      "number": "random"
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 1,
+      "r": 2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -3,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -1,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 0,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
     }
   ],
   "terrain_deck": [

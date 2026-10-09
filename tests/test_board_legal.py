@@ -113,7 +113,13 @@ def test_robber_and_pirate_targets_victims_are_personal_and_do_not_mutate(funded
 
 def test_ship_sources_and_destinations_match_current_executor(funded):
     g = funded
-    source = board_legal_moves(g, 0)["ships"][0]
+    own_coast = {i for v, (owner, _) in g.occupied_v.items() if owner == 0
+                 for i in g.vertex_adj_hexes[v]}
+    g.pirate_tile = next(i for i, t in enumerate(g.tiles) if t.terrain == "sea" and i not in own_coast)
+    # Choose an open line, rather than a preset-specific edge which can now
+    # connect both own buildings and therefore be a correctly closed line.
+    source = next(e for e in board_legal_moves(g, 0)["ships"]
+                  if sum(g.occupied_v.get(v, (None,))[0] == 0 for v in e) < 2)
     rules.apply_cmd(g, 0, {"type": "build_ship", "eid": source})
     assert source not in board_legal_moves(g, 0)["move_ship"]["sources"]
     rules.apply_cmd(g, 0, {"type": "end_turn"})
@@ -200,6 +206,22 @@ def test_projected_victims_allow_explicit_choice_without_stealing_from_another_p
     finish_setup(g)
     for pid in (1, 2):
         rules.apply_cmd(g, pid, {"type": "grant_resources", "res": {"wood": 5, "sheep": 5}})
+    if kind == "robber":
+        # Prepare two eligible neighbors using actual geometry; the generic
+        # snake's first vertices need not surround the same hex on two islands.
+        for tile, terrain in enumerate(g.tiles):
+            if terrain.terrain == "sea" or tile == g.robber_tile:
+                continue
+            probe = deepcopy(g)
+            for pid in (1, 2):
+                candidates = [v for v, adjacent in probe.vertex_adj_hexes.items()
+                              if tile in adjacent and rules.can_place_settlement(probe, pid, v, False)]
+                if not candidates:
+                    break
+                probe.occupied_v[candidates[0]] = (pid, 1)
+            else:
+                g.occupied_v = probe.occupied_v
+                break
     if kind == "pirate":
         for _ in range(5):
             for pid in (1, 2):

@@ -104,7 +104,7 @@ def test_lobby_map_revision_final_preset_reconnect_and_start(live_server):
                 for ws in (replacement, b):
                     state = (await _recv_type(ws, "match_state"))["state"]
                     assert state["map_id"] == "seafarers_gold_haven"
-                    assert sum(t["terrain"] == "sea" for t in state["tiles"]) == 4
+                    assert sum(t["terrain"] == "sea" for t in state["tiles"]) == 22
                     assert sum(t["terrain"] == "gold" for t in state["tiles"]) == 2
                     assert state["tiles"][state["pirate_tile"]]["terrain"] == "sea"
     asyncio.run(run())

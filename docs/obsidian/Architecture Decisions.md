@@ -1,6 +1,6 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # Architecture Decisions
@@ -8,6 +8,22 @@ updated: 2026-10-08
 [[00 Главная]] · [[Project State]] · [[Documentation Policy]]
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
+
+## ADR-016 — Materialized map topology and offboard Seafarers robber
+
+Status: **Implemented/verified 2026-10-09, authorized S2A scope.**
+
+Decision: new matches use updated named map definitions; persisted matches keep their materialized tiles/order/vertices/edges/adjacency/ports/source and scores. `topology.land_components/island_ids/coastal_edges` derive island/coast identity from that same stored shared-edge graph. Island ID is the minimum original tile index in a land component, deterministic within a board; no second coordinate graph, mutable scenario model or new network/codec field. No discovery bonus or start-island restriction is invented.
+
+New-map ports must be real land↔sea/frame coasts without shared endpoints; authored edge/kind/order remain intact. Auto placement is deterministic and bounded by deck/coast capacity. Existing historical invalid coast placement remains readable during recovery; it is neither silently repaired nor revalidated by rebuilding the map. A separately created match/rematch uses the then-current source definition and normal build validation; restricted F2 matches still cannot rematch.
+
+No-desert Seafarers starts with robber `-1`, as the official FAQ specifies an offboard start. It is presentation/state, never a legal move target; Seven/Knight use the existing single-figure pending lifecycle and land/sea validation. Codec **v2** accepts -1 only for Seafarers robber fields; all other negative references reject. Released **v1 remains frozen**, new writes stay v2/engine_compatibility=1 with 42 fields, and the match marker remains `catan-seafarers-s1`. There is no rules/VP/achievement reconciliation during restore and no classification of unknown markers as current.
+
+Reason: rebuilding a saved map after a preset update changes IDs/topology and destroys persistence meaning. A local render-height/coast transform must not decide legality. An arbitrary initial Gold blocker contradicts approved Seafarers behavior.
+
+Consequences: this is a **v2 value-domain extension**, not a field/schema migration. The new decoder reads historical on-board v1/v2, but an S1 binary rejects new offboard v2 heads despite the same format number; rolling back those records to S1 is unsafe. Do not rewrite a head to make rollback pass. Future releases must document value-domain constraints independently of field coverage and ruleset provenance. S2B needs explicit discovery/start-island scenario state before using these derived IDs for awards; reordering a definition does not preserve cross-definition island identity.
+
+Evidence: frozen S1 fixture and fresh PostgreSQL coordinator preserve the old 19-hex Gold Haven board/source/ports/VP with both current and unknown markers; unknown remains restricted. New maps use 37 tiles. Full Python/web and focused two-client Chrome verification — [[plans/seafarers-s2a]], [[Состояние игры#Seafarers S2A — stored maps and offboard robber]]. Historical ADR-011/014/015 retain their checkpoint context and constraints.
 
 ## ADR-015 — Match ruleset provenance and safe legacy restriction
 

@@ -6,9 +6,15 @@ tags: [catan, web, интерфейс]
 
 ## Verification scope after S1/F1/F2/F3
 
-Последняя полная **web verification — F2, 2026-10-08: 241 passed**, TypeScript/production build и пять focused Chrome/PostgreSQL compatibility groups. Последняя полная **Python verification — F3: 757 passed, 0 skipped**. F3 затронул только Qt и не повторял web/build/browser; текущая документационная сверка не является новым полным запуском. Все меньшие числа и browser evidence в sections ниже — результаты названных исторических checkpoint. Последний scenario baseline S1 — 348/508, с 140 pre-roll и 20 pirate-connectivity отказами; они не закрыты frontend tests. Сводка/границы — [[Project State#Current verification and status]].
+Последняя полная verification — **S2A, 2026-10-09: 250 web tests**, TypeScript/production build; **823 Python tests, 0 skipped**, с изолированной PostgreSQL. Два клиента на каждой новой Gold Haven/Pirate Lanes прошли реальные Chrome/WS/PG focused flows, 2D/3D, resize/orbit/zoom/reset и refresh. Scenario baseline повторён: 348/508, прежние 140 pre-roll и 20 pirate-connectivity failures. Ниже 241 web/F2, 757 Python/F3 и другие числа сохранены как historical evidence, а не новый run. Границы — [[Project State#Current verification and status]], [[plans/seafarers-s2a]].
 
 Текущая архитектура: App/AudioProvider/AuthProvider → LobbyPage Home/room либо GamePage; F2 LegacyMatchPage имеет приоритет для restricted room. GamePage владеет drafts/overlays, useBoardInteraction — board selection/callbacks, useGameCommand — command waiting. BoardRenderer default 3D и сохранённый SVG получают один snapshot/controller; GLB/audio/presentation не исполняют правила. Полный command/COMMIT/publication путь — [[Сценарий сетевой партии]].
+
+## S2A coast rendering — 2026-10-09
+
+Runtime React diff только в [model.ts](../../web/src/board3d/model.ts): port label идёт от adjacent land center к исходному edge midpoint, затем в сторону воды. Это корректно и на внутренних берегах архипелага; historical невалидный coast сохраняет прежний board-center fallback. Dock/endpoints/owner/interaction IDs, round token art, GLBs/buildings/ocean/audio/controller и camera code не менялись. Существующие bounds/footprint автоматически вместили 37 tiles на 1920/1440/1280. SVG/Three уже пропускают negative offboard robber index; shared controller принимает только real legal IDs.
+
+[seafarersMaps.test.mjs](../../web/tests/seafarersMaps.test.mjs) использует snapshot geometry, сверяемую Python: server↔SVG↔Three centers/vertices/IDs, coast port normals, terrain и camera footprint. [seafarers-s2a.cjs](../../web/e2e/seafarers-s2a.cjs) наблюдает real production scene, GLB/number/ownership data и mouse actions; Test Tools funding явно отделён от natural setup. Mobile/low-end/full matches не проверены.
 
 ## Legacy match compatibility UX — F2
 

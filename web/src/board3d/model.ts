@@ -31,8 +31,13 @@ export function createRenderModel(state: BoardSnapshot): BoardRenderModel {
     const [a, b] = edge;
     if (!vertices[a] || !vertices[b]) return [];
     const { position: anchor, rotation } = edgePlacement(vertices[a], vertices[b]);
-    const dx = anchor[0] - baseBounds.center[0];
-    const dz = anchor[2] - baseBounds.center[2];
+    const land = (state.edge_adj_hexes?.[edgeId(edge)] ?? [])
+      .filter(i => tiles[i] && tiles[i].terrain !== "sea");
+    // Local coast normal also works on inward-facing archipelago shores.
+    // Historical snapshots without valid coast adjacency retain the fallback.
+    const origin = land.length === 1 ? tiles[land[0]].position : baseBounds.center;
+    const dx = anchor[0] - origin[0];
+    const dz = anchor[2] - origin[2];
     const length = Math.hypot(dx, dz) || 1;
     // Label offset is visual only; dock stays attached to the supplied port edge.
     const position: Point3D = [anchor[0] + dx / length * 0.72, TILE_TOP, anchor[2] + dz / length * 0.72];

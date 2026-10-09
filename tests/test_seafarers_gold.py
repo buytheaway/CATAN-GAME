@@ -122,8 +122,9 @@ def test_empty_bank_does_not_create_impossible_gold_choices(levels):
 
 def test_ordinary_production_can_consume_last_bank_card_before_gold_choices():
     g, tile = gold_game({0: 2})
-    producing = next(i for i, t in enumerate(g.tiles)
-                     if t.number == g.tiles[tile].number and t.terrain == "pasture")
+    producing = next(i for i, t in enumerate(g.tiles) if t.terrain == "pasture")
+    # Explicit simultaneous-production fixture, independent of preset shuffle.
+    g.tiles[producing].number = g.tiles[tile].number
     vertex = next(v for v, adjacent in sorted(g.vertex_adj_hexes.items())
                   if producing in adjacent and rules.can_place_settlement(g, 1, v, False))
     g.occupied_v[vertex] = (1, 1)
