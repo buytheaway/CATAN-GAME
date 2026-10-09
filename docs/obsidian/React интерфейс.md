@@ -6,11 +6,21 @@ tags: [catan, web, интерфейс]
 
 ## Verification scope after S1/F1/F2/F3
 
-Последняя полная verification — **S2A, 2026-10-09: 250 web tests**, TypeScript/production build; **823 Python tests, 0 skipped**, с изолированной PostgreSQL. Два клиента на каждой новой Gold Haven/Pirate Lanes прошли реальные Chrome/WS/PG focused flows, 2D/3D, resize/orbit/zoom/reset и refresh. Scenario baseline повторён: 348/508, прежние 140 pre-roll и 20 pirate-connectivity failures. Ниже 241 web/F2, 757 Python/F3 и другие числа сохранены как historical evidence, а не новый run. Границы — [[Project State#Current verification and status]], [[plans/seafarers-s2a]].
+Последняя полная verification — **S2B-1, 2026-10-09: 253 web tests**, TypeScript/production build; **881 Python tests, 0 skipped**, с изолированной PostgreSQL. Два клиента на двух custom JSON профилях Gold Haven/Pirate Lanes проверили restricted +2/12 VP и unrestricted +3/14 VP, natural setup, funded expansion/award/city, 2D/3D, desktop resize и refresh обоих клиентов. Все existing preset defaults сохранены. Scenario baseline: 348/508, все 160 failures совпали с S2A. 823/250 S2A и прежние F2/F3 counts ниже — historical evidence. Границы — [[Project State#Current verification and status]], [[plans/seafarers-s2b-1]].
 
 Текущая архитектура: App/AudioProvider/AuthProvider → LobbyPage Home/room либо GamePage; F2 LegacyMatchPage имеет приоритет для restricted room. GamePage владеет drafts/overlays, useBoardInteraction — board selection/callbacks, useGameCommand — command waiting. BoardRenderer default 3D и сохранённый SVG получают один snapshot/controller; GLB/audio/presentation не исполняют правила. Полный command/COMMIT/publication путь — [[Сценарий сетевой партии]].
 
+## Scenario UI — S2B-1
+
+Verified **2026-10-09**. The optional typed `state.scenario` is public data from Python; legal actions remain the authoritative personalized lists. `contextPrompt` explains designated starting islands only during configured settlement setup. It does not derive island eligibility, capacity, costs or target IDs. Existing setup Road/Ship controls and useBoardInteraction callbacks are unchanged.
+
+`GamePage` places `ScenarioSummary` near the beginning of the existing Game info overlay: allowed starting policy, configured bonus/once-per-player-per-non-home-island condition and no city re-award. Target remains the topbar Goal and normal info field. `PlayerStrip` shows public `special_vp` on a separate compact line to fit the existing player HUD; the total already includes it. No Base/preset island counter is invented when bonuses are disabled. Board3D/BoardView/art/camera, Home/Lobby/trade/dev/audio and CSS were not redesigned.
+
+Three added React/controller tests verify prompt/target delegation, differing config summaries and public VP rendering without opponent private payload. Real two-client Chrome acceptance verifies both custom profiles, public award, no city re-award, 2D/3D, counter bounds/desktop layout and refresh. Inputs remain actual JSON upload and ordinary server commands; fixture funding/dice is explicit. Tests/evidence — [[plans/seafarers-s2b-1]].
+
 ## S2A coast rendering — 2026-10-09
+
+Historical S2A rendering diff below; S2B-1 does not modify Board3D/BoardView/art/camera code.
 
 Runtime React diff только в [model.ts](../../web/src/board3d/model.ts): port label идёт от adjacent land center к исходному edge midpoint, затем в сторону воды. Это корректно и на внутренних берегах архипелага; historical невалидный coast сохраняет прежний board-center fallback. Dock/endpoints/owner/interaction IDs, round token art, GLBs/buildings/ocean/audio/controller и camera code не менялись. Существующие bounds/footprint автоматически вместили 37 tiles на 1920/1440/1280. SVG/Three уже пропускают negative offboard robber index; shared controller принимает только real legal IDs.
 

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.engine.board_geom import axial_to_pixel, build_graph_from_tiles
 from app.engine.state import RESOURCES, TERRAIN_TO_RES, Tile, BoardState
 from app.engine.topology import coastal_edges
+from app.engine.scenario import parse_scenario_rules
 from app.resource_path import resource_path
 
 
@@ -242,6 +243,10 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if rules is not None and not isinstance(rules, dict):
         raise MapValidationError("rules must be object")
     if isinstance(rules, dict):
+        try:
+            parse_scenario_rules(rules)
+        except ValueError as exc:
+            raise MapValidationError(str(exc)) from exc
         if "target_vp" in rules and not isinstance(rules.get("target_vp"), int):
             raise MapValidationError("rules.target_vp must be int")
         if "victory_points" in rules and not isinstance(rules.get("victory_points"), int):

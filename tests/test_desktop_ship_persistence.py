@@ -39,6 +39,26 @@ def coast():
     return graph_game([(0, 1), (0, 2), (0, 3)], buildings={0: (0, 1)})
 
 
+def test_scenario_ledger_and_vp_survive_real_qt_file_roundtrip(desktop):
+    from tests.test_seafarers_scenarios import scenario_game, arrive
+    from tests.test_seafarers_maps import fund
+    from app.engine.state import COST
+    game = scenario_game()
+    destination = arrive(game)
+    rules.apply_cmd(game, 0, {"type": "place_settlement", "vid": destination})
+    fund(game, COST["city"])
+    payload = save_engine(desktop, game)
+    assert payload["scenario"]["awarded_islands"] == {"0": [13]}
+    restored = load_engine(desktop)
+    assert restored.scenario == game.scenario
+    assert [p.vp for p in restored.players] == [p.vp for p in game.players]
+    assert restored.ships_built_this_turn == game.ships_built_this_turn
+    before = restored.players[0].vp
+    assert desktop[0]._apply_cmd({"type": "upgrade_city", "vid": destination}, pid=0) is not None
+    after = serialize.from_dict(ui_v6._ui_game_to_engine_dict(desktop[0].game))
+    assert after.players[0].vp == before + 1 and after.scenario == restored.scenario
+
+
 def save_engine(desktop, game):
     window, path = desktop
     window.game = ui_v6._convert_base_state(game)

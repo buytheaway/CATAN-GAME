@@ -287,7 +287,9 @@ def test_historical_s1_board_is_not_regenerated_or_port_repaired_on_decode(monke
     assert len(g.tiles) == 19 and len(land_components(g.board)) == 1
     assert g.robber_tile == 0 and g.tiles[0].terrain == "gold"
     assert any(e not in coastal_edges(g.board) for e, _ in g.ports)
-    assert snapshots.encode_snapshot(g) == json.loads(raw)
+    from tests.test_persistence_snapshots import released_v2_payload
+    assert released_v2_payload(g) == json.loads(raw)
+    assert snapshots.decode_snapshot(snapshots.encode_snapshot(g)) == g
     assert snapshots.loads_snapshot(snapshots.dumps_snapshot(g)) == g
 
 
@@ -347,7 +349,8 @@ def test_offboard_extension_does_not_accept_other_invalid_snapshot_references(fi
 
 
 def test_frozen_v1_does_not_accept_v2_offboard_domain():
-    payload = snapshots.encode_snapshot(rules.build_game(1, 2, map_id="seafarers_gold_haven"))
+    from tests.test_persistence_snapshots import released_v2_payload
+    payload = released_v2_payload(rules.build_game(1, 2, map_id="seafarers_gold_haven"))
     payload["snapshot_version"] = 1
     del payload["state"]["ships_built_this_turn"]
     del payload["state"]["ship_moved_this_turn"]

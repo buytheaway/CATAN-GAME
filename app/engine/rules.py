@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.engine import maps as map_loader
 from app.engine.shipping import is_open_ship
+from app.engine.scenario import parse_scenario_rules, record_settlement, valid_starting_vertex, setup_has_capacity
 from app.engine.state import (
     AchievementState,
     COST,
@@ -162,6 +163,12 @@ def build_game(
     g.map_meta = dict(meta)
     g.rules = dict(rules)
     g.rules_config = parse_rules_config(g.rules)
+    try:
+        g.scenario.rules = parse_scenario_rules(g.rules, g.board)
+    except ValueError as exc:
+        raise map_loader.MapValidationError(str(exc)) from exc
+    if g.scenario.rules.new_island_vp:
+        g.scenario.home_islands = {pid: set() for pid in range(max_players)}
     g.robbers = [g.robber_tile for _ in range(int(g.rules_config.robber_count))]
     if getattr(g.rules_config, "enable_pirate", False):
         pirate_tile = map_data.get("pirate_tile") if isinstance(map_data, dict) else None
@@ -183,6 +190,8 @@ def build_game(
     g.setup_need = "settlement"
     g.setup_anchor_vid = None
     g.turn = g.setup_order[0] if g.setup_order else 0
+    if not setup_has_capacity(g):
+        raise map_loader.MapValidationError("Starting islands cannot fit all opening settlements")
 
     dev_deck = (
         ["knight"] * 14
@@ -197,6 +206,8 @@ def build_game(
 
 
 def can_place_settlement(g: GameState, pid: int, vid: int, require_road: bool) -> bool:
+    if g.phase == "setup" and not valid_starting_vertex(g, vid):
+        return False
     if vid not in g.vertices or not any(
         g.tiles[ti].terrain != "sea" for ti in g.vertex_adj_hexes.get(vid, [])
     ):
@@ -207,7 +218,7 @@ def can_place_settlement(g: GameState, pid: int, vid: int, require_road: bool) -
         if nb in g.occupied_v:
             return False
     if not require_road:
-        return True
+        return g.phase != "setup" or setup_has_capacity(g, vid)
     for e in g.edges:
         if vid in e and g.occupied_e.get(e) == pid:
             return True
@@ -898,6 +909,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             )
             g.occupied_v[vid] = (pid, 1)
             g.players[pid].vp += 1
+            record_settlement(g, pid, vid, setup=True)
             update_longest_road(g)
             check_win(g)
             g.setup_need = "road"
@@ -941,6 +953,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         pay_to_bank(g, pid, COST["settlement"])
         g.occupied_v[vid] = (pid, 1)
         g.players[pid].vp += 1
+        record_settlement(g, pid, vid, setup=False)
         update_longest_road(g)
         check_win(g)
         events.append({"type": "place_settlement", "pid": pid, "vid": vid})

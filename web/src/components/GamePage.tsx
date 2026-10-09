@@ -3,7 +3,7 @@ import type { MatchState, RoomState, ServerError, WSClient } from "../wsClient";
 import BoardRenderer from "./BoardRenderer";
 import BoardControls from "../board/BoardControls";
 import { useBoardInteraction } from "../board/useBoardInteraction";
-import { BankSummary, ContextPrompt, GameTopBar, PlayerStrip, ResourceHand } from "../game/GameHUD";
+import { BankSummary, ContextPrompt, GameTopBar, PlayerStrip, ResourceHand, ScenarioSummary } from "../game/GameHUD";
 import GameOverlay from "../game/GameOverlay";
 import GameIcon from "../game/GameIcon";
 import { RESOURCES, turnActions, type GameSnapshot } from "../game/presentation";
@@ -156,6 +156,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
     {drawer === "info" && !mandatoryChoice && !state.game_over && <GameOverlay id="game-info" title="Game info" onClose={closeDrawer}>
         <div className="info-map"><strong>{mapMeta.name || mapId || "Current map"}</strong>
           {mapMeta.description && <p>{mapMeta.description}</p>}</div>
+        <ScenarioSummary state={state} />
         <dl className="game-info-list">
           <dt>Room</dt><dd>{match.room_code}</dd><dt>Match</dt><dd>{match.match_id}</dd>
           <dt>Tick</dt><dd>{match.tick}</dd><dt>Phase</dt><dd>{state.phase}</dd>

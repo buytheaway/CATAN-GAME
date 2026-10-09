@@ -9,7 +9,27 @@ updated: 2026-10-09
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
 
+## ADR-017 — Explicit scenario state, codec v3 and S2B-1 provenance
+
+Status: **Implemented/verified 2026-10-09 in authorized S2B-1 scope.** Existing preset product parameters remain unchanged; generic custom-map opt-in is implemented. No official rules are assigned by preset name.
+
+Decision: `rules.scenario` explicitly configures `starting_islands` (stable component roots, optional/null = unrestricted) and `new_island_vp` (integer 0..10, 0 = disabled). One shared `GameState.scenario` stores immutable ScenarioRules plus per-player home/awarded island sets. Materialized topology stays in BoardState; core costs, route/army/hidden VP and own-turn victory stay in the shared executor. Restricted setup includes a bipartite maximum-matching capacity guard so accepted opening choices leave enough distance-rule positions for the remaining snake order. Unrestricted/Base setup does not use this guard.
+
+Home islands are the player's accepted setup islands, not a reconstruction from current ownership. Only accepted main-phase settlements award the configured extra VP, once per player per non-home island; an opponent's arrival does not consume the award. Cities/further settlements do not repeat it. Total VP is updated once before the existing own-turn check. Public special VP is a breakdown already included in total VP. No development-card disclosure or award on setup.
+
+New trusted writes use **snapshot_version=3 / engine_compatibility=2**, 43 GameState fields; exact released v1/1 and v2/1 schemas remain readable. V3 explicitly stores the scenario ledger and Seafarers offboard -1. References/recorded ledger are validated; no VP, achievements, map or award is recalculated on restore. V1/v2 receive only a disabled structural scenario default, even if old raw map metadata contained previously ignored scenario keys. No SQL migration/backfill and no rewriting old heads just to mark them.
+
+New matches use durable immutable **`catan-seafarers-s2b-1`**. Verified **`catan-seafarers-s1`** matches remain executable only with scenario mechanics disabled, preserving their marker; shared core rules are unchanged, so this does not introduce a second engine or conversion. The commit fence prevents adding scenario mechanics to such a match. An S1 marker paired with enabled scenario state is compatibility-required but retains metadata-only ownership/Continue. NULL/unrecognized markers remain F2-restricted regardless of codec. New rematches have a new epoch/marker and fresh scenario history; old match scores/results are not reconciled.
+
+Reason: raw JSON labels/format version do not establish historical gameplay provenance, and an award ledger cannot safely be inferred from accumulated VP. Additional scenario rules must not accidentally change established custom presets or active S1 matches.
+
+Rollback: pre-v3 binaries cannot resume any head advanced to v3; rolling back the binary alone is insufficient. There is no automatic older-head fallback, downgrade, recalculation or Strategy D operation. Existing S2A v2/-1 records remain readable here but are still incompatible with pre-S2A binaries; that historical boundary cannot be repaired by pretending the records had a different released version. Preserve appropriate backups and compatibility-aware deployment; never deploy a pre-F2 binary to bypass provenance.
+
+Evidence: full **881 Python / 253 web tests**, TypeScript/build, 100 restricted seeded setup runs (2–6), PostgreSQL COMMIT/failed transaction/receipt/restart/reconnect/rematch, actual direct WS refusal and real Qt file round-trip. Real Chrome tested two different explicit custom JSON profiles with natural setup, funded expansion and two-client refresh; no full natural games. Scenario baseline unchanged 348/508. Details — [[plans/seafarers-s2b-1]], [[Состояние игры#Scenario persistence — S2B-1]].
+
 ## ADR-016 — Materialized map topology and offboard Seafarers robber
+
+Historical S2A checkpoint: `e79dee4`. Its unchanged codec/ruleset identifiers are superseded for new writes/matches by ADR-017 above; the materialized-board and no-recovery-rule-execution decisions remain accepted.
 
 Status: **Implemented/verified 2026-10-09, authorized S2A scope.**
 
@@ -27,6 +47,8 @@ Evidence: frozen S1 fixture and fresh PostgreSQL coordinator preserve the old 19
 
 ## ADR-015 — Match ruleset provenance and safe legacy restriction
 
+Historical F2 marker assignment: new matches used S1 at that checkpoint. ADR-017 now assigns the S2B-1 marker and explicitly supports verified S1 only with scenario mechanics disabled. Unknown/NULL restriction, immutable provenance and absence of automatic conversion remain accepted.
+
 Status: **Accepted by user; implemented/verified 2026-10-08, F2 Strategy C.**
 
 Decision: nullable `matches.ruleset_id` is immutable match-level provenance, separate from `snapshot_version`, `engine_compatibility` and GameState.state_version. Only new matches receive `catan-seafarers-s1`. Additive Alembic `f2a001` leaves existing markers NULL, including v2 heads; absent/unrecognized markers require compatibility review. No timestamp, codec version or successful decode establishes S1 provenance.
@@ -40,6 +62,8 @@ Consequences: even a genuine S1 match created before the marker existed is restr
 Evidence — [[plans/persistence-auth#F2 — match ruleset compatibility (Strategy C)]], [[Состояние игры#Snapshot format versus match ruleset — F2]], [[Сервер и протокол#Match compatibility gate — F2]]. ADR-014's v1→v2 progression applies only to independently verified current rulesets after F2; unmarked legacy cannot reach End Turn to clear unknown history.
 
 ## ADR-014 — Seafarers turn history and codec v2
+
+Historical writer version/count: v2 and 42 fields at S1. ADR-017 advances new writes to v3/43 fields; v1/v2 reading and conservative missing ship-history semantics are preserved.
 
 Status: **Implemented/verified 2026-10-08, authorized Seafarers S1.** Existing full codec v1 remains a frozen released schema; new writes use snapshot_version=2 / engine_compatibility=1, covering 42 GameState fields.
 
@@ -77,7 +101,7 @@ Consequences: startup Alembic is safe only under the one-worker/replica deployme
 
 ## ADR-011 — Separate full trusted GameState codec
 
-Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A. Historical checkpoint description below.** Codec remained unchanged in 1B; durable Room adapter uses it. Auth/Continue were unimplemented at 1A, subsequently completed in 1C/ADR-013. Current codec v2 and ruleset gate are described in ADR-014/015; released v1 remains readable and immutable.
+Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A. Historical checkpoint description below.** Codec remained unchanged in 1B; durable Room adapter uses it. Auth/Continue were unimplemented at 1A, subsequently completed in 1C/ADR-013. Current codec v3/2 and ruleset transition are described in ADR-017, with the compatibility gate retained from ADR-015; released v1/v2 remain readable and immutable.
 
 Decision: full private engine persistence has its own `app/persistence/snapshots.py` surface, separate from existing network/offline serialize.to_dict/from_dict/to_player_dict. Envelope snapshot_version=1 / engine_compatibility=1 contains all shared GameState fields, explicit known dataclass construction and stored materialized geometry; it contains no Room/DB metadata. Restore does not execute commands, generate board or shuffle. Required/unknown fields, primitive types, references and versions fail closed; field-coverage guard prevents silent new engine field loss. v1 is immutable after release; future schemas need explicit version compatibility/migration.
 

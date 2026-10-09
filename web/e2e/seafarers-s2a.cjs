@@ -93,7 +93,7 @@ function seaPath(s) {
   }
   throw Error('No navigable path between islands');
 }
-async function setup(cs) {
+async function setup(cs, startingRoot) {
   while (cs[0].match.state.phase === 'setup') {
     await chooseGold(cs);
     const c = cs[cs[0].match.state.turn], s = c.match.state;
@@ -103,7 +103,9 @@ async function setup(cs) {
       const coast = s.legal.settlements.filter(v => s.vertex_adj_hexes[v].some(t => s.tiles[t].terrain === 'sea'));
       const gold = coast.filter(v => s.vertex_adj_hexes[v].some(t => s.tiles[t].terrain === 'gold'));
       const home = coast.filter(v => s.vertex_adj_hexes[v].some(t => ids[t] === roots[0]));
-      const targets = first && home.length ? home : gold.length ? gold : coast.length ? coast : s.legal.settlements;
+      const targets = startingRoot != null
+        ? (coast.length ? coast : s.legal.settlements).filter(v => s.vertex_adj_hexes[v].some(t => ids[t] === startingRoot))
+        : first && home.length ? home : gold.length ? gold : coast.length ? coast : s.legal.settlements;
       // Capacity/coordinates choose test starting positions, never client legality.
       targets.sort((a, b) => s.vertices[b][0] - s.vertices[a][0] || a - b);
       await act(cs, c, () => h.clickTarget(c, 'vertex', targets[0]), 'natural starting settlement');
@@ -261,7 +263,8 @@ async function run(browser, preset) {
     paidRouteLength: route.route.length, metrics, naturalFullMatch: false });
   for (const c of cs) { assert.deepEqual(c.jsErrors, []); await c.context.close(); }
 }
-(async () => {
+module.exports = { islands, chooseGold, tools, dice, fund, place, seaPath, setup, sceneChecks };
+if (require.main === module) (async () => {
   await fs.mkdir(output, { recursive: true });
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   report.chrome = browser.version();

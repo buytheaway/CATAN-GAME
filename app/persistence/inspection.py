@@ -75,5 +75,5 @@ async def inspect_memory(manager, credentials):
                     status="game_over" if finished else "active" if room.game else "lobby",
                     target_vp=room.selected_rules_config.get("target_vp", 10),
                     updated_at=datetime.fromtimestamp(room.last_activity_ts, timezone.utc), winner=winner,
-                    ruleset=compatibility(room.ruleset_id) if room.game else None))
+                    ruleset=compatibility(room.ruleset_id, room.game) if room.game else None))
     return results

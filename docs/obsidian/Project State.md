@@ -7,24 +7,31 @@ updated: 2026-10-09
 
 ## Current verification and status
 
-Последняя полная проверка — **Seafarers S2A, 2026-10-09: 823 passed, 0 skipped** в pytest с изолированной PostgreSQL; **250 web tests**, TypeScript и production build прошли. Реальный Chrome/FastAPI/PostgreSQL проверил два клиента на Gold Haven и Pirate Lanes: обычный setup, initial ships/Gold, оплаченные морские переходы/settlement/city/road, pirate и Seven/discard/robber, 2D/3D, 1920/1440/1280, Reset Camera и verified refresh. Ресурсы для ускоренного expansion выданы явно через Test Tools; полные natural matches не сыграны. Full scenario harness повторён без правок: **348/508**, те же 160 failures и причины, новых regressions нет. Прежние 694/732/749/757 Python и 235/241 web — historical checkpoint evidence, сохранённые ниже.
+Последняя полная проверка — **Seafarers S2B-1, 2026-10-09: 881 passed, 0 skipped** в pytest с изолированной PostgreSQL; **253 web tests**, TypeScript и production build прошли. Реальный Chrome/FastAPI/PostgreSQL проверил два custom JSON профиля на Gold Haven/Pirate Lanes: ограниченный старт/+2/12 VP и свободный старт/+3/14 VP. Эти параметры — test profiles, не новые preset defaults. Natural setup, initial ships, оплаченный морской переход/settlement/city, публичный bonus, rejected command, 2D/3D/desktop resize и refresh обоих клиентов прошли; Test Tools funding/dice явно отделены от natural games. Полные партии не сыграны. Full scenario harness без правок: **348/508**, все 160 failures полностью совпали с S2A; в пяти успешных Qt bot cases меняется только случайный summary.seed. 823/250 S2A и прежние S1/F1/F2/F3 counts ниже — historical checkpoint evidence.
 
 | Возможность | Реализация и фактическая проверка | Что остаётся |
 | --- | --- | --- |
-| Seafarers S1 core | Implemented/tested: mixed route/ties/own-turn victory, ship lifecycle, island settlement connectivity, Gold и robber/pirate validation; повторно зелёные в S2A | Scenario-specific bonuses/fog/exploration — planned S2B; полные natural matches — planned S3 |
+| Seafarers S1 core | Implemented/tested: mixed route/ties/own-turn victory, ship lifecycle, island settlement connectivity, Gold и robber/pirate validation; повторно зелёные в S2B-1 | Fog/exploration — planned; полные natural matches — planned S3; существующий Largest Army tie issue не исправлялся |
+| Seafarers S2B-1 scenarios | Implemented/tested: explicit custom configuration, restricted setup/capacity, per-player home/award ledger, public special VP, codec v3/new marker, PG recovery/receipt and Qt round-trip | Все четыре preset defaults сохранены; их новые product parameters не утверждены. Official scenario replicas, exploration/fog, S2C generator/balance не реализованы |
 | Seafarers S2A maps | Implemented/tested: два реальных 37-hex архипелага, Sea Ring 19 land +18 sea, exact terrain decks, derived island IDs, реальные coast ports, no-desert robber offboard; 600 seeded setup runs для 2–6 игроков | Нет новых start-island restrictions/награды; произвольный custom map не сертифицируется; probability balance и все возможные opening choices не доказаны |
 | F1 private publication | Implemented/tested: актуальные guest/account ownership, expiry/revocation, controlling-socket takeover, privacy и publication ordering | Single-worker deployment; out-of-band guest SQL edits не являются live revocation API; отправленный до revoke frame нельзя отозвать |
 | F2 Strategy C | Implemented/tested: durable ruleset marker, unknown legacy restriction, inert timers/legal/commands/rematch, безопасный Continue notice | Unmarked native S1 тоже restricted; Strategy D explicit conversion — planned, не реализована; исторические VP/achievements не переписываются |
 | F3 Qt persistence | Implemented/tested: оба ship-turn поля через настоящий Qt file round-trip; eight offscreen cases | Видимые file dialogs/полная ручная Qt-партия не проверены; прочие legacy save bugs остаются |
 | Auth/Continue | Implemented/tested: username/password, cookie sessions, account seat ownership/guest claim, Active Games/account Continue; guest Recent/Continue сохранён | Profiles, richer history, password reset/email/OAuth — planned, не реализованы |
 | React/Board3D/Product Polish | Implemented/tested в указанном desktop scope: общий controller/personal snapshot, default interactive 3D + SVG, terrain/building GLBs, Product Phases 1–4/audio | Полная mobile/accessibility/low-end/load сертификация не выполнена; renderer не определяет правила |
-| Scenario suite | **Known broken: 348/508 passed, 160 failed**, повторён в S2A 2026-10-09 | 140 pre-roll отказов и 20 pirate fixture connectivity отказов; совпадают с S1 по scenario/seed/reason. Зелёный pytest их не закрывает |
+| Scenario suite | **Known broken: 348/508 passed, 160 failed**, повторён в S2B-1 2026-10-09 | 140 pre-roll отказов и 20 pirate fixture connectivity отказов; все failure records совпали с S2A. Зелёный pytest их не закрывает |
 
 Implemented не означает проверку всех веток; tested относится только к указанным suites/acceptance. Термины и обязательная сверка после существенных изменений — [[Documentation Policy]]. Актуальные пути — [[Сценарий сетевой партии]], [[React интерфейс]], [[Сервер и протокол]].
 
+## Seafarers S2B-1 — explicit scenario rules
+
+**Completed — verified 2026-10-09. READY FOR CHECKPOINT in explicit custom scenario scope.** Optional `rules.scenario` separates start-island restrictions and per-player new-island VP from map topology. Shared engine validates setup capacity, records home/award history and awards once after accepted settlement validation; React shows public conditions/bonus and consumes existing legal targets. All four preset JSON/default targets remain unchanged because new per-preset product parameters are not approved. Codec v3/2 and new match marker `catan-seafarers-s2b-1` are explicit; verified S1 matches retain their marker and disabled scenario mechanics. No automatic gameplay conversion; rollback to an older binary cannot resume a v3 head. Evidence/limits — [[plans/seafarers-s2b-1]], [[Architecture Decisions#ADR-017 — Explicit scenario state, codec v3 and S2B-1 provenance]].
+
 ## Seafarers S2A — maps and coastlines
 
-**Completed — verified 2026-10-09. READY FOR CHECKPOINT in S2A scope.** `seafarers-hardening-s1` указывает на `b5cc066`; исходный working tree был чистым. S2A не закоммичен и не tagged. Все 12 preset IDs/names сохранены. Восемь Base boards/ports/robber/rules совпали с S1 на 20 seeds. Coastal Lanes остаётся 13 land/6 sea/одним островом; Sea Ring расширен с 9/10 до 19/18 после подтверждённых six-player setup deadlocks. Gold Haven — 15/22, острова 8+7; Pirate Lanes — 13/24, острова 7+6. Оба имеют связное море и не соединяются land edges/vertices. Точные counts/flags — [[Карты и сценарии#Presets]].
+Historical S2A verification follows. It is now committed as **`e79dee4`**. Tags are optional under the user's permanent checkpoint policy; missing tags do not block development. Current scenario state/writer/marker are described in [[plans/seafarers-s2b-1]] and ADR-017.
+
+**Completed — verified 2026-10-09; subsequently committed as `e79dee4`.** `seafarers-hardening-s1` указывает на `b5cc066`; исходный working tree был чистым. Все 12 preset IDs/names сохранены. Восемь Base boards/ports/robber/rules совпали с S1 на 20 seeds. Coastal Lanes остаётся 13 land/6 sea/одним островом; Sea Ring расширен с 9/10 до 19/18 после подтверждённых six-player setup deadlocks. Gold Haven — 15/22, острова 8+7; Pirate Lanes — 13/24, острова 7+6. Оба имеют связное море и не соединяются land edges/vertices. Точные counts/flags — [[Карты и сценарии#Presets]].
 
 [topology.py](../../app/engine/topology.py) выводит острова/берег из сохранённого shared-edge graph. Island ID — минимальный исходный tile index в компоненте; отдельного mutable scenario state нет. Порты новых карт валидируются на настоящем берегу, без общих endpoints; 3D labels направлены в воду по локальной нормали. Round-token art, GLB/buildings/ocean/audio/controller не изменены. Gold Haven без desert начинает с `robber_tile=-1`, первый land move ставит фигуру на поле; pirate остаётся на sea. Qt тоже не рисует offboard robber.
 
@@ -41,6 +48,8 @@ Real round-trip testing also exposed stale graphics handles after `scene.clear()
 Verification: **8 new real PySide6/Qt 6.10.1 offscreen cases** exercise `QApplication`/`MainWindow`, engine → Qt → disk JSON → load → engine, plus commands against the loaded Qt model. Only file chooser results are replaced; serialization, load, redraw and shared validation remain real. Full pytest with isolated PostgreSQL: **757 passed, 0 skipped** (F2 baseline 749 + 8). No visible native-dialog/manual full-match verification; Qt's old format has not become the trusted PostgreSQL codec, and unrelated legacy save limitations remain. No automatic commit/tag, no S2. Details — [[Desktop клиент#Ship lifecycle persistence — F3]], [[Состояние игры#Seafarers turn history — codec v2]].
 
 ## Match ruleset compatibility — F2
+
+Historical F2 checkpoint follows. Its S1 marker assignment and codec v2 writer are superseded by S2B-1/ADR-017; unknown legacy restriction and metadata-only ownership/Continue remain current.
 
 **Completed — verified 2026-10-08. READY FOR CHECKPOINT for F2 (Strategy C).** New matches persist `matches.ruleset_id=catan-seafarers-s1`; additive migration `f2a001` leaves existing matches NULL. Codec v1/v2 reading is independent: decoding does not establish ruleset provenance or reconcile VP/achievements. Unknown/unrecognized rulesets recover without rule execution as restricted valid matches, not corruption.
 
@@ -230,7 +239,7 @@ Map/design analysis: 2026-10-04 — код checkpoint `hardening-phase-1` (`3cd8
 
 ## Current Architecture
 
-Общий Python-движок обслуживает локальный PySide-клиент и FastAPI WebSocket-сервер. React/TypeScript получает снимки партии и отправляет намерения. Active Room/GameState живут в памяти одного процесса; PostgreSQL хранит durable committed aggregates для restart recovery. Qt и browser имеют отдельные представления состояния. Multiplayer использует player-specific snapshot, trusted/offline to_dict сохранён, private persistence — отдельный codec v2 с чтением released v1.
+Общий Python-движок обслуживает локальный PySide-клиент и FastAPI WebSocket-сервер. React/TypeScript получает снимки партии и отправляет намерения. Active Room/GameState живут в памяти одного процесса; PostgreSQL хранит durable committed aggregates для restart recovery. Qt и browser имеют отдельные представления состояния. Multiplayer использует player-specific snapshot, trusted/offline to_dict сохранён, private persistence — отдельный codec v3/2 с чтением frozen v1/1 и v2/1. Gameplay provenance задаётся независимым durable ruleset marker.
 
 Docker production-like: Browser → Nginx (React dist, /ws, /health) → один FastAPI worker → shared engine + private PostgreSQL с named volume. Только web port опубликован; backend/web non-root, без host mounts. Alembic и recovery завершаются до readiness. Локальный Python + Vite workflow сохранён. Инструкции — [[Deployment]].
 
@@ -262,11 +271,11 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 
 ## Partially Implemented
 
-- Seafarers expansion частично реализована: S1 core и S2A maps/islands/coasts/offboard implemented/tested; scenario bonuses/fog/start regions/customization и полные natural playtests остаются planned S2B/S2C/S3.
+- Seafarers expansion частично реализована: S1 core, S2A maps/islands/coasts/offboard и S2B-1 explicit custom start islands/bonuses implemented/tested. Новые параметры именованных presets не утверждены; fog/exploration, broader customization/generator/balance и полные natural playtests остаются planned S2B/S2C/S3.
 - Web UI: trade/dev/results/exit, Home/lobby polish, room settings/colors, chat/timer, bounded personalized game event feed, bank policy и audio реализованы. Полный mobile/general settings/accessibility/load scope не заявлен завершённым. Hidden bank/deck остаются закрыты: отказ Year of Plenty/пустой deck проверяет сервер, UI не знает будущих cards.
 - Desktop online: диалоги развития и банка отключены.
 - Очереди web/desktop привязаны к room/match; final refusal расходует seq и удаляется по ACK. Durable guest backend/Continue и Auth/account Continue реализованы; backup/retention, profiles/history/reset и оставшиеся Qt offline save string-key bugs — отдельные задачи. F3 устранил именно потерю ship history.
-- Последний полный scenario run — **S2A, 2026-10-09: 348/508 passed, 160 failed**, exact scenario/seed/reason совпадают с S1. Семь сценариев ×20 seeds дают **140 `Must roll before actions`**: dev_cards_effects, dev_cards_restrictions, largest_army_award, ports_trade_rates, rules_limits, seafarers_move_ship, seafarers_ship_build. Ещё **20 scenario_seafarers_pirate_move** дают **`no legal ship edge found`**, до дальнейших pirate assertions. Это восемь failing fixtures/сценариев, не 160 разных gameplay bugs; они не исправлены, правило Roll и ship connectivity не ослаблялись. F1/F2/F3 suite не повторяли; S2A повторила без изменения scenario files/assertions.
+- Последний полный scenario run — **S2B-1, 2026-10-09: 348/508 passed, 160 failed**; все failure records полностью совпадают с S2A. Семь сценариев ×20 seeds дают **140 `Must roll before actions`**: dev_cards_effects, dev_cards_restrictions, largest_army_award, ports_trade_rates, rules_limits, seafarers_move_ship, seafarers_ship_build. Ещё **20 scenario_seafarers_pirate_move** дают **`no legal ship edge found`**, до дальнейших pirate assertions. Это восемь failing fixtures/сценариев, не 160 разных gameplay bugs; они не исправлены, правило Roll и ship connectivity не ослаблялись. Scenario files/assertions не менялись; в пяти успешных Qt bot cases отличается только случайный summary.seed.
 
 ## Known Critical Problems
 
@@ -285,12 +294,12 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 | Open WS с expired/revoked guest proof — F1 | Исправлено/tested: актуальное ownership проверяется перед каждой private publication; account session/controlling socket/takeover сохраняются |
 | Legacy gameplay compatibility — F2 | Implemented/tested Strategy C: readable v1/v2 без verified ruleset restricted; нет auto conversion, VP/achievement rewrite или corrupted label |
 | Qt ship history loss — F3 | Исправлено/tested real Qt file round-trip; conservative legacy lock переживает resave, engine End Turn сбрасывает историю |
-| Seafarers rules/maps | S1 core и S2A topology/coasts/offboard initialization проверены; rewards/fog/scenario completeness и natural playtests остаются S2B/S2C/S3 |
+| Seafarers rules/maps | S1 core, S2A topology/coasts/offboard и S2B-1 explicit starting islands/bonuses проверены; новые preset параметры, fog/scenario completeness/generator и natural playtests остаются отдельными задачами |
 | Остальные Base rules | Longest Road tie и own-turn victory исправлены в S1; Largest Army tie, deterministic theft и ordinary production shortage остаются отдельными задачами |
 | Road Building lifecycle | Исправлено 2026-10-05: end_turn_cleanup очищает free_roads только после успешной проверки End Turn. 0/1/2 placements, следующий собственный ход, paid road cost, сохранение построек, atomic rejects и персональные server snapshots проверены в tests/test_road_building_lifecycle.py |
 | Сетевой lifecycle | Persistence 1B реализована: locked durable commits, hashed guest ownership, restart recovery и replay protection. Automatic cleanup/общего WS rate limiting нет; chat limit 5/10s, рассылка последовательная |
 
-Таблица разделяет исправленные проблемы и оставшиеся ограничения после S1/F1/F2/F3/S2A; это не заявление о полной корректности всех правил или сценариев. Датированные ранние доказательства — [[Результаты аудита]], актуальные verification границы — в начале этой заметки и тематических sections.
+Таблица разделяет исправленные проблемы и оставшиеся ограничения после S1/F1/F2/F3/S2A/S2B-1; это не заявление о полной корректности всех правил или сценариев. Датированные ранние доказательства — [[Результаты аудита]], актуальные verification границы — в начале этой заметки и тематических sections.
 
 ## Current Priority
 
@@ -299,7 +308,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 3. Подготовить новый React UI, сохраняя игровое поведение.
 4. Затем постепенно рефакторить архитектуру.
 
-Production Hardening Phase 1 завершена в утверждённом scope. Позднее Game UI/Room UX и Product Polish Phases 1–4 реализовали текущие Home/lobby/match, GLB pieces и audio; Board3D интерактивен и default. Полные mobile/general settings/accessibility/load задачи остаются planned. Fantasy/MMORPG references — historical/rejected direction. S1/F1/F2/F3 завершены и checkpointed в `b5cc066/seafarers-hardening-s1`; S2A завершена в явно разрешённом scope, S2B/S2C/S3 не начаты. Historical checkpoint: `fix: complete production hardening phase 1`, tag `hardening-phase-1`; сравнение последующих commits — `git diff hardening-phase-1..HEAD`, текущих незакоммиченных изменений — `git diff hardening-phase-1`.
+Production Hardening Phase 1 завершена в утверждённом scope. Позднее Game UI/Room UX и Product Polish Phases 1–4 реализовали текущие Home/lobby/match, GLB pieces и audio; Board3D интерактивен и default. Полные mobile/general settings/accessibility/load задачи остаются planned. Fantasy/MMORPG references — historical/rejected direction. S1/F1/F2/F3 завершены и checkpointed в `b5cc066/seafarers-hardening-s1`; S2A checkpoint — `e79dee4`; S2B-1 завершена/проверена в explicit custom scenario scope без автоматического commit/tag. S2C/S3 не начаты. Historical checkpoint: `fix: complete production hardening phase 1`, tag `hardening-phase-1`; сравнение последующих commits — `git diff hardening-phase-1..HEAD`, текущих незакоммиченных изменений — `git diff hardening-phase-1`.
 
 ## Map / 3D preparation
 

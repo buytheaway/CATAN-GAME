@@ -64,6 +64,11 @@ export interface GameBounds {
 }
 
 export interface GameState {
+  scenario?: {
+    rules: { starting_islands: number[] | null; new_island_vp: number };
+    home_islands: Record<string, number[]>;
+    awarded_islands: Record<string, number[]>;
+  };
   tiles: Tile[];
   size: number;
   vertices: VertexCoordinates;

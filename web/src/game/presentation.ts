@@ -51,7 +51,9 @@ export function contextPrompt(state: GameSnapshot, pid: number, interaction: Boa
   if (freeRoads > 0 && legal?.road_free) return { title: `Place ${route} ${freeRoads >= 2 ? 1 : 2} of 2`,
     detail: legal.roads.length || legal.ships.length ? `Choose a highlighted edge for your free ${route}.` : "No legal route targets remain." };
   if (state.phase === "setup") return { title: state.setup_need === "settlement" ? "Place a settlement" : `Choose a ${route}`,
-    detail: "Select a small highlighted target on the board." };
+    detail: state.setup_need === "settlement" && state.scenario?.rules.starting_islands
+      ? "Place on a highlighted starting island. Other islands open after setup."
+      : "Select a small highlighted target on the board." };
   if (action === "move_ship") return { title: selection.shipSource ? "Choose its destination" : "Select a ship to move",
     detail: selection.shipSource ? "Choose a highlighted edge, or cancel the move." : "Choose one of your highlighted ships." };
   if (["settlement", "road", "city", "ship"].includes(action ?? "")) return {

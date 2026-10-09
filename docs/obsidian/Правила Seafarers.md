@@ -4,6 +4,16 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
+## Explicit starting islands and special VP — S2B-1
+
+**Implemented/tested 2026-10-09, custom opt-in only.** Existing Coastal Lanes, Sea Ring, Gold Haven and Pirate Lanes do not enable start restrictions or island VP; their target remains 10 unless overridden by the host. These are custom layouts, not official scenario replicas. The [official rulebook](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf) describes different bonus/target policies per scenario; Heading for New Shores's main-island/+2/14 VP policy is not silently assigned to this project's maps.
+
+An explicitly configured custom `rules.scenario.starting_islands` restricts setup settlements to those land components and prevents openings that leave insufficient distance-rule positions for remaining placements. Missing/null is unrestricted. Anchored initial road/ship choices remain. `new_island_vp` explicitly sets 0..10 extra VP (0/missing disables it), not a universal +2 assumption.
+
+When enabled, each player's actual setup islands are recorded as home islands. Accepted main-phase first settlement on each other island awards the configured bonus in addition to ordinary 1 VP. Another player's earlier arrival does not remove eligibility; repeated settlements/city upgrades do not award again. Setup never awards it. The ledger is durable and public; special VP is already included in total VP. Existing hidden VP privacy, Longest Trade Route scoring and own-turn victory checks remain. Recovery restores the ledger and never recalculates awards/VP. Details — [[plans/seafarers-s2b-1]], [[Состояние игры#Scenario persistence — S2B-1]].
+
+**Known separate limitation:** `update_largest_army` still clears a tied incumbent and removes its 2 VP when knights tie. Intended Base rules retain the holder until surpassed. S2B-1 did not change that existing Base correctness issue; a green scenario-bonus test does not certify Largest Army ties. Fog/exploration and unapproved per-preset product rules remain future work.
+
 ## Maps/coastlines and initial figures — S2A, 2026-10-09
 
 **Implemented/tested.** Gold Haven и Pirate Lanes теперь имеют два раздельных playable land components с navigable sea; Coastal Lanes/Sea Ring намеренно остаются одноостровными. Room поддерживает 2–6 игроков, обычный setup может ставить settlement на любой legal land vertex, затем anchored road или ship. Ни один preset не объявляет starting region; S2A не добавляет запрет поселиться на другом острове или бонус за него. Дистанция/cost/supply/ownership и ship-turn rules остаются в общем executor S1.

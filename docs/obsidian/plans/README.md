@@ -14,7 +14,8 @@ tags: [catan, планы]
 - [[plans/containerization]] — Production Infrastructure Phase 1 Completed, 2026-10-04; эксплуатационные инструкции — [[Deployment]].
 - [[plans/board3d]] — Phases 1–3/polish и terrain/building GLB integration завершены. Default 3D и SVG используют один snapshot/controller; interactive renderer не исполняет правила.
 - [[plans/seafarers-s1]] — historical completed S1, проверен 2026-10-08; S1/F1/F2/F3 checkpoint `seafarers-hardening-s1` → `b5cc066`.
-- [[plans/seafarers-s2a]] — maps/islands/coasts/ports и no-desert robber завершены и проверены 2026-10-09, READY FOR CHECKPOINT; без автоматического commit/tag. S2B/S2C/S3 planned, не начаты.
+- [[plans/seafarers-s2a]] — maps/islands/coasts/ports и no-desert robber завершены и проверены 2026-10-09; checkpoint commit `e79dee4`. Tag optional, не блокирует development.
+- [[plans/seafarers-s2b-1]] — explicit custom scenario start/bonus rules, capacity guard, public VP, codec v3 and durable provenance завершены и проверены 2026-10-09. Named preset policies сохранены; unapproved parameters/fog/discovery/S2C/S3 остаются future work.
 - [[plans/persistence-auth]] — Persistence 1A/1B/1C, Auth Phase 1 и F2 safe legacy restriction завершены; profiles/history/reset и Strategy D conversion planned, не реализованы.
 - [[Сервер и протокол#Private publication authorization — F1]] и [[Desktop клиент#Ship lifecycle persistence — F3]] — узкие fixes завершены; отдельные дублирующие планы не создавались.
 - [[plans/plan-template]] — форма для новой крупной задачи; сначала проверить отсутствие существующего плана.

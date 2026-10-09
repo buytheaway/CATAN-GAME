@@ -180,6 +180,50 @@ test("Seafarers setup offers road and ship with no costs, using shared server ta
   assert.equal(baseView.button("Ship"), undefined);
 });
 
+test("restricted scenario setup explains server targets without deriving different legal placements", () => {
+  const s = snapshot({ phase: "setup", setup_need: "settlement", rules_config: { enable_seafarers: true },
+    scenario: { rules: { starting_islands: [4], new_island_vp: 2 }, home_islands: {}, awarded_islands: {} },
+    legal: { ...snapshot().legal, settlements: [17, 22] } });
+  const before = JSON.stringify(s), sent = [];
+  const ui = createBoardInteraction(s, 0, emptySelection(), () => {}, cmd => sent.push(cmd));
+  assert.match(contextPrompt(s, 0, ui).detail, /starting island/);
+  assert.deepEqual(ui.legal.settlements, [17, 22]);
+  ui.onVertexClick(9);
+  assert.deepEqual(sent, []);
+  ui.onVertexClick(17);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].vid, 17);
+  assert.equal(JSON.stringify(s), before);
+});
+
+test("scenario overview reflects configured bonus and restrictions while preset defaults remain quiet", () => {
+  const { ScenarioSummary } = loaded.exports;
+  assert.equal(render(ScenarioSummary, { state: snapshot() }).html, "");
+  const s = snapshot({ scenario: { rules: { starting_islands: [4], new_island_vp: 2 },
+    home_islands: { "0": [4] }, awarded_islands: { "0": [13] } } });
+  const restricted = render(ScenarioSummary, { state: s }).html;
+  assert.match(restricted, /designated starting islands/);
+  assert.match(restricted, /Earn 2 extra VP/);
+  assert.match(restricted, /once per island/);
+  assert.match(restricted, /City upgrades give no extra/);
+  const unrestricted = render(ScenarioSummary, { state: { ...s, scenario: {
+    ...s.scenario, rules: { starting_islands: null, new_island_vp: 3 } } } }).html;
+  assert.match(unrestricted, /any island/);
+  assert.match(unrestricted, /Earn 3 extra VP/);
+});
+
+test("island VP is a public part of displayed total and does not expose private opponent cards", () => {
+  const { PlayerStrip } = loaded.exports;
+  const s = snapshot();
+  s.players[1] = { ...s.players[1], vp: 5, special_vp: 2 };
+  const html = render(PlayerStrip, { state: s, pid: 0 }).html;
+  assert.match(html, /5 VP/);
+  assert.match(html, /2 island VP/);
+  assert.match(html, /included in total VP/);
+  assert.equal(s.players[1].res, undefined);
+  assert.equal(s.players[1].dev_cards, undefined);
+});
+
 test("free ship presentation needs neither Roll nor resources and never changes the snapshot", () => {
   const s = snapshot({ rules_config: { enable_seafarers: true }, free_roads: { "0": 2 },
     legal: { ...snapshot().legal, ships: [[2, 3]], road_free: true } });

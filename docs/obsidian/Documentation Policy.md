@@ -23,6 +23,8 @@ tags: [catan, документация]
 
 Прочитать Главную, Project State, существующую архитектурную карту, ADR и тематические заметки. Проследить реальный путь исполнения. Для крупной задачи использовать [[plans/README|раздел планов]]. Не считать план разрешением выполнить его.
 
+Checkpoint evidence: a clean working tree and an existing completed-phase commit are sufficient. Git tags are optional and must not block development unless explicitly requested by the user. Do not create commits/tags automatically.
+
 ## After substantial changes
 
 - Обновить Project State: фактическое поведение, проблемы, ограничения проверки и следующий этап.

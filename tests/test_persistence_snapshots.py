@@ -275,6 +275,13 @@ def test_seafarers_ship_and_pirate_lifecycle(case):
     restore(seafarers_case(case))
 
 
+def released_v2_payload(g):
+    payload = snapshots.encode_snapshot(g)
+    payload["snapshot_version"], payload["engine_compatibility"] = 2, 1
+    del payload["state"]["scenario"]
+    return payload
+
+
 def released_v1_payload(g):
     # V1 predates offboard initialization. Model its real on-board position,
     # rather than relabeling a new S2A-only value as a released-v1 snapshot.
@@ -282,7 +289,7 @@ def released_v1_payload(g):
     if legacy.robber_tile == -1:
         legacy.robber_tile = next(i for i, t in enumerate(legacy.tiles) if t.terrain != "sea")
         legacy.robbers = [legacy.robber_tile if i == -1 else i for i in legacy.robbers]
-    payload = snapshots.encode_snapshot(legacy)
+    payload = released_v2_payload(legacy)
     payload["snapshot_version"] = 1
     del payload["state"]["ships_built_this_turn"]
     del payload["state"]["ship_moved_this_turn"]
@@ -294,7 +301,7 @@ def test_v2_preserves_new_ship_history_and_rejected_move_after_json_restore():
     source = next(iter(g.occupied_ships))
     assert g.ships_built_this_turn == {source}
     payload = snapshots.encode_snapshot(g)
-    assert payload["snapshot_version"] == 2 and payload["engine_compatibility"] == 1
+    assert payload["snapshot_version"] == snapshots.SNAPSHOT_VERSION and payload["engine_compatibility"] == snapshots.ENGINE_COMPATIBILITY
     assert payload["state"]["ships_built_this_turn"] == [list(source)]
     r = restore(g)
     destination = next(edge for edge in g.edges if rules.can_place_ship(g, 0, edge, excluded_edge=source))
@@ -346,7 +353,7 @@ def test_exact_v1_migration_preserves_state_and_locks_only_unknown_active_ship_h
     expected.ship_moved_this_turn = locked
     assert_equivalent(expected, migrated)
     assert_equivalent(before, payload)
-    assert snapshots.encode_snapshot(migrated)["snapshot_version"] == 2
+    assert snapshots.encode_snapshot(migrated)["snapshot_version"] == snapshots.SNAPSHOT_VERSION
 
 
 def test_v1_conservative_ship_lock_expires_only_on_normal_end_turn():
@@ -678,7 +685,7 @@ def test_corrupt_types_and_references_are_cleanly_rejected(path, value):
         snapshots.decode_snapshot(payload)
 
 
-@pytest.mark.parametrize("version", [-1, 0, 3, 999])
+@pytest.mark.parametrize("version", [-1, 0, 4, 999])
 def test_unsupported_snapshot_version_has_explicit_error(version):
     payload = snapshots.encode_snapshot(main_game())
     payload["snapshot_version"] = version
@@ -686,7 +693,7 @@ def test_unsupported_snapshot_version_has_explicit_error(version):
         snapshots.decode_snapshot(payload)
 
 
-@pytest.mark.parametrize("version", [0, 2])
+@pytest.mark.parametrize("version", [0, 1, 3])
 def test_unsupported_engine_compatibility_has_explicit_error(version):
     payload = snapshots.encode_snapshot(main_game())
     payload["engine_compatibility"] = version

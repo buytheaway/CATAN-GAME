@@ -100,7 +100,7 @@ def test_ship_lifecycle_committed_checkpoint_fresh_hydration_and_end_unlock(data
             await prepare(room, seafarers_case(case))
             before, meta = deepcopy(room.game), presentation(room)
             bundle = await coord.repository.load(room.id)
-            assert bundle["head"]["snapshot_version"] == 2
+            assert bundle["head"]["snapshot_version"] == 3
             fresh, restored = await hydrate(coord, room, monkeypatch)
             assert_equivalent(before, restored.game)
             assert presentation(restored) == meta
@@ -249,7 +249,7 @@ def test_verified_s1_match_with_v1_format_locks_unknown_history_then_end_upgrade
             payload["engine"] = released_v1_payload(room.game)
             async with coord.database.sessions() as session, session.begin():
                 await session.execute(update(m.game_snapshots).where(m.game_snapshots.c.id == head["id"]).values(
-                    payload=payload, checksum=checksum(payload), snapshot_version=1))
+                    payload=payload, checksum=checksum(payload), snapshot_version=1, engine_compatibility=1))
             fresh, restored = await hydrate(coord, room, monkeypatch)
             assert restored.ruleset_id == server.CURRENT_RULESET  # Known rules, older codec only.
             assert restored.game.ship_moved_this_turn and not restored.game.ships_built_this_turn
@@ -260,7 +260,7 @@ def test_verified_s1_match_with_v1_format_locks_unknown_history_then_end_upgrade
             assert (await fresh.repository.load(restored.id))["head"]["snapshot_version"] == 1
             await dispatch(restored, clients[0], {"type": "end_turn"})
             latest = (await fresh.repository.load(restored.id))["head"]
-            assert latest["snapshot_version"] == 2 and not restored.game.ship_moved_this_turn
+            assert latest["snapshot_version"] == 3 and not restored.game.ship_moved_this_turn
             fresh, after_end = await hydrate(fresh, restored, monkeypatch)
             assert not after_end.game.ship_moved_this_turn and not after_end.game.ships_built_this_turn
     asyncio.run(run())

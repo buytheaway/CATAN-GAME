@@ -10,7 +10,9 @@ from app.trade_ui import TradeDialog
 from app.config import GameConfig
 from app.engine import rules as engine_rules
 from app.engine import serialize as engine_serialize
-from app.engine.state import COST, RESOURCES, TERRAIN_TO_RES, TradeOffer
+from app.engine.state import COST, RESOURCES, TERRAIN_TO_RES, TradeOffer, ScenarioState
+from app.engine.scenario import scenario_to_dict
+from copy import deepcopy
 from app.assets_loader import load_svg
 from app.theme import get_ui_palette, get_player_colors
 
@@ -348,6 +350,7 @@ class Game:
     map_id: str = "base_standard"
     map_meta: Dict[str, Any] = field(default_factory=dict)
     rules_config: Any = None
+    scenario: ScenarioState = field(default_factory=ScenarioState)
     tiles: List[HexTile] = field(default_factory=list)
     # geometry:
     vertices: Dict[int, QtCore.QPointF] = field(default_factory=dict)          # vid -> point
@@ -448,6 +451,7 @@ def _convert_base_state(base) -> Game:
     g.map_id = str(base.map_id)
     g.map_meta = dict(getattr(base, "map_meta", {}) or {})
     g.rules_config = getattr(base, "rules_config", None)
+    g.scenario = deepcopy(base.scenario)
     g.tiles = [
         HexTile(q=t.q, r=t.r, terrain=t.terrain, number=t.number, center=_pt(t.center))
         for t in base.tiles
@@ -533,6 +537,7 @@ def _ui_game_to_engine_dict(g: Game) -> Dict[str, Any]:
         "map_meta": dict(g.map_meta or {}),
         "rules": {},
         "rules_config": _rules_cfg_to_dict(g.rules_config),
+        "scenario": scenario_to_dict(g.scenario),
         "phase": g.phase,
         "turn": g.turn,
         "rolled": bool(g.rolled),

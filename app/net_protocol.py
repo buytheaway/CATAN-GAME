@@ -138,7 +138,7 @@ def room_state_message(room) -> Dict[str, Any]:
     if hasattr(room, "selected_rules_config"):
         msg["map_rules"] = getattr(room, "selected_rules_config")
     if room.game is not None:
-        msg["ruleset_compatibility"] = compatibility(room.ruleset_id)
+        msg["ruleset_compatibility"] = compatibility(room.ruleset_id, room.game)
     return msg
 
 

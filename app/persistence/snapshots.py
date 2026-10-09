@@ -14,11 +14,12 @@ from typing import Any, Callable
 
 from app.engine.state import (
     AchievementState, BoardState, DEV_TYPES, GameState, PlayerState,
-    RESOURCES, RulesConfig, Tile, TradeOffer,
+    RESOURCES, RulesConfig, ScenarioRules, ScenarioState, Tile, TradeOffer,
 )
+from app.engine.scenario import validate_scenario_state
 
-SNAPSHOT_VERSION = 2
-ENGINE_COMPATIBILITY = 1
+SNAPSHOT_VERSION = 3
+ENGINE_COMPATIBILITY = 2
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_JSON_NODES = 200_000
 MAX_JSON_DEPTH = 64
@@ -270,12 +271,19 @@ _GAME_V1 = {
     "trade_offers": _list(lambda v, p: TradeOffer(**_record(v, _OFFER, p))),
     "trade_offer_next_id": _positive,
 }
-_GAME = {**_GAME_V1, "robber_tile": _integer, "robbers": _list(_integer),
+_GAME_V2 = {**_GAME_V1, "robber_tile": _integer, "robbers": _list(_integer),
          "ships_built_this_turn": _unique_set(_edge),
          "ship_moved_this_turn": _boolean}
+_SCENARIO_RULES = {"starting_islands": _optional(lambda v, p: tuple(_list(_nonnegative)(v, p))),
+                   "new_island_vp": _nonnegative}
+_SCENARIO = {"rules": lambda v, p: ScenarioRules(**_record(v, _SCENARIO_RULES, p)),
+             "home_islands": _map(_id_key, _unique_set(_nonnegative)),
+             "awarded_islands": _map(_id_key, _unique_set(_nonnegative))}
+_GAME = {**_GAME_V2, "scenario": lambda v, p: ScenarioState(**_record(v, _SCENARIO, p))}
 # Also used as a fail-closed field-coverage guard; never infer schema from payload.
 _SCHEMAS = [(GameState, _GAME), (BoardState, _BOARD), (PlayerState, _PLAYER),
-            (Tile, _TILE), (RulesConfig, _RULES), (AchievementState, _ACHIEVEMENTS), (TradeOffer, _OFFER)]
+            (Tile, _TILE), (RulesConfig, _RULES), (AchievementState, _ACHIEVEMENTS), (TradeOffer, _OFFER),
+            (ScenarioRules, _SCENARIO_RULES), (ScenarioState, _SCENARIO)]
 
 
 def _check_schema_coverage() -> None:
@@ -342,6 +350,10 @@ def _validate_references(g: GameState) -> None:
         ref(tile, robber_ids, "state.robber")
     for tile in [g.pirate_tile]:
         ref(tile, tids, "state.robber_or_pirate")
+    try:
+        validate_scenario_state(g)
+    except ValueError:
+        _fail("state.scenario.rules", "invalid scenario configuration or island references")
     offer_ids = set()
     for offer in g.trade_offers:
         if offer.offer_id in offer_ids or offer.offer_id >= g.trade_offer_next_id:
@@ -406,6 +418,18 @@ def encode_snapshot(game: GameState) -> dict:
     ):
         _fail("state.board.ports", "expected list of tuple ports")
     state["rules_config"] = _encode_record(game.rules_config, _RULES)
+    scenario = state["scenario"] = _encode_record(game.scenario, _SCENARIO)
+    scenario["rules"] = _encode_record(game.scenario.rules, _SCENARIO_RULES)
+    starts = game.scenario.rules.starting_islands
+    if starts is not None and type(starts) is not tuple:
+        _fail("state.scenario.rules", "expected tuple starting islands")
+    scenario["rules"]["starting_islands"] = None if starts is None else list(starts)
+    for field in ("home_islands", "awarded_islands"):
+        history = getattr(game.scenario, field)
+        if type(history) is not dict or any(type(ids) is not set for ids in history.values()):
+            _fail("state.scenario", "expected island history sets")
+        scenario[field] = _encode_map(history)
+        scenario[field] = {pid: sorted(ids) for pid, ids in scenario[field].items()}
     state["achievements"] = _encode_record(game.achievements, _ACHIEVEMENTS)
     state["players"] = [_encode_record(p, _PLAYER) for p in game.players]
     state["trade_offers"] = [_encode_record(o, _OFFER) for o in game.trade_offers]
@@ -439,11 +463,15 @@ def decode_snapshot(payload: Any) -> GameState:
     envelope = _record(payload, {"snapshot_version": _integer,
                                 "engine_compatibility": _integer, "state": _json_object}, "snapshot")
     version = envelope["snapshot_version"]
-    if version not in (1, SNAPSHOT_VERSION):
-        raise UnsupportedSnapshotVersion("Unsupported snapshot_version; supported versions are 1 and 2")
-    if envelope["engine_compatibility"] != ENGINE_COMPATIBILITY:
-        raise UnsupportedEngineCompatibility("Unsupported engine_compatibility; supported version is 1")
-    state = _record(envelope["state"], _GAME_V1 if version == 1 else _GAME, "state")
+    schemas = {1: _GAME_V1, 2: _GAME_V2, 3: _GAME}
+    if version not in schemas:
+        raise UnsupportedSnapshotVersion("Unsupported snapshot_version; supported versions are 1, 2 and 3")
+    if envelope["engine_compatibility"] != (2 if version == 3 else 1):
+        raise UnsupportedEngineCompatibility("Unsupported snapshot/engine compatibility pair")
+    state = _record(envelope["state"], schemas[version], "state")
+    if version < 3:
+        # Structural default only: old snapshots never activate ignored metadata.
+        state["scenario"] = ScenarioState()
     if version == 1:
         # Released v1 has no ship history. It cannot safely grant another move
         # in a Seafarers turn (free ships can precede Roll). End Turn removes it.

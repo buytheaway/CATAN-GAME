@@ -95,6 +95,20 @@ class BoardState:
     occupied_ships: Dict[Tuple[int, int], int] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ScenarioRules:
+    # Island IDs are roots of the saved board's land components, not new IDs.
+    starting_islands: Optional[Tuple[int, ...]] = None
+    new_island_vp: int = 0
+
+
+@dataclass
+class ScenarioState:
+    rules: ScenarioRules = field(default_factory=ScenarioRules)
+    home_islands: Dict[int, Set[int]] = field(default_factory=dict)
+    awarded_islands: Dict[int, Set[int]] = field(default_factory=dict)
+
+
 @dataclass
 class GameState:
     seed: int
@@ -105,6 +119,7 @@ class GameState:
     map_meta: Dict[str, Any] = field(default_factory=dict)
     rules: Dict[str, Any] = field(default_factory=dict)
     rules_config: RulesConfig = field(default_factory=RulesConfig)
+    scenario: ScenarioState = field(default_factory=ScenarioState)
     board: BoardState = field(default_factory=BoardState)
     players: List[PlayerState] = field(default_factory=list)
     bank: Dict[str, int] = field(default_factory=lambda: {r: 19 for r in RESOURCES})

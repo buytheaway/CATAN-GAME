@@ -7,7 +7,7 @@ updated: 2026-10-09
 
 [[Project State]] · [[Карты и сценарии]] · [[Правила Seafarers]] · [[Architecture Decisions]]
 
-Status: **Completed / READY FOR CHECKPOINT — verified 2026-10-09 in the S2A scope.** Checkpoint `seafarers-hardening-s1` verified at `b5cc066` with an initially clean tree; its specific creation was explicitly authorized. No S2A commit/tag was created. S2B/S2C/S3 remain unstarted.
+Status: **Completed — verified 2026-10-09, checkpoint commit `e79dee4`.** Checkpoint `seafarers-hardening-s1` verified at `b5cc066` with an initially clean tree; its specific creation was explicitly authorized. A completed-phase commit and clean working tree suffice; tags are optional. The implementation/verification below describes the historical S2A checkpoint. S2B-1 subsequently completed explicit custom scenario configuration, codec v3/2 and a new match marker; current status — [[plans/seafarers-s2b-1]]. S2C/S3 remain unstarted.
 
 ## Affected execution path
 
@@ -72,4 +72,4 @@ Artifacts remain outside the repository under `%TEMP%/catan-s2a-hardening/`: `py
 
 ## Explicitly deferred
 
-S2B: scenario-specific starting islands where approved, island bonuses, fog/exploration/rewards. S2C: broader scenario/port customization and balance work under a separate task. Full natural long matches, 5–6-player official extension mechanics and mobile/low-end performance certification are not inferred from fixtures. No public generator/editor, ruleset conversion, auth/persistence/deployment rewrite or new assets.
+At the S2A checkpoint, scenario-specific starting islands and island bonuses were deferred to S2B; explicit custom mechanics are now implemented/tested in [[plans/seafarers-s2b-1]]. Preset product parameters and fog/exploration remain deferred. S2C: broader scenario/port customization and balance work under a separate task. Full natural long matches, 5–6-player official extension mechanics and mobile/low-end performance certification are not inferred from fixtures. No public generator/editor, ruleset conversion, auth/persistence/deployment rewrite or new assets.

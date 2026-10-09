@@ -3,20 +3,25 @@
 Only creation assigns a ruleset. Decoding a snapshot is never evidence that
 its derived scores were produced by the current gameplay rules.
 """
-CURRENT_RULESET = "catan-seafarers-s1"
+LEGACY_S1_RULESET = "catan-seafarers-s1"
+CURRENT_RULESET = "catan-seafarers-s2b-1"
 COMPATIBILITY_MESSAGE = (
     "This match uses an older or unverified ruleset. Gameplay is restricted; "
     "the saved match is preserved. Return Home to create a new game."
 )
 
 
-def compatibility(ruleset_id):
-    return {"status": "compatible" if ruleset_id == CURRENT_RULESET else "compatibility_required",
+def compatibility(ruleset_id, game=None):
+    compatible = ruleset_id == CURRENT_RULESET or (ruleset_id == LEGACY_S1_RULESET
+        and (game is None or (game.scenario.rules.starting_islands is None
+                             and game.scenario.rules.new_island_vp == 0)))
+    return {"status": "compatible" if compatible else "compatibility_required",
             "ruleset_id": ruleset_id, "current_ruleset_id": CURRENT_RULESET}
 
 
 def restricted(room):
-    return room is not None and room.game is not None and room.ruleset_id != CURRENT_RULESET
+    return (room is not None and room.game is not None
+            and compatibility(room.ruleset_id, room.game)["status"] != "compatible")
 
 
 class RulesetCompatibilityError(RuntimeError):
@@ -27,6 +32,9 @@ def validate_transition(before, candidate, *, snapshot=False, receipt=None, oper
     """Fence all commit paths, including metadata-only reconnect and RAM tests."""
     if before and before.match_uuid == candidate.match_uuid and before.ruleset_id != candidate.ruleset_id:
         raise RulesetCompatibilityError("An existing match's ruleset is immutable")
+    if (candidate.game and candidate.ruleset_id == LEGACY_S1_RULESET and restricted(candidate)
+            and not restricted(before)):
+        raise RulesetCompatibilityError("S1 matches cannot acquire new scenario rules")
     if not restricted(before):
         return
     if (snapshot or receipt or operation and operation["kind"] in ("start_match", "rematch")

@@ -54,7 +54,10 @@ export function PlayerStrip({ state, pid, room }: { state: GameSnapshot; pid: nu
           <div className="player-counters"><strong>{p.vp} VP</strong>
             <span aria-label={`${p.resource_count} resource cards`}>{p.resource_count} cards</span>
             <span aria-label={`${p.dev_count} development cards`}>{p.dev_count} dev</span>
-          </div></div>
+          </div>
+          {!!p.special_vp && <div className="player-counters"><span title="Island bonus included in total VP">
+            {p.special_vp} island VP</span></div>}
+        </div>
         {state.turn === p.pid && <div className="turn-status"><span className="turn-indicator">{p.pid === pid ? "Your turn" : "Turn"}</span>
           <TurnTimer timer={state.turn_timer} /></div>}
       </li>; })}
@@ -67,6 +70,20 @@ export function ContextPrompt({ state, pid, interaction }: { state: GameSnapshot
     <span className="context-eyebrow">{state.turn === pid ? "Your table" : "At the table"}</span>
     <strong>{prompt.title}</strong><span>{prompt.detail}</span>
   </div>;
+}
+
+export function ScenarioSummary({ state }: { state: GameSnapshot }) {
+  const rules = state.scenario?.rules;
+  if (!rules || (!rules.starting_islands && !rules.new_island_vp)) return null;
+  return <section aria-label="Scenario rules">
+    <strong>Island rules</strong>
+    <p>{rules.starting_islands
+      ? "Opening settlements must be on the designated starting islands. Follow the highlighted targets."
+      : "Opening settlements may be on any island."}</p>
+    {!!rules.new_island_vp && <p>Earn {rules.new_island_vp} extra VP for your first settlement on each island
+      where you did not place an opening settlement. Each player can earn this bonus once per island.
+      City upgrades give no extra island bonus.</p>}
+  </section>;
 }
 
 export function ResourceHand({ resources, onResource, disabled = false }: {

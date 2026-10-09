@@ -12,6 +12,8 @@ status: auth-phase-1-completed
 
 ## F2 — match ruleset compatibility (Strategy C)
 
+Historical F2 checkpoint below; the S2B-1 transition is now implemented/verified 2026-10-09. New matches receive `catan-seafarers-s2b-1`; verified S1 retains its marker and disabled scenario mechanics, unknown markers remain restricted. Current trusted writer v3/2 reads exact v1/1 and v2/1 with disabled scenario defaults. No new SQL migration, provenance backfill, VP conversion, dual engine or Strategy D operation. Current state/rollback policy — [[Состояние игры#Scenario persistence — S2B-1]], [[Architecture Decisions#ADR-017 — Explicit scenario state, codec v3 and S2B-1 provenance]], [[plans/seafarers-s2b-1]].
+
 Approved 2026-10-08: snapshot format compatibility does not establish gameplay compatibility. Add nullable, immutable `matches.ruleset_id`; only new matches explicitly receive the current S1 marker. Existing rows stay unknown, regardless of codec v1/v2. Recovery decodes without running rules, preserves historical scores and marks unknown rulesets as restricted, not corrupted.
 
 **Completed/verified 2026-10-08; READY FOR CHECKPOINT.** [match_rulesets.py](../../../app/match_rulesets.py) centralizes the marker/policy/commit fence. [f2a001](../../../migrations/versions/f2a001_match_ruleset.py) adds one nullable column with no backfill. Recovery reads it independently of engine/Room codecs. Server gates command/lifecycle/legal/private snapshot/timer paths; Coordinator/Repository gate commits and keep restricted match/head/result rows intact during metadata-only Continue/claim/chat/leave. PostgreSQL row locks check stored provenance; ambiguous commit verification includes it.

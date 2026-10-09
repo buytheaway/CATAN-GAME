@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from typing import Dict, List, Tuple
+from app.engine.scenario import scenario_from_dict, scenario_to_dict, validate_scenario_state
 
 from app.engine.state import (
     AchievementState,
@@ -38,6 +39,7 @@ def to_dict(g: GameState) -> Dict:
         "map_id": getattr(g, "map_id", g.map_name),
         "map_meta": dict(getattr(g, "map_meta", {}) or {}),
         "rules": dict(getattr(g, "rules", {}) or {}),
+        "scenario": scenario_to_dict(g.scenario),
         "rules_config": {
             "target_vp": int(getattr(cfg, "target_vp", 10)),
             "discard_threshold": cfg.discard_threshold,
@@ -94,6 +96,8 @@ def to_dict(g: GameState) -> Dict:
                 "pid": p.pid,
                 "name": p.name,
                 "vp": p.vp,
+                **({"special_vp": len(g.scenario.awarded_islands.get(p.pid, ())) * g.scenario.rules.new_island_vp}
+                   if g.scenario.rules.new_island_vp else {}),
                 "res": dict(p.res),
                 "knights_played": p.knights_played,
             }
@@ -232,6 +236,10 @@ def from_dict(data: Dict) -> GameState:
         enable_move_ship=bool(rc.get("enable_move_ship", g.rules.get("enable_move_ship", False))),
     )
     g.phase = data.get("phase", "setup")
+    # Old saves' unrecognized map metadata is not permission to enable new rules.
+    if "scenario" in data:
+        g.scenario = scenario_from_dict(data["scenario"], board, g.rules_config.enable_seafarers)
+        validate_scenario_state(g)
     g.turn = int(data.get("turn", 0))
     g.rolled = bool(data.get("rolled", False))
     g.ships_built_this_turn = {(int(a), int(b)) for a, b in data.get("ships_built_this_turn", [])}

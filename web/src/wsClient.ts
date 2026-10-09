@@ -66,6 +66,7 @@ export type MatchState = {
       name: string;
       color?: string | null;
       vp: number;
+      special_vp?: number;
       resource_count: number;
       dev_count: number;
       res?: Record<string, number>;
