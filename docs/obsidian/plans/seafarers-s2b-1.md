@@ -75,4 +75,4 @@ Browser report/screenshots: `%TEMP%/catan-s2b-1/browser-final/`; scenario report
 
 ## Deferred and remaining risks
 
-Preset-specific product parameters remain unapproved and unchanged. Fog/discovery, additional official scenarios, richer scenario editor, S2C generator/balance work and S3 natural full-match acceptance are not implemented here. Largest Army's existing tied-holder behavior is a separate known correctness concern, not silently changed as a scenario rule.
+Preset-specific product parameters remain unapproved and unchanged. Fog/discovery, additional official scenarios, richer scenario editor, S2C generator/balance work and S3 natural full-match acceptance are not implemented here. Largest Army's tied-holder bug was deferred at the S2B-1 checkpoint, then fixed in a separately authorized focused patch; recorded historical scores are not repaired. Current evidence — [[Project State#Largest Army tie handling — focused correctness fix]]. This does not change the historical S2B-1 verification above.

@@ -451,13 +451,14 @@ def update_largest_army(g: GameState) -> None:
         g.largest_army_size = 0
         return
     leaders = [i for i, k in enumerate(sizes) if k == max_k]
-    if len(leaders) != 1:
+    # A qualified incumbent keeps the award when another player ties it.
+    if len(leaders) != 1 and g.largest_army_owner not in leaders:
         if g.largest_army_owner is not None:
             g.players[g.largest_army_owner].vp -= 2
         g.largest_army_owner = None
         g.largest_army_size = max_k
         return
-    leader = leaders[0]
+    leader = g.largest_army_owner if g.largest_army_owner in leaders else leaders[0]
     if leader != g.largest_army_owner:
         if g.largest_army_owner is not None:
             g.players[g.largest_army_owner].vp -= 2

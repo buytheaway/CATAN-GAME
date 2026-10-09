@@ -7,11 +7,13 @@ updated: 2026-10-09
 
 ## Current verification and status
 
-Последняя полная проверка — **Seafarers S2B-1, 2026-10-09: 881 passed, 0 skipped** в pytest с изолированной PostgreSQL; **253 web tests**, TypeScript и production build прошли. Реальный Chrome/FastAPI/PostgreSQL проверил два custom JSON профиля на Gold Haven/Pirate Lanes: ограниченный старт/+2/12 VP и свободный старт/+3/14 VP. Эти параметры — test profiles, не новые preset defaults. Natural setup, initial ships, оплаченный морской переход/settlement/city, публичный bonus, rejected command, 2D/3D/desktop resize и refresh обоих клиентов прошли; Test Tools funding/dice явно отделены от natural games. Полные партии не сыграны. Full scenario harness без правок: **348/508**, все 160 failures полностью совпали с S2A; в пяти успешных Qt bot cases меняется только случайный summary.seed. 823/250 S2A и прежние S1/F1/F2/F3 counts ниже — historical checkpoint evidence.
+Последняя Python verification — **Largest Army focused fix, 2026-10-09: 906 passed, 0 skipped**, 119.61 s, с реальной изолированной PostgreSQL. Сначала выполнены 25 targeted cases; два regression cases до исправления воспроизвели потерю владельца на ничьей в Base/Seafarers. Web tests/TypeScript/build/browser/Docker/scenario suite для этого engine-only patch не повторялись. Полный pytest включает прежние S2B-1/F1/F2/F3/Base/Seafarers regressions.
+
+Historical S2B-1 verification, 2026-10-09: **881 pytest / 253 web tests**, TypeScript и production build прошли. Реальный Chrome/FastAPI/PostgreSQL проверил два custom JSON профиля на Gold Haven/Pirate Lanes: ограниченный старт/+2/12 VP и свободный старт/+3/14 VP. Эти параметры — test profiles, не новые preset defaults. Natural setup, initial ships, оплаченный морской переход/settlement/city, публичный bonus, rejected command, 2D/3D/desktop resize и refresh обоих клиентов прошли; Test Tools funding/dice явно отделены от natural games. Полные партии не сыграны. Full scenario harness без правок: **348/508**, все 160 failures полностью совпали с S2A; в пяти успешных Qt bot cases меняется только случайный summary.seed. Это последний scenario result, не новый прогон после Largest Army fix. 823/250 S2A и прежние S1/F1/F2/F3 counts ниже — historical checkpoint evidence.
 
 | Возможность | Реализация и фактическая проверка | Что остаётся |
 | --- | --- | --- |
-| Seafarers S1 core | Implemented/tested: mixed route/ties/own-turn victory, ship lifecycle, island settlement connectivity, Gold и robber/pirate validation; повторно зелёные в S2B-1 | Fog/exploration — planned; полные natural matches — planned S3; существующий Largest Army tie issue не исправлялся |
+| Seafarers S1 core | Implemented/tested: mixed route/ties/own-turn victory, ship lifecycle, island settlement connectivity, Gold и robber/pirate validation; повторно зелёные в S2B-1. Largest Army tie исправлен отдельным focused patch ниже | Fog/exploration — planned; полные natural matches — planned S3 |
 | Seafarers S2B-1 scenarios | Implemented/tested: explicit custom configuration, restricted setup/capacity, per-player home/award ledger, public special VP, codec v3/new marker, PG recovery/receipt and Qt round-trip | Все четыре preset defaults сохранены; их новые product parameters не утверждены. Official scenario replicas, exploration/fog, S2C generator/balance не реализованы |
 | Seafarers S2A maps | Implemented/tested: два реальных 37-hex архипелага, Sea Ring 19 land +18 sea, exact terrain decks, derived island IDs, реальные coast ports, no-desert robber offboard; 600 seeded setup runs для 2–6 игроков | Нет новых start-island restrictions/награды; произвольный custom map не сертифицируется; probability balance и все возможные opening choices не доказаны |
 | F1 private publication | Implemented/tested: актуальные guest/account ownership, expiry/revocation, controlling-socket takeover, privacy и publication ordering | Single-worker deployment; out-of-band guest SQL edits не являются live revocation API; отправленный до revoke frame нельзя отозвать |
@@ -22,6 +24,14 @@ updated: 2026-10-09
 | Scenario suite | **Known broken: 348/508 passed, 160 failed**, повторён в S2B-1 2026-10-09 | 140 pre-roll отказов и 20 pirate fixture connectivity отказов; все failure records совпали с S2A. Зелёный pytest их не закрывает |
 
 Implemented не означает проверку всех веток; tested относится только к указанным suites/acceptance. Термины и обязательная сверка после существенных изменений — [[Documentation Policy]]. Актуальные пути — [[Сценарий сетевой партии]], [[React интерфейс]], [[Сервер и протокол]].
+
+## Largest Army tie handling — focused correctness fix
+
+**Implemented/tested 2026-10-09: READY FOR CHECKPOINT in focused fix scope.** Targeted **25 passed**, including four actual PostgreSQL recovery cases; then full **906 pytest passed, 0 skipped**, 119.61 s, on a separate disposable PostgreSQL database. `update_largest_army` now retains a qualified incumbent among tied leaders; another player receives the award only with a strictly greater played-Knight count. Minimum three Knights, exact +2 VP accounting and current-player `check_win` timing remain. Runtime diff: only `rules.py`, +3/-2 lines. S2B-1 scenario bookkeeping, snapshot v3/2, ruleset markers, F1/F2 and ownership paths are unchanged.
+
+Tests use real setup/Knight/turn commands in Base and Seafarers, two/three-way ties, growth/transfer/idempotency, own-turn victory/hidden VP, rejected commands, recorded v1/v2/v3 states, scenario award ledger and real PostgreSQL COMMIT/fresh Coordinator/Continue/duplicate receipt. Recovery is guarded against gameplay execution and preserves historical unawarded/stale achievements and scores exactly; no automatic repair or conversion. Evidence — [test_largest_army.py](../../tests/test_largest_army.py), [test_largest_army_recovery.py](../../tests/test_largest_army_recovery.py).
+
+Scenario harness was not changed: `tests/harness/invariants.py::_recompute_largest_army` still assumes a unique leader and can falsely reject a retained tied holder. Its correction is a separate task; the last scenario result 348/508 belongs to the S2B-1 checkpoint, not this patch.
 
 ## Seafarers S2B-1 — explicit scenario rules
 
@@ -295,7 +305,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 | Legacy gameplay compatibility — F2 | Implemented/tested Strategy C: readable v1/v2 без verified ruleset restricted; нет auto conversion, VP/achievement rewrite или corrupted label |
 | Qt ship history loss — F3 | Исправлено/tested real Qt file round-trip; conservative legacy lock переживает resave, engine End Turn сбрасывает историю |
 | Seafarers rules/maps | S1 core, S2A topology/coasts/offboard и S2B-1 explicit starting islands/bonuses проверены; новые preset параметры, fog/scenario completeness/generator и natural playtests остаются отдельными задачами |
-| Остальные Base rules | Longest Road tie и own-turn victory исправлены в S1; Largest Army tie, deterministic theft и ordinary production shortage остаются отдельными задачами |
+| Остальные Base rules | Longest Road tie и own-turn victory исправлены в S1; Largest Army tie исправлен отдельным focused patch. Historical scores не пересчитаны; deterministic theft и ordinary production shortage остаются отдельными задачами |
 | Road Building lifecycle | Исправлено 2026-10-05: end_turn_cleanup очищает free_roads только после успешной проверки End Turn. 0/1/2 placements, следующий собственный ход, paid road cost, сохранение построек, atomic rejects и персональные server snapshots проверены в tests/test_road_building_lifecycle.py |
 | Сетевой lifecycle | Persistence 1B реализована: locked durable commits, hashed guest ownership, restart recovery и replay protection. Automatic cleanup/общего WS rate limiting нет; chat limit 5/10s, рассылка последовательная |
 

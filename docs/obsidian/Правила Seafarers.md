@@ -12,7 +12,7 @@ An explicitly configured custom `rules.scenario.starting_islands` restricts setu
 
 When enabled, each player's actual setup islands are recorded as home islands. Accepted main-phase first settlement on each other island awards the configured bonus in addition to ordinary 1 VP. Another player's earlier arrival does not remove eligibility; repeated settlements/city upgrades do not award again. Setup never awards it. The ledger is durable and public; special VP is already included in total VP. Existing hidden VP privacy, Longest Trade Route scoring and own-turn victory checks remain. Recovery restores the ledger and never recalculates awards/VP. Details — [[plans/seafarers-s2b-1]], [[Состояние игры#Scenario persistence — S2B-1]].
 
-**Known separate limitation:** `update_largest_army` still clears a tied incumbent and removes its 2 VP when knights tie. Intended Base rules retain the holder until surpassed. S2B-1 did not change that existing Base correctness issue; a green scenario-bonus test does not certify Largest Army ties. Fog/exploration and unapproved per-preset product rules remain future work.
+**Historical S2B-1 limitation, subsequently fixed 2026-10-09:** `update_largest_army` used to clear a tied incumbent and remove its 2 VP. The focused Largest Army patch now retains a qualified holder on ties and transfers only to a strictly stronger army, with unchanged own-turn victory timing. Base/Seafarers and an already-awarded scenario ledger are covered separately; recovery never recalculates historical awards/scores. Results — [[Project State#Largest Army tie handling — focused correctness fix]]. Fog/exploration and unapproved per-preset product rules remain future work.
 
 ## Maps/coastlines and initial figures — S2A, 2026-10-09
 
