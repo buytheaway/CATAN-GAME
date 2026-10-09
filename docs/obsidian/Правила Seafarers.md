@@ -4,6 +4,12 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
+## Approved custom fog profile — foundation only
+
+Approved S2B-2A/S2B-2B.1 decisions: `shared-preassigned-v1` privately assigns actual terrain/tokens before play, shares monotonic discovery with all players, allows one reward per discovered hex and preserves undiscovered secrecy even after game_over/recovery. It is explicit opt-in, not an existing named preset or official Fog Islands draw-on-reveal replica. Initial profile excludes starting_islands and automatic island VP bonuses.
+
+**Implemented/tested 2026-10-09: trusted domain/recipe/persistence/gates only. Public availability DISABLED.** Exploration triggers, actual discovery rewards, Gold choice continuation execution, known-terrain gameplay/legal/projection and rendering are planned S2B-2B.2; they are not current playable rules. Foundation/recovery details — [[plans/seafarers-fog]], [[Инварианты движка#Trusted fog foundation invariants — S2B-2B.1]]. Ordinary Base/Seafarers rules below are unchanged.
+
 ## Explicit starting islands and special VP — S2B-1
 
 **Implemented/tested 2026-10-09, custom opt-in only.** Existing Coastal Lanes, Sea Ring, Gold Haven and Pirate Lanes do not enable start restrictions or island VP; their target remains 10 unless overridden by the host. These are custom layouts, not official scenario replicas. The [official rulebook](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf) describes different bonus/target policies per scenario; Heading for New Shores's main-island/+2/14 VP policy is not silently assigned to this project's maps.

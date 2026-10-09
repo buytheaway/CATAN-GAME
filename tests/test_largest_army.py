@@ -10,7 +10,7 @@ import pytest
 from app.engine import rules, serialize
 from app.persistence import snapshots
 from tests.test_persistence_snapshots import (
-    assert_equivalent, give_card, main_game, released_v1_payload, released_v2_payload,
+    assert_equivalent, give_card, main_game, released_v1_payload, released_v2_payload, released_v3_payload,
 )
 from tests.test_seafarers_scenarios import arrive, scenario_game
 
@@ -133,7 +133,7 @@ def test_rejected_knight_preserves_cards_counts_achievement_and_vp(game, invalid
     assert snapshots.encode_snapshot(game) == before
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_snapshot_restores_recorded_army_and_vp_without_recalculating_history(game, version, monkeypatch):
     # Both a retained holder and old unawarded/stale values remain as recorded.
     for owner, counts in ((2, (3, 3, 3)), (None, (3, 3, 0)), (None, (0, 0, 3))):
@@ -144,7 +144,7 @@ def test_snapshot_restores_recorded_army_and_vp_without_recalculating_history(ga
         if owner is not None:
             g.players[owner].vp += 2
         payload = (released_v1_payload(g) if version == 1 else released_v2_payload(g)
-                   if version == 2 else snapshots.encode_snapshot(g))
+                   if version == 2 else released_v3_payload(g) if version == 3 else snapshots.encode_snapshot(g))
         expected = deepcopy(g)
         if version == 1 and g.rules_config.enable_seafarers:
             expected.ship_moved_this_turn = True  # Existing conservative legacy policy.

@@ -96,10 +96,42 @@ class BoardState:
 
 
 @dataclass(frozen=True)
+class FogRules:
+    profile: str = "shared-preassigned-v1"
+    initially_hidden: Tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class FogDiscovery:
+    tile_index: int
+    pid: int
+    reward_status: str
+    resource: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class FogContinuation:
+    command: str
+    pid: int
+    edge: Tuple[int, int]
+    setup: bool = False
+
+
+@dataclass(frozen=True)
+class FogState:
+    # Detect reassignment without duplicating trusted BoardState tile contents.
+    assignment_digest: str
+    revealed: frozenset[int] = field(default_factory=frozenset)
+    discoveries: Tuple[FogDiscovery, ...] = ()
+    continuation: Optional[FogContinuation] = None
+
+
+@dataclass(frozen=True)
 class ScenarioRules:
     # Island IDs are roots of the saved board's land components, not new IDs.
     starting_islands: Optional[Tuple[int, ...]] = None
     new_island_vp: int = 0
+    fog: Optional[FogRules] = None
 
 
 @dataclass
@@ -107,6 +139,7 @@ class ScenarioState:
     rules: ScenarioRules = field(default_factory=ScenarioRules)
     home_islands: Dict[int, Set[int]] = field(default_factory=dict)
     awarded_islands: Dict[int, Set[int]] = field(default_factory=dict)
+    fog: Optional[FogState] = None
 
 
 @dataclass

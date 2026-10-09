@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import math
+import random
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -9,10 +11,12 @@ from app.engine.board_geom import axial_to_pixel, build_graph_from_tiles
 from app.engine.state import RESOURCES, TERRAIN_TO_RES, Tile, BoardState
 from app.engine.topology import coastal_edges
 from app.engine.scenario import parse_scenario_rules
+from app.engine.exploration import initially_visible_coasts
 from app.resource_path import resource_path
 
 
 MAP_VERSION = 1
+FOG_MAP_VERSION = 2
 DEFAULT_PRESET_ID = "base_standard"
 
 PRESET_REGISTRY = [
@@ -149,7 +153,10 @@ def get_preset_meta(name: str) -> Optional[Dict[str, str]]:
 def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise MapValidationError("map must be object")
-    version = int(data.get("version", MAP_VERSION))
+    raw_version = data.get("version", MAP_VERSION)
+    if type(raw_version) is int and raw_version == FOG_MAP_VERSION:
+        return _validate_fog_recipe(data)
+    version = int(raw_version)  # Preserve the existing v1 input contract.
     if version != MAP_VERSION:
         raise MapValidationError("unsupported map version", {"version": version})
     name = data.get("name")
@@ -244,7 +251,9 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
         raise MapValidationError("rules must be object")
     if isinstance(rules, dict):
         try:
-            parse_scenario_rules(rules)
+            config = parse_scenario_rules(rules)
+            if config.fog is not None:
+                raise ValueError("Fog requires a version 2 recipe")
         except ValueError as exc:
             raise MapValidationError(str(exc)) from exc
         if "target_vp" in rules and not isinstance(rules.get("target_vp"), int):
@@ -286,12 +295,77 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
+def fog_slots(data: Dict[str, Any]) -> Tuple[int, ...]:
+    return tuple(i for i, t in enumerate(data["tiles"]) if t.get("terrain") == "fog")
+
+
+def _validate_fog_recipe(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Only a public recipe, never a client-supplied hidden assignment/seed."""
+    allowed = {"version", "name", "description", "tiles", "rules", "fog_pool",
+               "ports", "ports_auto", "robber_tile", "pirate_tile"}
+    if set(data) - allowed:
+        raise MapValidationError("Unknown fog recipe fields")
+    tiles, rules, pool = data.get("tiles"), data.get("rules"), data.get("fog_pool")
+    if type(tiles) is not list or not tiles or type(rules) is not dict:
+        raise MapValidationError("Fog recipe requires tiles and explicit rules")
+    if type(pool) is not dict or set(pool) != {"terrain", "numbers"}:
+        raise MapValidationError("Fog recipe requires exact terrain and number pools")
+    for tile in tiles:
+        if type(tile) is not dict or set(tile) - {"q", "r", "terrain", "number"}:
+            raise MapValidationError("Unknown fog tile fields")
+        if type(tile.get("terrain")) is not str or tile.get("terrain") not in ALLOWED_TERRAIN | {"fog"}:
+            raise MapValidationError("Invalid fog recipe terrain")
+        if tile.get("terrain") == "fog" and tile.get("number") is not None:
+            raise MapValidationError("Fog slots cannot specify number assignments")
+        if tile.get("terrain") not in ("sea", "desert", "fog") and tile.get("number") is None:
+            raise MapValidationError("Visible producing tiles require numbers")
+    hidden = fog_slots(data)
+    terrain, numbers = pool["terrain"], pool["numbers"]
+    if (not hidden or type(terrain) is not list or len(terrain) != len(hidden)
+            or any(type(t) is not str or t not in ALLOWED_TERRAIN for t in terrain)):
+        raise MapValidationError("Fog terrain pool must exactly fill the hidden slots")
+    if (type(numbers) is not list or len(numbers) != sum(t not in ("sea", "desert") for t in terrain)
+            or any(type(n) is not int or n not in (2, 3, 4, 5, 6, 8, 9, 10, 11, 12) for n in numbers)):
+        raise MapValidationError("Fog number pool must exactly fill the producing slots")
+    try:
+        config = parse_scenario_rules(rules, fog_slots=hidden)
+    except ValueError as exc:
+        raise MapValidationError(str(exc)) from exc
+    if config.fog is None:
+        raise MapValidationError("Fog recipe requires an explicit fog profile")
+    if ("gold" in terrain or any(t.get("terrain") == "gold" for t in tiles)) and rules.get("enable_gold") is not True:
+        raise MapValidationError("Fog gold requires Gold support")
+    for key in ("robber_tile", "pirate_tile"):
+        index = data.get(key)
+        if index is not None and (type(index) is not int or index in hidden):
+            raise MapValidationError("Initial robber/pirate must use visible territory")
+    # Reuse v1's structural/rule/port validation with neutral, visible-only sea
+    # placeholders. This does not consume randomness or inspect hidden terrain.
+    visible = deepcopy(data)
+    visible["version"] = MAP_VERSION
+    visible.pop("fog_pool")
+    visible["rules"]["scenario"].pop("fog")
+    for i in hidden:
+        visible["tiles"][i]["terrain"] = "sea"
+    validate_map_data(visible)
+    return data
+
+
 def _materialize_tiles(
     data: Dict[str, Any],
     rng,
     size: float,
+    fog_rng=None,
 ) -> Tuple[List[Tile], Optional[int]]:
     tiles_spec = data["tiles"]
+    hidden = fog_slots(data)
+    fog_terrain, fog_numbers = [], []
+    if hidden:
+        fog_terrain, fog_numbers = list(data["fog_pool"]["terrain"]), list(data["fog_pool"]["numbers"])
+        private_rng = fog_rng if fog_rng is not None else random.SystemRandom()
+        private_rng.shuffle(fog_terrain)
+        private_rng.shuffle(fog_numbers)
+    fog_terrain_idx = fog_number_idx = 0
     terrain_deck = list(data.get("terrain_deck", DEFAULT_TERRAIN_DECK))
     number_deck = list(data.get("number_deck", DEFAULT_NUMBER_DECK))
 
@@ -316,7 +390,13 @@ def _materialize_tiles(
             terrain_idx += 1
 
         number = spec.get("number", None)
-        if number == "random":
+        if terrain == "fog":
+            terrain = fog_terrain[fog_terrain_idx]
+            fog_terrain_idx += 1
+            if terrain not in ("sea", "desert"):
+                number = fog_numbers[fog_number_idx]
+                fog_number_idx += 1
+        elif number == "random":
             if terrain in ("desert", "sea"):
                 number = None
             else:
@@ -330,7 +410,7 @@ def _materialize_tiles(
         q = int(spec["q"])
         r = int(spec["r"])
         center = axial_to_pixel(q, r, size)
-        if terrain == "desert":
+        if terrain == "desert" and idx not in hidden:
             desert_idx = len(tiles)
         tiles.append(Tile(q=q, r=r, terrain=str(terrain), number=number, center=center))
 
@@ -342,8 +422,9 @@ def _auto_ports(
     deck: List[str],
     count: int,
     rng,
+    coast=None,
 ) -> List[Tuple[Tuple[int, int], str]]:
-    coast = sorted(coastal_edges(board))
+    coast = sorted(coastal_edges(board) if coast is None else coast)
     count = min(count, len(deck))
     if not coast or count == 0:
         return []
@@ -377,16 +458,18 @@ def build_board_from_map(
     data: Dict[str, Any],
     rng,
     size: float,
+    *, fog_rng=None,
 ) -> Tuple[BoardState, int, Dict[str, Any]]:
     validate_map_data(data)
-    tiles, desert_idx = _materialize_tiles(data, rng, size)
+    tiles, desert_idx = _materialize_tiles(data, rng, size, fog_rng)
     vertices, v_hexes, edges, edge_hexes = build_graph_from_tiles(tiles, size)
 
     board = BoardState(tiles=tiles, vertices=vertices, vertex_adj_hexes=v_hexes,
                        edges=edges, edge_adj_hexes=edge_hexes)
     ports: List[Tuple[Tuple[int, int], str]] = []
+    hidden = fog_slots(data)
+    coast = initially_visible_coasts(board, hidden) if hidden else coastal_edges(board)
     if data.get("ports") is not None:
-        coast = coastal_edges(board)
         used_vertices = set()
         for p in data["ports"]:
             edge = p["edge"]
@@ -404,7 +487,7 @@ def build_board_from_map(
         ports_auto = data.get("ports_auto", {})
         count = int(ports_auto.get("count", 9))
         deck = list(ports_auto.get("deck", DEFAULT_PORT_DECK))
-        ports = _auto_ports(board, deck, count, rng)
+        ports = _auto_ports(board, deck, count, rng, coast)
 
     board.ports = ports
     rules = dict(data.get("rules", {}))

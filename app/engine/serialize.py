@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Dict, List, Tuple
 from app.engine.scenario import scenario_from_dict, scenario_to_dict, validate_scenario_state
+from app.engine.exploration import require_no_fog, require_non_fog_data
 
 from app.engine.state import (
     AchievementState,
@@ -30,6 +31,7 @@ def _legacy_ship_movement_lock(phase: str, rolled: bool, cfg) -> bool:
 
 
 def to_dict(g: GameState) -> Dict:
+    require_no_fog(g)
     cfg = getattr(g, "rules_config", RulesConfig())
     return {
         "state_version": g.state_version,
@@ -163,6 +165,7 @@ def to_player_dict(g: GameState, pid: int) -> Dict:
 
 
 def from_dict(data: Dict) -> GameState:
+    require_non_fog_data(data)
     seed = int(data.get("seed", 0))
     size = float(data.get("size", 58.0))
     max_players = int(data.get("max_players", 4))

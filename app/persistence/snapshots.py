@@ -13,13 +13,13 @@ import re
 from typing import Any, Callable
 
 from app.engine.state import (
-    AchievementState, BoardState, DEV_TYPES, GameState, PlayerState,
+    AchievementState, BoardState, DEV_TYPES, FogContinuation, FogDiscovery, FogRules, FogState, GameState, PlayerState,
     RESOURCES, RulesConfig, ScenarioRules, ScenarioState, Tile, TradeOffer,
 )
 from app.engine.scenario import validate_scenario_state
 
-SNAPSHOT_VERSION = 3
-ENGINE_COMPATIBILITY = 2
+SNAPSHOT_VERSION = 4
+ENGINE_COMPATIBILITY = 3
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_JSON_NODES = 200_000
 MAX_JSON_DEPTH = 64
@@ -274,16 +274,34 @@ _GAME_V1 = {
 _GAME_V2 = {**_GAME_V1, "robber_tile": _integer, "robbers": _list(_integer),
          "ships_built_this_turn": _unique_set(_edge),
          "ship_moved_this_turn": _boolean}
-_SCENARIO_RULES = {"starting_islands": _optional(lambda v, p: tuple(_list(_nonnegative)(v, p))),
+_SCENARIO_RULES_V3 = {"starting_islands": _optional(lambda v, p: tuple(_list(_nonnegative)(v, p))),
                    "new_island_vp": _nonnegative}
-_SCENARIO = {"rules": lambda v, p: ScenarioRules(**_record(v, _SCENARIO_RULES, p)),
+_SCENARIO_V3 = {"rules": lambda v, p: ScenarioRules(**_record(v, _SCENARIO_RULES_V3, p)),
              "home_islands": _map(_id_key, _unique_set(_nonnegative)),
              "awarded_islands": _map(_id_key, _unique_set(_nonnegative))}
+_GAME_V3 = {**_GAME_V2, "scenario": lambda v, p: ScenarioState(**_record(v, _SCENARIO_V3, p))}
+_FOG_RULES = {"profile": _choice("shared-preassigned-v1"),
+              "initially_hidden": lambda v, p: tuple(_list(_nonnegative)(v, p))}
+_FOG_DISCOVERY = {"tile_index": _nonnegative, "pid": _nonnegative,
+                  "reward_status": _choice("none", "pending", "awarded", "unavailable"),
+                  "resource": _optional(_choice(*RESOURCES))}
+_FOG_CONTINUATION = {"command": _choice("place_road", "build_ship", "move_ship"),
+                     "pid": _nonnegative, "edge": _edge, "setup": _boolean}
+_FOG = {"assignment_digest": _string,
+        "revealed": lambda v, p: frozenset(_unique_set(_nonnegative)(v, p)),
+        "discoveries": lambda v, p: tuple(_list(lambda x, q: FogDiscovery(**_record(x, _FOG_DISCOVERY, q)))(v, p)),
+        "continuation": _optional(lambda v, p: FogContinuation(**_record(v, _FOG_CONTINUATION, p)))}
+_SCENARIO_RULES = {**_SCENARIO_RULES_V3,
+                   "fog": _optional(lambda v, p: FogRules(**_record(v, _FOG_RULES, p)))}
+_SCENARIO = {**_SCENARIO_V3, "rules": lambda v, p: ScenarioRules(**_record(v, _SCENARIO_RULES, p)),
+             "fog": _optional(lambda v, p: FogState(**_record(v, _FOG, p)))}
 _GAME = {**_GAME_V2, "scenario": lambda v, p: ScenarioState(**_record(v, _SCENARIO, p))}
 # Also used as a fail-closed field-coverage guard; never infer schema from payload.
 _SCHEMAS = [(GameState, _GAME), (BoardState, _BOARD), (PlayerState, _PLAYER),
             (Tile, _TILE), (RulesConfig, _RULES), (AchievementState, _ACHIEVEMENTS), (TradeOffer, _OFFER),
-            (ScenarioRules, _SCENARIO_RULES), (ScenarioState, _SCENARIO)]
+            (ScenarioRules, _SCENARIO_RULES), (ScenarioState, _SCENARIO),
+            (FogRules, _FOG_RULES), (FogState, _FOG), (FogDiscovery, _FOG_DISCOVERY),
+            (FogContinuation, _FOG_CONTINUATION)]
 
 
 def _check_schema_coverage() -> None:
@@ -424,6 +442,20 @@ def encode_snapshot(game: GameState) -> dict:
     if starts is not None and type(starts) is not tuple:
         _fail("state.scenario.rules", "expected tuple starting islands")
     scenario["rules"]["starting_islands"] = None if starts is None else list(starts)
+    if game.scenario.rules.fog is not None:
+        from app.engine.exploration import validate_fog_state
+        try:
+            validate_fog_state(game)
+        except ValueError:
+            _fail("state.scenario.fog", "invalid trusted fog state")
+        fog_rules = scenario["rules"]["fog"] = _encode_record(game.scenario.rules.fog, _FOG_RULES)
+        fog_rules["initially_hidden"] = list(game.scenario.rules.fog.initially_hidden)
+        fog = scenario["fog"] = _encode_record(game.scenario.fog, _FOG)
+        fog["revealed"] = sorted(game.scenario.fog.revealed)
+        fog["discoveries"] = [_encode_record(entry, _FOG_DISCOVERY) for entry in game.scenario.fog.discoveries]
+        if game.scenario.fog.continuation is not None:
+            continuation = fog["continuation"] = _encode_record(game.scenario.fog.continuation, _FOG_CONTINUATION)
+            continuation["edge"] = list(game.scenario.fog.continuation.edge)
     for field in ("home_islands", "awarded_islands"):
         history = getattr(game.scenario, field)
         if type(history) is not dict or any(type(ids) is not set for ids in history.values()):
@@ -463,10 +495,10 @@ def decode_snapshot(payload: Any) -> GameState:
     envelope = _record(payload, {"snapshot_version": _integer,
                                 "engine_compatibility": _integer, "state": _json_object}, "snapshot")
     version = envelope["snapshot_version"]
-    schemas = {1: _GAME_V1, 2: _GAME_V2, 3: _GAME}
+    schemas = {1: _GAME_V1, 2: _GAME_V2, 3: _GAME_V3, 4: _GAME}
     if version not in schemas:
-        raise UnsupportedSnapshotVersion("Unsupported snapshot_version; supported versions are 1, 2 and 3")
-    if envelope["engine_compatibility"] != (2 if version == 3 else 1):
+        raise UnsupportedSnapshotVersion("Unsupported snapshot_version; supported versions are 1, 2, 3 and 4")
+    if envelope["engine_compatibility"] != {1: 1, 2: 1, 3: 2, 4: 3}[version]:
         raise UnsupportedEngineCompatibility("Unsupported snapshot/engine compatibility pair")
     state = _record(envelope["state"], schemas[version], "state")
     if version < 3:

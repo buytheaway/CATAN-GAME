@@ -44,6 +44,8 @@ from app.engine import (
 )
 from app.engine import maps as map_loader
 from app.engine.legal import board_legal_moves
+from app.engine.exploration import (FOG_DISABLED_MESSAGE, FogUnavailableError, has_fog,
+                                    require_no_fog, require_non_fog_data)
 from app.engine.serialize import to_player_dict
 from app.room_options import (BALANCED_ALGORITHM, CHAT_LIMIT, CHAT_MAX_LENGTH,
                              CHAT_RATE_COUNT, CHAT_RATE_SECONDS, COLORS,
@@ -316,6 +318,7 @@ MULTIPLAYER_COMMANDS = frozenset({
 
 
 def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
+    require_no_fog(game)
     _require_compatible(room)
     state = to_player_dict(game, pid)
     state["you_pid"] = pid
@@ -499,6 +502,11 @@ def _rematch_host_pid(room: Room) -> Optional[int]:
 
 def _start_match(room: Room, *, rebind: bool = True) -> None:
     _require_compatible(room)
+    try:
+        require_non_fog_data(room.selected_map_data if room.selected_map_data is not None
+                             else get_preset_map(room.selected_map_id))
+    except FogUnavailableError as exc:
+        raise RuleError("feature_disabled", str(exc)) from None
     participants = [p for p in room.players if p.name and p.connected]
     host_pid = _rematch_host_pid(room)
     if len(participants) < 2 or host_pid not in [p.pid for p in participants]:
@@ -523,6 +531,10 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     if room.settings.target_vp is not None:
         game.rules_config.target_vp = room.settings.target_vp
         game.rules["target_vp"] = room.settings.target_vp
+    try:
+        require_no_fog(game)
+    except FogUnavailableError as exc:
+        raise RuleError("feature_disabled", str(exc)) from None
     game.rules_config.discard_threshold = room.settings.discard_threshold
     game.rules["discard_threshold"] = room.settings.discard_threshold
     # Do not tie the secret development deck to the map's reproducible seed.
@@ -560,11 +572,15 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
 
 
 def _require_compatible(room: Room) -> None:
+    if has_fog(room.game):
+        raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
     if restricted(room):
         raise RuleError("compatibility_required", COMPATIBILITY_MESSAGE)
 
 
 def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
+    if has_fog(room.game):
+        return net_protocol.error_message("feature_disabled", FOG_DISABLED_MESSAGE)
     if restricted(room):
         return net_protocol.error_message("compatibility_required", COMPATIBILITY_MESSAGE)
     g = room.game
@@ -849,6 +865,10 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
     if room.status != "lobby":
         raise RuleError("invalid", "Cannot change map after start")
     source, map_id = data.get("map_data"), data.get("map_id") or data.get("id")
+    try:
+        require_non_fog_data(source)
+    except FogUnavailableError as exc:
+        raise RuleError("feature_disabled", str(exc)) from None
     if isinstance(source, dict):
         try:
             map_loader.validate_map_data(source)
@@ -863,6 +883,10 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
         if not meta:
             raise RuleError("invalid", "Unknown map_id")
         source = get_preset_map(map_id)
+        try:
+            require_non_fog_data(source)
+        except FogUnavailableError as exc:
+            raise RuleError("feature_disabled", str(exc)) from None
         room.selected_map_data = None
     rules_raw = source.get("rules", {})
     room.selected_rules_config = vars(parse_rules_config(rules_raw if isinstance(rules_raw, dict) else {}))

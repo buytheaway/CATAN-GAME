@@ -9,7 +9,25 @@ updated: 2026-10-09
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
 
+## ADR-018 — Trusted fog foundation with public feature disabled
+
+Status: **Implemented, authorized S2B-2B.1, 2026-10-09.** Public fog availability is **DISABLED**. Verification results and limits — [[plans/seafarers-fog]]. This is the approved custom `shared-preassigned-v1` profile, not official Fog Islands draw-on-reveal semantics.
+
+Decision: extend the existing ScenarioRules/ScenarioState with frozen FogRules, FogState, FogDiscovery and FogContinuation records. Actual terrain/number values remain in the single materialized BoardState, with original tile/vertex/edge IDs. Shared discovery uses a revealed subset of initially hidden IDs and one reward record per revealed tile. Stored continuation describes a pending discovery choice but does not execute it. Fog cannot combine with starting_islands or positive island VP bonuses.
+
+Map recipe **version 2** contains visible tiles, `terrain:"fog"` slots and exact terrain/number pools; ordinary maps remain version 1. Trusted build assigns pools once using independent `SystemRandom`, never a public map seed; explicit RNG injection supports deterministic internal tests. Full client-specified hidden layouts and private seed fields are rejected. Initial setup capacity, robber/pirate placement and authored/auto ports use visible territory, without classifying unknown slots as land or sea. Existing presets are unchanged.
+
+Trusted writes use **snapshot_version=4 / engine_compatibility=3**, still 43 GameState fields. Released **v1/1, v2/1 and nested v3/2 schemas are explicit/frozen**, restore fog-disabled structural defaults and retain recorded VP/achievements/scenario history. V4 stores full assignments, mask, ledger and continuation. Pure validation/digest checks do not run rules, award resources, reveal tiles or consume RNG. Assignment immutability is enforced by validation and same-match commit transition fences; mutable Tile is not globally replaced by a second model.
+
+New matches receive **`catan-seafarers-s2b-2`**. Existing verified S2B-1 and eligible S1 non-fog matches keep their marker and remain compatible; NULL/unknown provenance stays F2-restricted. Fog is restricted even under the current marker. Metadata-only Continue/claim/takeover preserves ownership and old heads/results; commands, timers, legal projection, snapshot publication and rematch remain fenced. Active/Recent summaries check both the loaded game and marker. No SQL migration, backfill, automatic conversion or RAM fallback.
+
+Until S2B-2B.2 supplies secure projection/legal/execution, public selection/start, shared apply_cmd, legal hints, UI/network serialization, debug tools and real Qt conversion/save/load reject fog before exposing or mutating trusted data. No match_state is published, including after game_over or reconnect. Internal trusted fixtures may be constructed/committed for testing only; this is not a public creation path. F1 current-recipient authorization and COMMIT-before-publication/ACK remain required.
+
+Rollback: pre-v4 binaries cannot read an advanced v4 head, even for a non-fog match retaining an older marker. No downgrade, older-head fallback, VP/reward reconciliation or Strategy D operation is implemented. Remaining exploration/rewards/known-terrain production/Gold continuation/projection/legal-probe/rendering work is explicitly future scope. **Do not enable public fog merely because its codec round-trip passes.**
+
 ## ADR-017 — Explicit scenario state, codec v3 and S2B-1 provenance
+
+Historical S2B-1 writer/marker below, superseded for new writes/matches by ADR-018. Its start/bonus/history, immutable provenance and non-executing recovery constraints remain accepted; v3's nested schema remains frozen.
 
 Status: **Implemented/verified 2026-10-09 in authorized S2B-1 scope.** Existing preset product parameters remain unchanged; generic custom-map opt-in is implemented. No official rules are assigned by preset name.
 
@@ -47,7 +65,7 @@ Evidence: frozen S1 fixture and fresh PostgreSQL coordinator preserve the old 19
 
 ## ADR-015 — Match ruleset provenance and safe legacy restriction
 
-Historical F2 marker assignment: new matches used S1 at that checkpoint. ADR-017 now assigns the S2B-1 marker and explicitly supports verified S1 only with scenario mechanics disabled. Unknown/NULL restriction, immutable provenance and absence of automatic conversion remain accepted.
+Historical F2 marker assignment: new matches used S1 at that checkpoint. ADR-017 introduced S2B-1; ADR-018 assigns S2B-2 for new matches and supports verified S2B-1/eligible S1 non-fog games without changing their markers. Unknown/NULL restriction, immutable provenance and absence of automatic conversion remain accepted.
 
 Status: **Accepted by user; implemented/verified 2026-10-08, F2 Strategy C.**
 
@@ -63,7 +81,7 @@ Evidence — [[plans/persistence-auth#F2 — match ruleset compatibility (Strate
 
 ## ADR-014 — Seafarers turn history and codec v2
 
-Historical writer version/count: v2 and 42 fields at S1. ADR-017 advances new writes to v3/43 fields; v1/v2 reading and conservative missing ship-history semantics are preserved.
+Historical writer version/count: v2 and 42 fields at S1. ADR-017 advanced to v3/43; ADR-018 advances new writes to v4/43. Historical reading and conservative missing ship-history semantics are preserved.
 
 Status: **Implemented/verified 2026-10-08, authorized Seafarers S1.** Existing full codec v1 remains a frozen released schema; new writes use snapshot_version=2 / engine_compatibility=1, covering 42 GameState fields.
 
@@ -101,7 +119,7 @@ Consequences: startup Alembic is safe only under the one-worker/replica deployme
 
 ## ADR-011 — Separate full trusted GameState codec
 
-Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A. Historical checkpoint description below.** Codec remained unchanged in 1B; durable Room adapter uses it. Auth/Continue were unimplemented at 1A, subsequently completed in 1C/ADR-013. Current codec v3/2 and ruleset transition are described in ADR-017, with the compatibility gate retained from ADR-015; released v1/v2 remain readable and immutable.
+Status: **Accepted; implemented/verified 2026-10-06, Persistence Phase 1A. Historical checkpoint description below.** Codec remained unchanged in 1B; durable Room adapter uses it. Auth/Continue were unimplemented at 1A, subsequently completed in 1C/ADR-013. Current codec v4/3 and ruleset transition are described in ADR-018, with the compatibility gate retained from ADR-015; released v1/v2/v3 remain readable and immutable.
 
 Decision: full private engine persistence has its own `app/persistence/snapshots.py` surface, separate from existing network/offline serialize.to_dict/from_dict/to_player_dict. Envelope snapshot_version=1 / engine_compatibility=1 contains all shared GameState fields, explicit known dataclass construction and stored materialized geometry; it contains no Room/DB metadata. Restore does not execute commands, generate board or shuffle. Required/unknown fields, primitive types, references and versions fail closed; field-coverage guard prevents silent new engine field loss. v1 is immutable after release; future schemas need explicit version compatibility/migration.
 

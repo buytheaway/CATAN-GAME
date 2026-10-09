@@ -63,8 +63,9 @@ def test_committed_tie_or_historical_unawarded_tie_recovers_without_rescoring(
             # Compatible Continue updates metadata timestamps, never the head,
             # scores or consumed command receipts; recovery itself writes none.
             assert continued["head"] == bundle["head"]
-            assert continued["participants"] == bundle["participants"]
-            assert continued["receipts"] == bundle["receipts"]
+            for key, columns in (("participants", ("id",)), ("receipts", ("match_player_id", "seq"))):
+                identity = lambda row: tuple(row[column] for column in columns)
+                assert sorted(continued[key], key=identity) == sorted(bundle[key], key=identity)
             assert {k: v for k, v in continued["match"].items() if k != "updated_at"} == {
                 k: v for k, v in bundle["match"].items() if k != "updated_at"}
             if request:

@@ -7,6 +7,7 @@ from copy import deepcopy
 
 from app.engine.rules import RuleError, apply_cmd, check_win, end_turn_cleanup
 from app.engine.state import DEV_TYPES, RESOURCES
+from app.engine.exploration import has_fog, FOG_DISABLED_MESSAGE
 
 
 def integer(value, label, minimum, maximum):
@@ -16,6 +17,8 @@ def integer(value, label, minimum, maximum):
 
 
 def execute(room, cmd):
+    if has_fog(room.game):
+        raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
     action = cmd.get("action")
     shapes = {
         "give_resources": {"player", "resource", "amount"},

@@ -75,7 +75,7 @@ class Repository:
                     status="game_over" if row["match_status"] == "finished" else
                            "active" if row["match_status"] == "active" else "lobby",
                     target_vp=row["target_vp"], updated_at=row["updated_at"],
-                    ruleset=compatibility(row["ruleset_id"]) if row["match_status"] else None,
+                    ruleset=compatibility(row["ruleset_id"], room.game) if row["match_status"] else None,
                     winner={"name": row["winner_name"], "color": row["winner_color"]} if row["winner_name"] else None))
         return results
 

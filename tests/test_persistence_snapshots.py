@@ -275,7 +275,17 @@ def test_seafarers_ship_and_pirate_lifecycle(case):
     restore(seafarers_case(case))
 
 
+def released_v3_payload(g):
+    assert g.scenario.rules.fog is None and g.scenario.fog is None
+    payload = snapshots.encode_snapshot(g)
+    payload["snapshot_version"], payload["engine_compatibility"] = 3, 2
+    del payload["state"]["scenario"]["rules"]["fog"]
+    del payload["state"]["scenario"]["fog"]
+    return payload
+
+
 def released_v2_payload(g):
+    assert g.scenario.rules.fog is None and g.scenario.fog is None
     payload = snapshots.encode_snapshot(g)
     payload["snapshot_version"], payload["engine_compatibility"] = 2, 1
     del payload["state"]["scenario"]
@@ -685,7 +695,7 @@ def test_corrupt_types_and_references_are_cleanly_rejected(path, value):
         snapshots.decode_snapshot(payload)
 
 
-@pytest.mark.parametrize("version", [-1, 0, 4, 999])
+@pytest.mark.parametrize("version", [-1, 0, 5, 999])
 def test_unsupported_snapshot_version_has_explicit_error(version):
     payload = snapshots.encode_snapshot(main_game())
     payload["snapshot_version"] = version
@@ -693,7 +703,7 @@ def test_unsupported_snapshot_version_has_explicit_error(version):
         snapshots.decode_snapshot(payload)
 
 
-@pytest.mark.parametrize("version", [0, 1, 3])
+@pytest.mark.parametrize("version", [0, 1, 2, 4])
 def test_unsupported_engine_compatibility_has_explicit_error(version):
     payload = snapshots.encode_snapshot(main_game())
     payload["engine_compatibility"] = version

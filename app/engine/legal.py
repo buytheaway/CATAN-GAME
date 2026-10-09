@@ -6,9 +6,11 @@ from .rules import (
     can_upgrade_city, _victims_for_tile, _victims_for_pirate_tile,
 )
 from .state import GameState
+from .exploration import require_no_fog
 
 
 def board_legal_moves(g: GameState, pid: int) -> dict:
+    require_no_fog(g)
     legal = {
         "pid": pid, "settlements": [], "roads": [], "cities": [], "ships": [],
         "road_free": False, "robber_tiles": [], "pirate_tiles": [],

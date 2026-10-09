@@ -159,7 +159,7 @@ async def active_games(request: Request):
                 connected_count=sum(bool(p.name and p.connected) for p in room.players),
                 status="game_over" if row["status"] == "finished" else "active" if row["status"] == "active" else "lobby",
                 target_vp=int(row["target_vp"]), updated_at=row["updated_at"],
-                ruleset=compatibility(row["ruleset_id"]) if row["status"] else None,
+                ruleset=compatibility(row["ruleset_id"], room.game) if row["status"] else None,
                 winner={"name": row["winner_name"], "color": row["winner_color"]} if row["winner_name"] else None)["game"])
     return reply({"games": games})
 

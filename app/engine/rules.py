@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.engine import maps as map_loader
 from app.engine.shipping import is_open_ship
+from app.engine.exploration import FOG_DISABLED_MESSAGE, has_fog, initial_fog_state, validate_fog_state
 from app.engine.scenario import parse_scenario_rules, record_settlement, valid_starting_vertex, setup_has_capacity
 from app.engine.state import (
     AchievementState,
@@ -140,6 +141,7 @@ def build_game(
     map_data: Optional[Dict[str, Any]] = None,
     map_path: Optional[str] = None,
     starting_pid: int = 0,
+    *, fog_rng=None,
 ) -> GameState:
     rng = random.Random(seed)
     g = GameState(seed=seed, size=size, max_players=max_players)
@@ -152,7 +154,7 @@ def build_game(
             map_data = map_loader.get_preset_map(map_id)
     if map_id is None:
         map_id = map_name or str(map_data.get("name", "custom"))
-    board, robber_tile, rules = map_loader.build_board_from_map(map_data, rng, size)
+    board, robber_tile, rules = map_loader.build_board_from_map(map_data, rng, size, fog_rng=fog_rng)
     g.board = board
     g.robber_tile = robber_tile
     g.map_name = str(map_data.get("name", map_id or "custom"))
@@ -164,18 +166,21 @@ def build_game(
     g.rules = dict(rules)
     g.rules_config = parse_rules_config(g.rules)
     try:
-        g.scenario.rules = parse_scenario_rules(g.rules, g.board)
+        g.scenario.rules = parse_scenario_rules(g.rules, g.board, fog_slots=map_loader.fog_slots(map_data))
     except ValueError as exc:
         raise map_loader.MapValidationError(str(exc)) from exc
     if g.scenario.rules.new_island_vp:
         g.scenario.home_islands = {pid: set() for pid in range(max_players)}
+    if g.scenario.rules.fog is not None:
+        g.scenario.fog = initial_fog_state(g.board, g.scenario.rules.fog)
     g.robbers = [g.robber_tile for _ in range(int(g.rules_config.robber_count))]
     if getattr(g.rules_config, "enable_pirate", False):
         pirate_tile = map_data.get("pirate_tile") if isinstance(map_data, dict) else None
         if pirate_tile is None:
             sea_idx = None
             for idx, t in enumerate(g.tiles):
-                if t.terrain == "sea":
+                if t.terrain == "sea" and (g.scenario.rules.fog is None
+                        or idx not in g.scenario.rules.fog.initially_hidden):
                     sea_idx = idx
                     break
             pirate_tile = sea_idx
@@ -202,6 +207,7 @@ def build_game(
     )
     rng.shuffle(dev_deck)
     g.dev_deck = dev_deck
+    validate_fog_state(g)
     return g
 
 
@@ -861,6 +867,8 @@ def _find_offer(g: GameState, offer_id: int) -> Optional[TradeOffer]:
 
 
 def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]:
+    if has_fog(g):
+        raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
     if type(pid) is not int or not 0 <= pid < len(g.players):
         raise RuleError("invalid", "Invalid player")
     if not isinstance(cmd, dict):

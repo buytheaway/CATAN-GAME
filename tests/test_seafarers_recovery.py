@@ -100,7 +100,7 @@ def test_ship_lifecycle_committed_checkpoint_fresh_hydration_and_end_unlock(data
             await prepare(room, seafarers_case(case))
             before, meta = deepcopy(room.game), presentation(room)
             bundle = await coord.repository.load(room.id)
-            assert bundle["head"]["snapshot_version"] == 3
+            assert bundle["head"]["snapshot_version"] == 4
             fresh, restored = await hydrate(coord, room, monkeypatch)
             assert_equivalent(before, restored.game)
             assert presentation(restored) == meta
@@ -260,7 +260,7 @@ def test_verified_s1_match_with_v1_format_locks_unknown_history_then_end_upgrade
             assert (await fresh.repository.load(restored.id))["head"]["snapshot_version"] == 1
             await dispatch(restored, clients[0], {"type": "end_turn"})
             latest = (await fresh.repository.load(restored.id))["head"]
-            assert latest["snapshot_version"] == 3 and not restored.game.ship_moved_this_turn
+            assert latest["snapshot_version"] == 4 and not restored.game.ship_moved_this_turn
             fresh, after_end = await hydrate(fresh, restored, monkeypatch)
             assert not after_end.game.ship_moved_this_turn and not after_end.game.ships_built_this_turn
     asyncio.run(run())

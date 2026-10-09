@@ -6,6 +6,12 @@ tags: [catan, desktop]
 
 [[Точки входа]] · [[Игровой движок]] · [[Состояние игры]]
 
+## Unsupported fog path — S2B-2B.1
+
+Implemented **2026-10-09**: Qt does not support the trusted fog foundation. `_convert_base_state` rejects before projecting actual terrain; `_ui_game_to_engine_dict` rejects before building a save. Its call now sits inside `_save_game`'s existing error handler, so refusal is logged without overwriting the selected file. `_load_game` uses the gated shared offline decoder and logs refusal before replacing/redrawing the existing game; it does not rewrite the file.
+
+Three new [real offscreen Qt cases](../../tests/test_fog_desktop.py) cover conversion, save-to-existing-file and load-from-real-file safety. No alternate Qt fog model, gameplay rule, desktop renderer or PostgreSQL-format migration is added. Existing Base, ship-history/F3 and non-fog scenario round-trips remain in the full regression suite. Trusted fog restoration belongs only to the private codec; public availability is **DISABLED**. [[plans/seafarers-fog]]
+
 ## Scenario persistence — S2B-1
 
 Verified **2026-10-09**. Qt Game now keeps a copy of the shared ScenarioState; `_convert_base_state` and `_ui_game_to_engine_dict` preserve its rules/home/award ledger through actual `_save_game`/`_load_game`. No scenario rule/award calculation is added to Qt. Shared engine still decides legality and VP. A real offscreen Qt file round-trip plus accepted city command preserves existing island bonus without awarding again, including S1 ship-turn history; full pytest **881 passed**. Base/old saves retain disabled scenario defaults. Desktop scenario configuration UI and visible full-match acceptance were not added; PostgreSQL remains a separate trusted codec. Details — [[Состояние игры#Scenario persistence — S2B-1]].

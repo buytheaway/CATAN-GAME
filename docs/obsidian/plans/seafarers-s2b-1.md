@@ -9,6 +9,8 @@ updated: 2026-10-09
 
 ## Scope and checkpoint
 
+Historical S2B-1 checkpoint scope below. S2B-2B.1 supersedes new writer/marker with v4/3 and S2B-2, retaining explicit old schemas and non-fog rules. Trusted fog foundation is implemented/tested; public fog gameplay remains DISABLED. Current boundaries — [[plans/seafarers-fog]], [[Project State]].
+
 **Completed/verified 2026-10-09; READY FOR CHECKPOINT in explicit custom scenario scope.** S2A is committed as `e79dee4`; the working tree was clean before this task. A completed-phase commit and clean working tree satisfy the checkpoint gate. Tags are optional unless the user explicitly requires one. No automatic commit/tag. Named presets retain their approved existing rules; unapproved per-preset parameters remain deferred.
 
 Flow: custom map JSON → materialized board/topology → shared Python scenario configuration → setup/build validation → candidate GameState → PostgreSQL COMMIT → personalized snapshot/legal → existing React controller and renderers. Recovery restores recorded state, without executing gameplay rules.

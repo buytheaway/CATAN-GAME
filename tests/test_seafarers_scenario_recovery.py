@@ -93,7 +93,7 @@ def test_custom_creation_atomic_award_receipt_restart_reconnect_privacy_and_rema
             assert room.game.players[0].vp == before + 1 + bonus
             assert room.game.scenario.awarded_islands == {0: {13}}
             bundle = await coord.repository.load(room.id)
-            assert bundle["head"]["snapshot_version"] == 3 and bundle["head"]["engine_compatibility"] == 2
+            assert bundle["head"]["snapshot_version"] == 4 and bundle["head"]["engine_compatibility"] == 3
             assert bundle["match"]["ruleset_id"] == CURRENT_RULESET
             assert bundle["head"]["payload"]["engine"]["state"]["scenario"]["awarded_islands"] == {"0": [13]}
             proofs = [c.ws.latest("reconnect_token")["reconnect_token"] for c in clients]
@@ -184,7 +184,7 @@ def test_verified_s1_recovers_without_new_rules_and_advances_codec_without_recla
             await server._dispatch(c, command(restored, c, {"type": "noop"}))
             latest = await coord.repository.load(restored.id)
             assert latest["match"]["ruleset_id"] == LEGACY_S1_RULESET
-            assert latest["head"]["snapshot_version"] == 3
+            assert latest["head"]["snapshot_version"] == 4
             assert restore_room(latest).ruleset_id == LEGACY_S1_RULESET
     asyncio.run(run())
 

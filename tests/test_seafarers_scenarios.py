@@ -16,7 +16,7 @@ from app.engine.legal import board_legal_moves
 from app.engine.scenario import vertex_islands
 from app.engine.state import COST, ScenarioRules, ScenarioState
 from app.persistence import snapshots
-from tests.test_persistence_snapshots import released_v1_payload, released_v2_payload
+from tests.test_persistence_snapshots import released_v1_payload, released_v2_payload, released_v3_payload
 from tests.test_seafarers_maps import setup, fund, sea_path
 
 
@@ -260,7 +260,7 @@ def test_v3_roundtrip_keeps_ledger_without_reexecuting_rules_and_offline_ledger_
     g = scenario_game()
     destination = arrive(g)
     rules.apply_cmd(g, 0, {"type": "place_settlement", "vid": destination})
-    payload = snapshots.encode_snapshot(g)
+    payload = released_v3_payload(g)
     assert (payload["snapshot_version"], payload["engine_compatibility"]) == (3, 2)
     def forbidden(*args, **kwargs):
         pytest.fail("Normal recovery must never execute gameplay")
@@ -289,10 +289,11 @@ def test_erased_award_ledger_is_rejected_instead_of_allowing_duplicate_points_af
         serialize.from_dict(offline)
 
 
-@pytest.mark.parametrize("version,compat", [(1, 2), (2, 2), (3, 1)])
+@pytest.mark.parametrize("version,compat", [(1, 2), (2, 2), (3, 1), (4, 2)])
 def test_format_and_engine_compatibility_pairs_cannot_be_relabelled(version, compat):
     g = rules.build_game(1, 2)
-    payload = released_v1_payload(g) if version == 1 else released_v2_payload(g) if version == 2 else snapshots.encode_snapshot(g)
+    payload = {1: released_v1_payload, 2: released_v2_payload,
+               3: released_v3_payload, 4: snapshots.encode_snapshot}[version](g)
     payload["engine_compatibility"] = compat
     with pytest.raises(snapshots.UnsupportedEngineCompatibility):
         snapshots.decode_snapshot(payload)

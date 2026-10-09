@@ -444,6 +444,8 @@ class Game:
 
 
 def _convert_base_state(base) -> Game:
+    from app.engine.exploration import require_no_fog
+    require_no_fog(base)
     def _pt(p):
         return QtCore.QPointF(float(p[0]), float(p[1]))
 
@@ -523,6 +525,8 @@ def _rules_cfg_to_dict(cfg: Any) -> Dict[str, Any]:
 
 
 def _ui_game_to_engine_dict(g: Game) -> Dict[str, Any]:
+    from app.engine.exploration import require_no_fog
+    require_no_fog(g)
     def _edge_key(e: Tuple[int, int]) -> str:
         a, b = e
         return f"{a},{b}"
@@ -2453,8 +2457,8 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if not path:
             return
-        data = _ui_game_to_engine_dict(self.game)
         try:
+            data = _ui_game_to_engine_dict(self.game)
             Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception as exc:
             self._log(f"[!] Save failed: {exc}")

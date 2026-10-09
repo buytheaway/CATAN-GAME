@@ -1,19 +1,27 @@
 """Explicit scenario policy; no preset-name dispatch or recovery rule execution."""
-from app.engine.state import BoardState, GameState, ScenarioRules, ScenarioState
+from app.engine.state import BoardState, FogRules, GameState, ScenarioRules, ScenarioState
+from app.engine.exploration import (FOG_PROFILE, FOG_DISABLED_MESSAGE, FogUnavailableError,
+                                    initially_visible_land, require_non_fog_data,
+                                    validate_fog_rules, validate_fog_state)
 from app.engine.topology import island_ids, land_components
 
 
-def parse_scenario_rules(rules: dict, board: BoardState | None = None) -> ScenarioRules:
+def parse_scenario_rules(rules: dict, board: BoardState | None = None, *, fog_slots: tuple[int, ...] = ()) -> ScenarioRules:
     raw = rules.get("scenario", {})
-    if type(raw) is not dict or set(raw) - {"starting_islands", "new_island_vp"}:
-        raise ValueError("rules.scenario must contain only starting_islands and new_island_vp")
+    if type(raw) is not dict or set(raw) - {"starting_islands", "new_island_vp", "fog"}:
+        raise ValueError("rules.scenario must contain only starting_islands, new_island_vp and fog")
     starts, bonus = raw.get("starting_islands"), raw.get("new_island_vp", 0)
     if starts is not None and (type(starts) is not list or not starts
             or any(type(i) is not int or i < 0 for i in starts) or len(set(starts)) != len(starts)):
         raise ValueError("scenario.starting_islands must be a nonempty list of unique island IDs")
     if type(bonus) is not int or not 0 <= bonus <= 10:
         raise ValueError("scenario.new_island_vp must be an integer from 0 to 10")
-    config = ScenarioRules(None if starts is None else tuple(sorted(starts)), bonus)
+    fog = raw.get("fog")
+    if fog is not None:
+        if type(fog) is not dict or set(fog) != {"profile"} or fog["profile"] != FOG_PROFILE:
+            raise ValueError("Unsupported fog profile")
+        fog = FogRules(fog["profile"], fog_slots)
+    config = ScenarioRules(None if starts is None else tuple(sorted(starts)), bonus, fog)
     validate_scenario_rules(config, board, rules.get("enable_seafarers") is True)
     return config
 
@@ -28,6 +36,10 @@ def validate_scenario_rules(config: ScenarioRules, board: BoardState | None, sea
         raise ValueError("Invalid scenario starting islands")
     if (starts is not None or config.new_island_vp) and not seafarers:
         raise ValueError("Scenario island rules require Seafarers")
+    if config.fog is not None:
+        if not seafarers or starts is not None or config.new_island_vp:
+            raise ValueError("Fog requires Seafarers without starting_islands or island VP bonuses")
+        validate_fog_rules(config.fog, board)
     if board is not None and starts is not None and not set(starts) <= land_components(board).keys():
         raise ValueError("Starting island ID does not exist in the materialized board")
 
@@ -38,6 +50,9 @@ def vertex_islands(board: BoardState, vid: int) -> set[int]:
 
 
 def valid_starting_vertex(g: GameState, vid: int) -> bool:
+    if g.scenario.rules.fog is not None:
+        return bool(initially_visible_land(g.board, g.scenario.rules.fog.initially_hidden)
+                    .intersection(g.vertex_adj_hexes.get(vid, ())))
     starts = g.scenario.rules.starting_islands
     return starts is None or bool(vertex_islands(g.board, vid).intersection(starts))
 
@@ -49,12 +64,16 @@ def setup_has_capacity(g: GameState, chosen: int | None = None) -> bool:
     vertex count minus maximum matching, so no exponential opening search.
     This is a setup guard, never a recovery side effect or a Base rule.
     """
-    if g.scenario.rules.starting_islands is None:
+    if g.scenario.rules.starting_islands is None and g.scenario.rules.fog is None:
         return True
-    allowed = set(g.scenario.rules.starting_islands)
-    islands = island_ids(g.board)
-    candidates = {v for v, adjacent in g.vertex_adj_hexes.items()
-                  if any(islands.get(i) in allowed for i in adjacent)}
+    if g.scenario.rules.fog is not None:
+        land = initially_visible_land(g.board, g.scenario.rules.fog.initially_hidden)
+        candidates = {v for v, adjacent in g.vertex_adj_hexes.items() if land.intersection(adjacent)}
+    else:
+        allowed = set(g.scenario.rules.starting_islands)
+        islands = island_ids(g.board)
+        candidates = {v for v, adjacent in g.vertex_adj_hexes.items()
+                      if any(islands.get(i) in allowed for i in adjacent)}
     neighbors = {v: set() for v in g.vertices}
     for a, b in g.edges:
         neighbors[a].add(b)
@@ -113,6 +132,9 @@ def record_settlement(g: GameState, pid: int, vid: int, *, setup: bool) -> int:
 
 
 def scenario_to_dict(state: ScenarioState) -> dict:
+    # This is the UI/offline converter, not the trusted persistence codec.
+    if state.fog is not None or state.rules.fog is not None:
+        raise FogUnavailableError(FOG_DISABLED_MESSAGE)
     return {"rules": {"starting_islands": None if state.rules.starting_islands is None
                      else list(state.rules.starting_islands), "new_island_vp": state.rules.new_island_vp},
             "home_islands": {str(pid): sorted(ids) for pid, ids in state.home_islands.items()},
@@ -122,6 +144,7 @@ def scenario_to_dict(state: ScenarioState) -> dict:
 def validate_scenario_state(g: GameState) -> None:
     """Validate recorded references/history; never recalculate VP or awards."""
     validate_scenario_rules(g.scenario.rules, g.board, g.rules_config.enable_seafarers)
+    validate_fog_state(g)
     homes, awards = g.scenario.home_islands, g.scenario.awarded_islands
     if not g.scenario.rules.new_island_vp:
         if homes or awards:
@@ -149,6 +172,7 @@ def validate_scenario_state(g: GameState) -> None:
 
 def scenario_from_dict(data: dict, board: BoardState, seafarers: bool) -> ScenarioState:
     # Offline/UI conversion preserves the ledger, rather than deriving it from VP.
+    require_non_fog_data({"scenario": data})
     if type(data) is not dict or set(data) != {"rules", "home_islands", "awarded_islands"}:
         raise ValueError("Scenario state requires rules and complete island history")
     config = parse_scenario_rules({"enable_seafarers": seafarers, "scenario": data["rules"]}, board)
