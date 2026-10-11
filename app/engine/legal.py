@@ -6,11 +6,12 @@ from .rules import (
     can_upgrade_city, _victims_for_tile, _victims_for_pirate_tile,
 )
 from .state import GameState
-from .exploration import require_no_fog
+from .exploration import has_fog, require_no_fog, tile_is_known
 
 
-def board_legal_moves(g: GameState, pid: int) -> dict:
-    require_no_fog(g)
+def board_legal_moves(g: GameState, pid: int, *, trusted_fog: bool = False) -> dict:
+    if trusted_fog is not True:
+        require_no_fog(g)
     legal = {
         "pid": pid, "settlements": [], "roads": [], "cities": [], "ships": [],
         "road_free": False, "robber_tiles": [], "pirate_tiles": [],
@@ -20,23 +21,24 @@ def board_legal_moves(g: GameState, pid: int) -> dict:
     if g.game_over or not 0 <= pid < len(g.players) or pid != g.turn:
         return legal
 
-    # No live object is used for execution. The seven board commands read this
-    # geometry; reusing it inside the isolated copy avoids copying the graph for
-    # every target. Mutable occupancy, hands, bank and flags are copied per probe.
+    # Never reuse live data. Non-fog probes may share an isolated base geometry;
+    # fog probes get a complete copy, including terrain and discovery history.
     base = deepcopy(g)
     geometry = (base.tiles, base.vertices, base.edges, base.vertex_adj_hexes,
-                base.edge_adj_hexes, base.board.ports)
+                base.edge_adj_hexes, base.board.ports) if not has_fog(g) else ()
 
     def accepts(cmd):
         probe = deepcopy(base, {id(value): value for value in geometry})
         try:
-            apply_cmd(probe, pid, cmd)
+            apply_cmd(probe, pid, cmd, trusted_fog=trusted_fog)
         except RuleError:
             return False
         return True
 
     if g.pending_action == "robber_move":
         for tile, terrain in enumerate(g.tiles):
+            if not tile_is_known(g, tile):
+                continue
             pirate = terrain.terrain == "sea"
             kind = "pirate" if pirate else "robber"
             if accepts({"type": "move_" + kind, "tile": tile}):

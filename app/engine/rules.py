@@ -6,7 +6,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.engine import maps as map_loader
 from app.engine.shipping import is_open_ship
-from app.engine.exploration import FOG_DISABLED_MESSAGE, has_fog, initial_fog_state, validate_fog_state
+from app.engine.exploration import (
+    FOG_DISABLED_MESSAGE, has_fog, initial_fog_state, validate_fog_state,
+    tile_is_known, is_known_land, is_known_sea, discover_route, record_gold_reward,
+    exhaust_gold_rewards, take_completed_continuation,
+)
 from app.engine.scenario import parse_scenario_rules, record_settlement, valid_starting_vertex, setup_has_capacity
 from app.engine.state import (
     AchievementState,
@@ -56,6 +60,8 @@ def _tile(g: GameState, value: Any, sea: bool) -> int:
     tile = _integer(value, "tile")
     if not 0 <= tile < len(g.tiles):
         raise RuleError("invalid", "Tile does not exist on this map")
+    if not tile_is_known(g, tile):
+        raise RuleError("illegal", "Tile is not discovered")
     if (g.tiles[tile].terrain == "sea") != sea:
         raise RuleError("illegal", "Expected sea hex" if sea else "Expected land hex")
     return tile
@@ -215,7 +221,7 @@ def can_place_settlement(g: GameState, pid: int, vid: int, require_road: bool) -
     if g.phase == "setup" and not valid_starting_vertex(g, vid):
         return False
     if vid not in g.vertices or not any(
-        g.tiles[ti].terrain != "sea" for ti in g.vertex_adj_hexes.get(vid, [])
+        is_known_land(g, ti) for ti in g.vertex_adj_hexes.get(vid, [])
     ):
         return False
     if vid in g.occupied_v:
@@ -239,6 +245,8 @@ def can_place_road(g: GameState, pid: int, e: Tuple[int, int], must_touch_vid: O
         return False
     if _edge_is_sea(g, e):
         return False
+    if has_fog(g) and not any(is_known_land(g, ti) for ti in g.edge_adj_hexes.get(e, ())):
+        return False
     a, b = e
     if must_touch_vid is not None and (a != must_touch_vid and b != must_touch_vid):
         return False
@@ -256,7 +264,7 @@ def can_place_road(g: GameState, pid: int, e: Tuple[int, int], must_touch_vid: O
 
 def _edge_has_sea(g: GameState, e: Tuple[int, int]) -> bool:
     for ti in g.edge_adj_hexes.get(e, []):
-        if g.tiles[ti].terrain == "sea":
+        if is_known_sea(g, ti):
             return True
     return False
 
@@ -265,7 +273,7 @@ def _edge_is_sea(g: GameState, e: Tuple[int, int]) -> bool:
     adj = g.edge_adj_hexes.get(e, [])
     if not adj:
         return False
-    return all(g.tiles[ti].terrain == "sea" for ti in adj)
+    return all(is_known_sea(g, ti) for ti in adj)
 
 
 def _edge_blocked_by_pirate(g: GameState, e: Tuple[int, int]) -> bool:
@@ -352,6 +360,8 @@ def distribute_for_roll(g: GameState, roll: int) -> None:
     robbers = set(getattr(g, "robbers", []) or [g.robber_tile])
     for vid, (pid, level) in g.occupied_v.items():
         for ti in g.vertex_adj_hexes.get(vid, []):
+            if not tile_is_known(g, ti):
+                continue
             t = g.tiles[ti]
             if t.number != roll:
                 continue
@@ -772,6 +782,8 @@ def _collect_gold_yields(g: GameState, roll: int) -> Dict[int, int]:
     robbers = set(getattr(g, "robbers", []) or [g.robber_tile])
     for vid, (pid, level) in g.occupied_v.items():
         for ti in g.vertex_adj_hexes.get(vid, []):
+            if not tile_is_known(g, ti):
+                continue
             t = g.tiles[ti]
             if t.number != roll or ti in robbers:
                 continue
@@ -786,6 +798,7 @@ def _advance_gold_choice(g: GameState) -> None:
     # Preserve the numeric recipient order. If no resource cards remain, no
     # possible command could satisfy the outstanding requests: finish them.
     if not any(g.bank.get(r, 0) > 0 for r in RESOURCES):
+        exhaust_gold_rewards(g)
         g.pending_gold = {}
     g.pending_gold_queue = [pid for pid in g.pending_gold_queue
                             if g.pending_gold.get(pid, 0) > 0]
@@ -812,6 +825,21 @@ def _finish_setup_route(g: GameState) -> None:
         g.turn = g.setup_order[0]
     else:
         g.turn = g.setup_order[g.setup_idx]
+
+
+def _finish_route(g: GameState, pid: int, edge: Tuple[int, int], command: str,
+                  setup: bool, events: List[Dict]) -> None:
+    discoveries, gold = discover_route(g, pid, edge, command=command, setup=setup)
+    events.extend(discoveries)
+    if gold:
+        _begin_gold_choice(g, {pid: gold})
+        # An empty bank completes all entries as unavailable immediately.
+        take_completed_continuation(g)
+    if g.scenario.fog is not None and g.scenario.fog.continuation is not None:
+        return
+    check_win(g)
+    if setup:
+        _finish_setup_route(g)
 
 
 def _steal_one(g: GameState, thief_pid: int, victim_pid: int) -> Optional[str]:
@@ -866,9 +894,13 @@ def _find_offer(g: GameState, offer_id: int) -> Optional[TradeOffer]:
     return None
 
 
-def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]:
+def apply_cmd(g: GameState, pid: int, cmd: Dict, *, trusted_fog: bool = False) -> Tuple[GameState, List[Dict]]:
+    # Internal execution is explicit and is never read from a command payload.
+    # Public server, debug, UI serialization and Qt keep their independent gates.
     if has_fog(g):
-        raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
+        if trusted_fog is not True:
+            raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
+        validate_fog_state(g)
     if type(pid) is not int or not 0 <= pid < len(g.players):
         raise RuleError("invalid", "Invalid player")
     if not isinstance(cmd, dict):
@@ -927,6 +959,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             if after_count == 2:
                 granted: Dict[str, int] = {}
                 for ti in g.vertex_adj_hexes.get(vid, []):
+                    if not tile_is_known(g, ti):
+                        continue
                     t = g.tiles[ti]
                     res = TERRAIN_TO_RES.get(t.terrain)
                     if not res:
@@ -943,7 +977,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
                     "granted": granted,
                 })
                 if getattr(g.rules_config, "enable_gold", False):
-                    gold = sum(g.tiles[ti].terrain == "gold"
+                    gold = sum(tile_is_known(g, ti) and g.tiles[ti].terrain == "gold"
                                for ti in g.vertex_adj_hexes.get(vid, []))
                     if gold:
                         _begin_gold_choice(g, {pid: gold})
@@ -983,9 +1017,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
                 raise RuleError("illegal", "Road limit reached")
             g.occupied_e[e] = pid
             update_longest_road(g)
-            check_win(g)
-            _finish_setup_route(g)
             events.append({"type": "place_road", "pid": pid, "eid": [a, b]})
+            _finish_route(g, pid, e, "place_road", setup, events)
             return g, events
 
         if g.turn != pid or g.phase != "main":
@@ -1009,8 +1042,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             pay_to_bank(g, pid, COST["road"])
         g.occupied_e[e] = pid
         update_longest_road(g)
-        check_win(g)
         events.append({"type": "place_road", "pid": pid, "eid": [a, b]})
+        _finish_route(g, pid, e, "place_road", setup, events)
         return g, events
 
     if ctype == "build_ship":
@@ -1045,12 +1078,10 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
                 pay_to_bank(g, pid, COST["ship"])
         g.occupied_ships[e] = pid
         update_longest_road(g)
-        check_win(g)
-        if setup:
-            _finish_setup_route(g)
-        else:
+        if not setup:
             g.ships_built_this_turn = set(getattr(g, "ships_built_this_turn", set())) | {e}
         events.append({"type": "build_ship", "pid": pid, "eid": [a, b]})
+        _finish_route(g, pid, e, "build_ship", setup, events)
         return g, events
 
     if ctype == "upgrade_city":
@@ -1166,6 +1197,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
             raise RuleError("invalid", "Quantity exceeds pending gold")
         if g.bank.get(res, 0) < qty:
             raise RuleError("illegal", "Bank has not enough resources")
+        record_gold_reward(g, pid, res, qty)
         g.bank[res] -= qty
         g.players[pid].res[res] += qty
         remaining -= qty
@@ -1175,6 +1207,11 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         else:
             g.pending_gold[pid] = remaining
         _advance_gold_choice(g)
+        continuation = take_completed_continuation(g)
+        if continuation is not None:
+            check_win(g)
+            if continuation.setup:
+                _finish_setup_route(g)
         events.append({"type": "choose_gold", "pid": pid, "res": res, "qty": qty})
         return g, events
 
@@ -1339,8 +1376,8 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict) -> Tuple[GameState, List[Dict]]
         g.occupied_ships[to_e] = pid
         g.ship_moved_this_turn = True
         update_longest_road(g)
-        check_win(g)
         events.append({"type": "move_ship", "from_eid": [from_e[0], from_e[1]], "to_eid": [to_e[0], to_e[1]]})
+        _finish_route(g, pid, to_e, "move_ship", False, events)
         return g, events
 
     if ctype == "trade_bank":

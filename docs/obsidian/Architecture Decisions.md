@@ -1,6 +1,6 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-09
+updated: 2026-10-12
 ---
 
 # Architecture Decisions
@@ -10,6 +10,10 @@ updated: 2026-10-09
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
 
 ## ADR-018 — Trusted fog foundation with public feature disabled
+
+**S2B-2B.2A follow-up, authorized/implemented/tested 2026-10-12:** the foundation decision below is retained as historical checkpoint scope (`0fa8f6d`). Internal discovery/rewards/known-terrain execution and Gold continuations now exist. `apply_cmd` and `board_legal_moves` require explicit keyword-only `trusted_fog=True` for internal fog; the default and every public WS/debug/serializer/Qt boundary remain disabled. Accepted routes reveal endpoint-adjacent original IDs once, with durable reward/continuation records; unknown terrain cannot decide placement, production, initial grants or robber/pirate targets. Setup advancement and current-player victory resume once after discovery Gold finishes.
+
+The private commit opt-in is limited to an existing current-marker fog match with unchanged epoch/status/timer and no lifecycle operation; assignment/history and historical-finished-state fences remain. Coordinator/Repository keep the real COMMIT/receipt/promotion/uncertainty path. Unknown provenance cannot opt in; no public handler forwards a client field as this keyword. Codec v4/3, marker and pure recovery remain unchanged. Secure playable projection/events/frontend/rendering are still planned, **public DISABLED**. Evidence and rollback limits — [[plans/seafarers-fog]].
 
 Status: **Implemented, authorized S2B-2B.1, 2026-10-09.** Public fog availability is **DISABLED**. Verification results and limits — [[plans/seafarers-fog]]. This is the approved custom `shared-preassigned-v1` profile, not official Fog Islands draw-on-reveal semantics.
 

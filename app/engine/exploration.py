@@ -1,8 +1,9 @@
-"""Trusted fog foundation. No discovery execution or resource awards yet.
+"""Trusted fog domain and internal exploration execution.
 
-Public fog support is deliberately disabled until the executor and every
-player-facing projection use known terrain. Never serialize this domain to UI.
+Public fog support remains disabled until secure player-facing projections and
+renderers exist. Never serialize this domain directly to UI.
 """
+from dataclasses import replace
 from hashlib import sha256
 import json
 import re
@@ -95,6 +96,95 @@ def initially_visible_coasts(board: BoardState, hidden: tuple[int, ...]) -> set[
             if not set(adjacent).intersection(hidden)
             and sum(board.tiles[i].terrain != "sea" for i in adjacent) == 1
             and (len(adjacent) == 1 or any(board.tiles[i].terrain == "sea" for i in adjacent))}
+
+
+def tile_is_known(g: GameState, tile_index: int) -> bool:
+    config = g.scenario.rules.fog
+    return config is None or (tile_index not in config.initially_hidden
+                              or tile_index in g.scenario.fog.revealed)
+
+
+def is_known_land(g: GameState, tile_index: int) -> bool:
+    return tile_is_known(g, tile_index) and g.tiles[tile_index].terrain != "sea"
+
+
+def is_known_sea(g: GameState, tile_index: int) -> bool:
+    return tile_is_known(g, tile_index) and g.tiles[tile_index].terrain == "sea"
+
+
+def known_land_tiles(g: GameState) -> set[int]:
+    return {i for i in range(len(g.tiles)) if is_known_land(g, i)}
+
+
+def discover_route(g: GameState, pid: int, edge: tuple[int, int], *,
+                   command: str, setup: bool) -> tuple[list[dict], int]:
+    """Only called AFTER accepted route validation/payment/occupancy mutation.
+
+    Revealing changes frozen history, never the preassigned Tile or graph.
+    Vertex adjacency deliberately includes tiles touching only one endpoint.
+    Gold choices use the existing executor's pending lifecycle after this step.
+    """
+    state = g.scenario.fog
+    if state is None:
+        return [], 0
+    adjacent = set(g.edge_adj_hexes.get(edge, ()))
+    for vertex in edge:
+        adjacent.update(g.vertex_adj_hexes.get(vertex, ()))
+    discovered = sorted(adjacent.intersection(g.scenario.rules.fog.initially_hidden) - state.revealed)
+    entries, events = [], []
+    for tile_index in discovered:
+        terrain = g.tiles[tile_index].terrain
+        resource = TERRAIN_TO_RES[terrain]
+        status = "none"
+        if terrain == "gold":
+            status = "pending"
+        elif resource is not None:
+            status = "unavailable"
+            if g.bank.get(resource, 0) > 0:
+                g.bank[resource] -= 1
+                g.players[pid].res[resource] += 1
+                status = "awarded"
+        entry = FogDiscovery(tile_index, pid, status, resource if status == "awarded" else None)
+        entries.append(entry)
+        # Trusted engine events only; public serialization/publication is gated.
+        events.append({"type": "discover_tile", "pid": pid, "tile": tile_index})
+    gold = sum(entry.reward_status == "pending" for entry in entries)
+    g.scenario.fog = replace(state, revealed=state.revealed.union(discovered),
+        discoveries=state.discoveries + tuple(entries),
+        continuation=FogContinuation(command, pid, edge, setup) if gold else None)
+    return events, gold
+
+
+def record_gold_reward(g: GameState, pid: int, resource: str, qty: int) -> None:
+    """Consume discovery entries in recorded order after choose_gold validation."""
+    state = g.scenario.fog
+    if state is None or state.continuation is None:
+        return  # Ordinary production/setup Gold has no discovery ledger.
+    entries = []
+    for entry in state.discoveries:
+        if qty and entry.pid == pid and entry.reward_status == "pending":
+            entry = replace(entry, reward_status="awarded", resource=resource)
+            qty -= 1
+        entries.append(entry)
+    g.scenario.fog = replace(state, discoveries=tuple(entries))
+
+
+def exhaust_gold_rewards(g: GameState) -> None:
+    """No available card means remaining discovery entitlements cannot be paid."""
+    state = g.scenario.fog
+    if state is not None and state.continuation is not None:
+        g.scenario.fog = replace(state, discoveries=tuple(
+            replace(entry, reward_status="unavailable") if entry.reward_status == "pending" else entry
+            for entry in state.discoveries))
+
+
+def take_completed_continuation(g: GameState) -> FogContinuation | None:
+    state = g.scenario.fog
+    if (state is None or state.continuation is None
+            or any(entry.reward_status == "pending" for entry in state.discoveries)):
+        return None
+    g.scenario.fog = replace(state, continuation=None)
+    return state.continuation
 
 
 def validate_fog_state(g: GameState) -> None:

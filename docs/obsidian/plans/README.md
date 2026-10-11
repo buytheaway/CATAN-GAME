@@ -15,8 +15,8 @@ tags: [catan, планы]
 - [[plans/board3d]] — Phases 1–3/polish и terrain/building GLB integration завершены. Default 3D и SVG используют один snapshot/controller; interactive renderer не исполняет правила.
 - [[plans/seafarers-s1]] — historical completed S1, проверен 2026-10-08; S1/F1/F2/F3 checkpoint `seafarers-hardening-s1` → `b5cc066`.
 - [[plans/seafarers-s2a]] — maps/islands/coasts/ports и no-desert robber завершены и проверены 2026-10-09; checkpoint commit `e79dee4`. Tag optional, не блокирует development.
-- [[plans/seafarers-s2b-1]] — explicit custom scenario start/bonus rules, capacity guard, public VP, codec v3 and durable provenance завершены и проверены 2026-10-09. Named preset policies сохранены; unapproved parameters/fog/discovery/S2C/S3 остаются future work.
-- [[plans/seafarers-fog]] — S2B-2B.1 trusted domain/private recipe v2/codec v4 и disabled public gates реализованы и проверены 2026-10-09. **Public fog DISABLED**; playable exploration/rewards/projection/legal/rendering остаются S2B-2B.2, не начатой автоматически.
+- [[plans/seafarers-s2b-1]] — explicit custom scenario start/bonus rules, capacity guard, public VP, codec v3 and durable provenance завершены и проверены 2026-10-09. Named preset policies сохранены; unapproved parameters/public playable fog/S2C/S3 остаются future work.
+- [[plans/seafarers-fog]] — foundation `0fa8f6d` и S2B-2B.2A internal exploration/rewards/Gold continuation/known-terrain probes/PG recovery завершены и проверены 2026-10-12. **Public fog DISABLED**; secure playable projection/events/frontend/SVG/Three остаются planned. Следующие этапы не начаты автоматически.
 - [[plans/persistence-auth]] — Persistence 1A/1B/1C, Auth Phase 1 и F2 safe legacy restriction завершены; profiles/history/reset и Strategy D conversion planned, не реализованы.
 - [[Сервер и протокол#Private publication authorization — F1]] и [[Desktop клиент#Ship lifecycle persistence — F3]] — узкие fixes завершены; отдельные дублирующие планы не создавались.
 - [[plans/plan-template]] — форма для новой крупной задачи; сначала проверить отсутствие существующего плана.

@@ -1,7 +1,7 @@
 """Explicit scenario policy; no preset-name dispatch or recovery rule execution."""
 from app.engine.state import BoardState, FogRules, GameState, ScenarioRules, ScenarioState
 from app.engine.exploration import (FOG_PROFILE, FOG_DISABLED_MESSAGE, FogUnavailableError,
-                                    initially_visible_land, require_non_fog_data,
+                                    known_land_tiles, require_non_fog_data,
                                     validate_fog_rules, validate_fog_state)
 from app.engine.topology import island_ids, land_components
 
@@ -51,8 +51,7 @@ def vertex_islands(board: BoardState, vid: int) -> set[int]:
 
 def valid_starting_vertex(g: GameState, vid: int) -> bool:
     if g.scenario.rules.fog is not None:
-        return bool(initially_visible_land(g.board, g.scenario.rules.fog.initially_hidden)
-                    .intersection(g.vertex_adj_hexes.get(vid, ())))
+        return bool(known_land_tiles(g).intersection(g.vertex_adj_hexes.get(vid, ())))
     starts = g.scenario.rules.starting_islands
     return starts is None or bool(vertex_islands(g.board, vid).intersection(starts))
 
@@ -67,7 +66,7 @@ def setup_has_capacity(g: GameState, chosen: int | None = None) -> bool:
     if g.scenario.rules.starting_islands is None and g.scenario.rules.fog is None:
         return True
     if g.scenario.rules.fog is not None:
-        land = initially_visible_land(g.board, g.scenario.rules.fog.initially_hidden)
+        land = known_land_tiles(g)
         candidates = {v for v, adjacent in g.vertex_adj_hexes.items() if land.intersection(adjacent)}
     else:
         allowed = set(g.scenario.rules.starting_islands)

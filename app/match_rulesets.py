@@ -31,7 +31,8 @@ class RulesetCompatibilityError(RuntimeError):
     pass
 
 
-def validate_transition(before, candidate, *, snapshot=False, receipt=None, operation=None):
+def validate_transition(before, candidate, *, snapshot=False, receipt=None, operation=None,
+                        trusted_fog=False):
     """Fence all commit paths, including metadata-only reconnect and RAM tests."""
     if before and before.match_uuid == candidate.match_uuid and before.ruleset_id != candidate.ruleset_id:
         raise RulesetCompatibilityError("An existing match's ruleset is immutable")
@@ -49,6 +50,17 @@ def validate_transition(before, candidate, *, snapshot=False, receipt=None, oper
             and not restricted(before)):
         raise RulesetCompatibilityError("S1 matches cannot acquire new scenario rules")
     if not restricted(before):
+        return
+    # Internal engine acceptance may persist an existing native fog fixture.
+    # This keyword is never accepted from WS data; public compatibility remains
+    # restricted. Unknown provenance, epoch changes and lifecycle operations
+    # cannot use it. All assignment/history fences above still apply.
+    if (trusted_fog is True and before.ruleset_id == candidate.ruleset_id == CURRENT_RULESET
+            and has_fog(before.game) and has_fog(candidate.game)
+            and before.match_uuid == candidate.match_uuid and before.match_id == candidate.match_id
+            and before.status == candidate.status and before.timer == candidate.timer
+            and before.timer_paused == candidate.timer_paused and operation is None
+            and (not before.game.game_over or before.game == candidate.game)):
         return
     if (snapshot or receipt or operation and operation["kind"] in ("start_match", "rematch")
             or any(getattr(before, key) != getattr(candidate, key) for key in

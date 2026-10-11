@@ -83,7 +83,9 @@ def test_real_websocket_rejections_never_echo_recipe_or_publish_trusted_tiles(li
             # Inject only a trusted server fixture. Public map/start handlers stay real.
             room.game = fog_game()
             before = deepcopy(room.game)
-            for action in ({"type": "roll"}, {"type": "test_action", "action": "set_vp", "player": 0, "vp": 12}):
+            for action in ({"type": "roll"}, {"type": "test_action", "action": "set_vp", "player": 0, "vp": 12},
+                           {"type": "place_road", "eid": [0, 1], "trusted_fog": True},
+                           {"type": "choose_gold", "res": "ore", "trusted_fog": True}):
                 await _send_cmd(a, room.match_id, 1, action)
                 error = await _recv_error(a, "feature_disabled")
                 assert error["code"] == "feature_disabled"

@@ -1,13 +1,17 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-09
+updated: 2026-10-12
 ---
 
 # Project State
 
 ## Current verification and status
 
-Последняя verification — **S2B-2B.1 trusted fog foundation, 2026-10-09: 1003 Python passed, 0 skipped**, 142.31 s, с реальной изолированной PostgreSQL и offscreen Qt; **253 web passed**, TypeScript прошёл. 93 новых fog cases покрывают domain/recipe/codec, реальные WS gates, PostgreSQL restart/Continue/ownership и реальные Qt refusal paths. Полный suite включает прежние S2B-1/Largest Army/F1/F2/F3/Base/Seafarers regressions. Public fog availability — **DISABLED**; exploration/rewards/secure playable projection/rendering не реализованы. Build/browser/Docker production/scenario suite в этой backend foundation задаче не повторялись.
+Последняя verification — **S2B-2B.2A internal exploration engine, 2026-10-12: 1085 Python passed, 0 skipped**, 163.53 s, с реальной изолированной PostgreSQL 17 и offscreen Qt. 82 новых cases проверяют открытия/награды/Gold/setup/Road Building, known-terrain predicates, изоляцию probes, COMMIT/receipts/retry/recovery и сохранение gates. Полный suite включает прежние S2B-1/Largest Army/F1/F2/F3/Base/Seafarers regressions. Public fog availability — **DISABLED**: внутренний engine implemented/tested, безопасный playable projection/frontend/rendering ещё planned. Системная temp-папка pytest была недоступна; финальный полный run использовал отдельную ignored `.venv/test-artifacts` папку без изменений assertions/permissions.
+
+Scenario suite повторён: **348/508**, те же 160 historical failures (**140 pre-roll +20 pirate connectivity**), без изменения harness/assertions. Четыре полных internal setup acceptance для 2/6 игроков с обычным/повёрнутым starter прошли, с JSON v4 round-trip после каждого accepted command. Это не browser fog match. Web/TypeScript/build/Docker/browser не повторялись: React/Board3D/protocol/assets/deployment не менялись, прежний web result не объявляется новым.
+
+Historical S2B-2B.1 verification, 2026-10-09: **1003 Python passed, 0 skipped**, 142.31 s; **253 web passed**, TypeScript прошёл. Foundation checkpoint — `0fa8f6d`; S2B-2B.2A начат от clean HEAD `df5c813` и автоматически не коммитится. В S2B-2B.1 discovery/reward executor ещё отсутствовал; он добавлен только в текущей internal фазе. Подробные доказательства и границы — [[plans/seafarers-fog]].
 
 Historical Largest Army verification, 2026-10-09: **906 passed, 0 skipped**, 119.61 s, с изолированной PostgreSQL; сначала 25 targeted cases. Новая schema проверяет исторический v3 отдельно от writer v4. При текущей проверке исправлено только сравнение unordered SQL participant/receipt rows по их полным primary keys, без ослабления проверки содержимого. Старые checkpoint counts ниже не являются новыми прогонами.
 
@@ -15,9 +19,10 @@ Historical S2B-1 verification, 2026-10-09: **881 pytest / 253 web tests**, TypeS
 
 | Возможность | Реализация и фактическая проверка | Что остаётся |
 | --- | --- | --- |
-| Seafarers S1 core | Implemented/tested: mixed route/ties/own-turn victory, ship lifecycle, island settlement connectivity, Gold и robber/pirate validation; повторно зелёные в S2B-1. Largest Army tie исправлен отдельным focused patch ниже | Fog/exploration — planned; полные natural matches — planned S3 |
-| Seafarers S2B-1 scenarios | Implemented/tested: explicit custom configuration, restricted setup/capacity, per-player home/award ledger, public special VP, codec v3/new marker, PG recovery/receipt and Qt round-trip | Все четыре preset defaults сохранены; их новые product parameters не утверждены. Official scenario replicas, exploration/fog, S2C generator/balance не реализованы |
-| Seafarers S2B-2B.1 fog foundation | Implemented/tested: explicit private recipe v2, frozen fog records/monotonic transition validation, private assignment, codec v4/3 and new marker `catan-seafarers-s2b-2`, safe WS/PG/Qt gates | **Public DISABLED; partially implemented feature**. Discovery triggers/rewards/Gold execution, secure known-terrain legal/production/projection and SVG/Three rendering belong to S2B-2B.2 |
+| Seafarers S1 core | Implemented/tested: mixed route/ties/own-turn victory, ship lifecycle, island settlement connectivity, Gold и robber/pirate validation; повторно зелёные в S2B-2B.2A. Largest Army tie исправлен отдельным focused patch ниже | Public playable fog и полные natural matches — planned |
+| Seafarers S2B-1 scenarios | Implemented/tested: explicit custom configuration, restricted setup/capacity, per-player home/award ledger, public special VP, codec v3/new marker, PG recovery/receipt and Qt round-trip | Все четыре preset defaults сохранены; их новые product parameters не утверждены. Official scenario replicas, public playable fog, S2C generator/balance не реализованы |
+| Seafarers S2B-2B.1 fog foundation | Implemented/tested: explicit private recipe v2, frozen fog records/monotonic transition validation, private assignment, codec v4/3 and marker `catan-seafarers-s2b-2`, safe WS/PG/Qt gates; checkpoint `0fa8f6d` | Public availability remains DISABLED |
+| Seafarers S2B-2B.2A internal exploration | Implemented/tested: all accepted road/ship/destination triggers, known-terrain rules, ordered single-use rewards, Gold/setup/free-action continuation, isolated legal probes and native-current internal PG execution/recovery | **Public DISABLED; partially implemented feature**. Secure playable projection/events, public legal/frontend and SVG/Three rendering remain planned |
 | Seafarers S2A maps | Implemented/tested: два реальных 37-hex архипелага, Sea Ring 19 land +18 sea, exact terrain decks, derived island IDs, реальные coast ports, no-desert robber offboard; 600 seeded setup runs для 2–6 игроков | Нет новых start-island restrictions/награды; произвольный custom map не сертифицируется; probability balance и все возможные opening choices не доказаны |
 | F1 private publication | Implemented/tested: актуальные guest/account ownership, expiry/revocation, controlling-socket takeover, privacy и publication ordering | Single-worker deployment; out-of-band guest SQL edits не являются live revocation API; отправленный до revoke frame нельзя отозвать |
 | F2 Strategy C | Implemented/tested: durable ruleset marker, unknown legacy restriction, inert timers/legal/commands/rematch, безопасный Continue notice | Unmarked native S1 тоже restricted; Strategy D explicit conversion — planned, не реализована; исторические VP/achievements не переписываются |
@@ -313,7 +318,7 @@ Docker production-like: Browser → Nginx (React dist, /ws, /health) → оди�
 | Open WS с expired/revoked guest proof — F1 | Исправлено/tested: актуальное ownership проверяется перед каждой private publication; account session/controlling socket/takeover сохраняются |
 | Legacy gameplay compatibility — F2 | Implemented/tested Strategy C: readable v1/v2 без verified ruleset restricted; нет auto conversion, VP/achievement rewrite или corrupted label |
 | Qt ship history loss — F3 | Исправлено/tested real Qt file round-trip; conservative legacy lock переживает resave, engine End Turn сбрасывает историю |
-| Seafarers rules/maps | S1 core, S2A topology/coasts/offboard и S2B-1 explicit starting islands/bonuses проверены; новые preset параметры, fog/scenario completeness/generator и natural playtests остаются отдельными задачами |
+| Seafarers rules/maps | S1, S2A, S2B-1 и internal S2B-2B.2A exploration проверены; public fog projection/rendering, новые preset параметры, scenario completeness/generator и natural playtests остаются отдельными задачами |
 | Остальные Base rules | Longest Road tie и own-turn victory исправлены в S1; Largest Army tie исправлен отдельным focused patch. Historical scores не пересчитаны; deterministic theft и ordinary production shortage остаются отдельными задачами |
 | Road Building lifecycle | Исправлено 2026-10-05: end_turn_cleanup очищает free_roads только после успешной проверки End Turn. 0/1/2 placements, следующий собственный ход, paid road cost, сохранение построек, atomic rejects и персональные server snapshots проверены в tests/test_road_building_lifecycle.py |
 | Сетевой lifecycle | Persistence 1B реализована: locked durable commits, hashed guest ownership, restart recovery и replay protection. Automatic cleanup/общего WS rate limiting нет; chat limit 5/10s, рассылка последовательная |

@@ -79,8 +79,10 @@ class Repository:
                     winner={"name": row["winner_name"], "color": row["winner_color"]} if row["winner_name"] else None))
         return results
 
-    async def save(self, before, candidate, *, snapshot=False, receipt=None, operation=None):
-        validate_transition(before, candidate, snapshot=snapshot, receipt=receipt, operation=operation)
+    async def save(self, before, candidate, *, snapshot=False, receipt=None, operation=None,
+                   trusted_fog=False):
+        validate_transition(before, candidate, snapshot=snapshot, receipt=receipt, operation=operation,
+                            trusted_fog=trusted_fog)
         started = perf_counter()
         head = match_checkpoint(candidate) if snapshot and candidate.game else None
         head_checksum = checksum(head) if head else None
@@ -148,7 +150,7 @@ class Repository:
                         m.matches.c.status == "active").values(status="superseded", updated_at=now))
                 # Reconnect/claim/chat may update ownership metadata for a restricted
                 # match, but must not rewrite its head, scores or historical results.
-                if candidate.game and not restricted(before):
+                if candidate.game and (not restricted(before) or trusted_fog is True):
                     game = candidate.game
                     winner_id = candidate.players[game.winner_pid].match_player_id if game.game_over and game.winner_pid is not None else None
                     match = dict(id=candidate.match_uuid, room_id=candidate.id, match_no=candidate.match_id,

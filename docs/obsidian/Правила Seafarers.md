@@ -4,11 +4,11 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
-## Approved custom fog profile — foundation only
+## Approved custom fog profile — internal exploration
 
 Approved S2B-2A/S2B-2B.1 decisions: `shared-preassigned-v1` privately assigns actual terrain/tokens before play, shares monotonic discovery with all players, allows one reward per discovered hex and preserves undiscovered secrecy even after game_over/recovery. It is explicit opt-in, not an existing named preset or official Fog Islands draw-on-reveal replica. Initial profile excludes starting_islands and automatic island VP bonuses.
 
-**Implemented/tested 2026-10-09: trusted domain/recipe/persistence/gates only. Public availability DISABLED.** Exploration triggers, actual discovery rewards, Gold choice continuation execution, known-terrain gameplay/legal/projection and rendering are planned S2B-2B.2; they are not current playable rules. Foundation/recovery details — [[plans/seafarers-fog]], [[Инварианты движка#Trusted fog foundation invariants — S2B-2B.1]]. Ordinary Base/Seafarers rules below are unchanged.
+Foundation implemented/tested 2026-10-09; **internal exploration engine implemented/tested 2026-10-12 (S2B-2B.2A), public availability DISABLED**. The authorized custom profile reveals all previously hidden tiles adjacent to either endpoint after accepted road/ship construction (setup/free included) or move destination, in original-index order. Standard land grants one available corresponding resource; Sea/Desert none; Gold one ordinary-resource choice per discovery. Shortages record unavailable rewards without debt or cancelling placement. Unknown terrain cannot determine placement/production/setup grants/figure targets. Pending Gold blocks unrelated actions, preserves setup/free-action/ship lifecycle and completes before current-player victory/setup advancement. Recover/retry cannot award again. Secure playable projection/frontend/rendering remain planned; these internal rules are not exposed as a public playable scenario. Details — [[plans/seafarers-fog]], [[Инварианты движка#Trusted fog foundation invariants — S2B-2B.1]]. Ordinary Base/Seafarers rules below are unchanged.
 
 ## Explicit starting islands and special VP — S2B-1
 
@@ -18,7 +18,7 @@ An explicitly configured custom `rules.scenario.starting_islands` restricts setu
 
 When enabled, each player's actual setup islands are recorded as home islands. Accepted main-phase first settlement on each other island awards the configured bonus in addition to ordinary 1 VP. Another player's earlier arrival does not remove eligibility; repeated settlements/city upgrades do not award again. Setup never awards it. The ledger is durable and public; special VP is already included in total VP. Existing hidden VP privacy, Longest Trade Route scoring and own-turn victory checks remain. Recovery restores the ledger and never recalculates awards/VP. Details — [[plans/seafarers-s2b-1]], [[Состояние игры#Scenario persistence — S2B-1]].
 
-**Historical S2B-1 limitation, subsequently fixed 2026-10-09:** `update_largest_army` used to clear a tied incumbent and remove its 2 VP. The focused Largest Army patch now retains a qualified holder on ties and transfers only to a strictly stronger army, with unchanged own-turn victory timing. Base/Seafarers and an already-awarded scenario ledger are covered separately; recovery never recalculates historical awards/scores. Results — [[Project State#Largest Army tie handling — focused correctness fix]]. Fog/exploration and unapproved per-preset product rules remain future work.
+**Historical S2B-1 limitation, subsequently fixed 2026-10-09:** `update_largest_army` used to clear a tied incumbent and remove its 2 VP. The focused Largest Army patch now retains a qualified holder on ties and transfers only to a strictly stronger army, with unchanged own-turn victory timing. Base/Seafarers and an already-awarded scenario ledger are covered separately; recovery never recalculates historical awards/scores. Results — [[Project State#Largest Army tie handling — focused correctness fix]]. Public playable fog and unapproved per-preset product rules remain future work.
 
 ## Maps/coastlines and initial figures — S2A, 2026-10-09
 
