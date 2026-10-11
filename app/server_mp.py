@@ -44,9 +44,10 @@ from app.engine import (
 )
 from app.engine import maps as map_loader
 from app.engine.legal import board_legal_moves
+from app.engine.state import RESOURCES
 from app.engine.exploration import (FOG_DISABLED_MESSAGE, FogUnavailableError, has_fog,
                                     require_no_fog, require_non_fog_data)
-from app.engine.serialize import to_player_dict
+from app.engine.serialize import to_player_dict, project_fog_player_dict
 from app.room_options import (BALANCED_ALGORITHM, CHAT_LIMIT, CHAT_MAX_LENGTH,
                              CHAT_RATE_COUNT, CHAT_RATE_SECONDS, COLORS,
                              RoomSettings, TurnTimer, shuffled_bag)
@@ -321,8 +322,23 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
     require_no_fog(game)
     _require_compatible(room)
     state = to_player_dict(game, pid)
+    return _snapshot_extras(game, room, pid, state, _legal_moves(game, pid))
+
+
+def _project_fog_snapshot(room: Room, pid: int) -> Dict:
+    """Pure trusted fixture projection. Never called by public WS/HTTP paths."""
+    if room.ruleset_id != CURRENT_RULESET:
+        raise RuleError("compatibility_required", "A verified current ruleset is required")
+    game = room.game
+    state = project_fog_player_dict(game, pid)
+    state = _snapshot_extras(game, room, pid, state, board_legal_moves(game, pid, trusted_fog=True))
+    state["test_mode"] = state["test_tools"] = False
+    return state
+
+
+def _snapshot_extras(game: GameState, room: Room, pid: int, state: Dict, legal: Dict) -> Dict:
     state["you_pid"] = pid
-    state["legal"] = _legal_moves(game, pid)
+    state["legal"] = legal
     state["dice"] = list(room.dice) if room.dice is not None else None
     state["roll_count"] = room.roll_count
     state["room_settings"] = room.settings.public(game.rules_config.target_vp)
@@ -335,7 +351,7 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
     for player in state["players"]:
         player["color"] = room.players[player["pid"]].color
     if room.settings.bank_visibility == "visible":
-        state["bank"] = dict(game.bank)
+        state["bank"] = {r: game.bank[r] for r in RESOURCES}
     return state
 
 
@@ -348,6 +364,8 @@ async def _send(ws: WebSocket, obj: Dict) -> None:
 
 
 async def _broadcast(room: Room, obj: Dict) -> None:
+    if obj.get("type") == "match_state":
+        raise ValueError("Private snapshots require authorized per-recipient publication")
     for ws, conn in list(manager.connections.items()):
         if conn.room_code == room.room_code:
             try:

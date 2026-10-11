@@ -132,7 +132,7 @@ async def active_games(request: Request):
     count = select(func.count()).where(m.room_players.c.room_id == m.rooms.c.id,
                                       m.room_players.c.status == "active").correlate(m.rooms).scalar_subquery()
     query = select(m.rooms.c.room_code, m.rooms.c.updated_at, m.rooms.c.max_players,
-                   m.rooms.c.config["map_meta"]["name"].astext.label("map_name"),
+                   m.rooms.c.config["map_meta"]["name"].label("map_name"),
                    m.rooms.c.config["rules"]["target_vp"].astext.label("target_vp"),
                    m.room_players.c.name, m.room_players.c.color, count.label("count"),
                    m.matches.c.status, m.matches.c.ruleset_id, winner.c.name.label("winner_name"), winner.c.color.label("winner_color")

@@ -229,13 +229,15 @@ def test_concurrent_duplicate_and_final_rejection_use_real_durable_receipts(data
             results = await asyncio.gather(*(internal_command(coord, room, clients[0], request) for _ in range(2)))
             assert sum(not r["duplicate"] for r in results) == 1
             assert len(room.game.scenario.fog.discoveries) == room.game.pending_gold[0]
-            assert len(room.game_events) == 1 and room.tick == 1
+            accepted_events = deepcopy(room.game_events)
+            assert [e["type"] for e in accepted_events] == ["place_road"] + ["discover_tile"] * len(room.game.scenario.fog.discoveries)
+            assert room.tick == 1
             bundle = await coord.repository.load(room.id)
             assert [r["outcome"] for r in sorted(bundle["receipts"], key=lambda r: r["seq"])] == ["rejected", "accepted"]
             before = deepcopy(room.game)
             invalid = command(room, clients[0], {"type": "choose_gold", "res": "gold"})
             assert (await internal_command(coord, room, clients[0], invalid))["outcome"] == "rejected"
-            assert room.game == before and len(room.game_events) == 1
+            assert room.game == before and room.game_events == accepted_events
             assert restore_room(await coord.repository.load(room.id)).game == before
     asyncio.run(run())
 

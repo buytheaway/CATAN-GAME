@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Dict, List, Tuple
 from app.engine.scenario import scenario_from_dict, scenario_to_dict, validate_scenario_state
 from app.engine.exploration import require_no_fog, require_non_fog_data
+from app.engine.public_projection import public_map_metadata, public_rules_config, fog_scenario, fog_tiles
 
 from app.engine.state import (
     AchievementState,
@@ -32,6 +33,10 @@ def _legacy_ship_movement_lock(phase: str, rolled: bool, cfg) -> bool:
 
 def to_dict(g: GameState) -> Dict:
     require_no_fog(g)
+    return _state_dict(g)
+
+
+def _state_dict(g: GameState, *, fog_projection: bool = False) -> Dict:
     cfg = getattr(g, "rules_config", RulesConfig())
     return {
         "state_version": g.state_version,
@@ -39,9 +44,10 @@ def to_dict(g: GameState) -> Dict:
         "size": g.size,
         "map_name": g.map_name,
         "map_id": getattr(g, "map_id", g.map_name),
-        "map_meta": dict(getattr(g, "map_meta", {}) or {}),
-        "rules": dict(getattr(g, "rules", {}) or {}),
-        "scenario": scenario_to_dict(g.scenario),
+        "map_meta": public_map_metadata(g.map_meta) if fog_projection else dict(getattr(g, "map_meta", {}) or {}),
+        "rules": {**public_rules_config(cfg), "scenario": fog_scenario(g)["rules"]}
+                 if fog_projection else dict(getattr(g, "rules", {}) or {}),
+        "scenario": fog_scenario(g) if fog_projection else scenario_to_dict(g.scenario),
         "rules_config": {
             "target_vp": int(getattr(cfg, "target_vp", 10)),
             "discard_threshold": cfg.discard_threshold,
@@ -112,7 +118,7 @@ def to_dict(g: GameState) -> Dict:
         "ships_built_this_turn": [list(edge) for edge in sorted(getattr(g, "ships_built_this_turn", set()))],
         "ship_moved_this_turn": bool(getattr(g, "ship_moved_this_turn",
             _legacy_ship_movement_lock(g.phase, g.rolled, cfg))),
-        "tiles": [
+        "tiles": fog_tiles(g) if fog_projection else [
             {
                 "q": t.q,
                 "r": t.r,
@@ -135,12 +141,33 @@ def to_player_dict(g: GameState, pid: int) -> Dict:
     if type(pid) is not int or not 0 <= pid < len(g.players):
         raise ValueError("A valid player is required for a private snapshot")
     state = to_dict(g)
+    return _personalize(g, pid, state)
+
+
+def project_fog_player_dict(g: GameState, pid: int) -> Dict:
+    """Trusted, pure projection for tests/future integration; no public gate opt-in.
+
+    to_dict/to_player_dict and server publication retain their Fog refusal.
+    This helper is not a persistence format or an authorization mechanism.
+    """
+    if type(pid) is not int or not 0 <= pid < len(g.players):
+        raise ValueError("A valid player is required for a private snapshot")
+    if g.scenario.rules.fog is None:
+        raise ValueError("A trusted Fog state is required")
+    validate_scenario_state(g)
+    state = _personalize(g, pid, _state_dict(g, fog_projection=True))
+    # Only the current entitled recipient needs this private queue.
+    state["pending_gold_queue"] = [pid] if pid in g.pending_gold else []
+    return state
+
+
+def _personalize(g: GameState, pid: int, state: Dict) -> Dict:
     # Lifecycle history is private executor/persistence data, not a wire addition.
     state.pop("ships_built_this_turn")
     state.pop("ship_moved_this_turn")
     # Exact bank counts + own hand reveal the other hand in a two-player game.
     state.pop("bank")
-    state["bank_available"] = {r: n > 0 for r, n in g.bank.items()}
+    state["bank_available"] = {r: g.bank.get(r, 0) > 0 for r in RESOURCES}
     for view, player in zip(state["players"], g.players):
         view["resource_count"] = sum(player.res.values())
         view["dev_count"] = len(player.dev_cards)

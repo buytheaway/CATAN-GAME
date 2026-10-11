@@ -37,7 +37,7 @@ class Repository:
         query = select(
             m.rooms.c.room_code, m.rooms.c.status.label("room_status"), m.rooms.c.max_players,
             m.rooms.c.updated_at, m.room_players.c.name, m.room_players.c.color, m.seat_tokens.c.token_hash,
-            m.rooms.c.config["map_meta"]["name"].astext.label("map_name"),
+            m.rooms.c.config["map_meta"]["name"].label("map_name"),
             m.rooms.c.config["rules"]["target_vp"].astext.cast(Integer).label("target_vp"),
             m.matches.c.status.label("match_status"), m.matches.c.ruleset_id, count.label("player_count"),
             winner.c.name.label("winner_name"), winner.c.color.label("winner_color"),

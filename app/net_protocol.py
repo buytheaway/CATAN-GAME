@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
+from app.engine.public_projection import public_map_metadata, public_rules_config
 
 VERSION = 1
 
@@ -112,12 +113,14 @@ def error_message(code: str, message: str, detail: Optional[Dict[str, Any]] = No
 
 def room_state_message(room) -> Dict[str, Any]:
     from app.match_rulesets import compatibility
+    map_rules = public_rules_config(room.selected_rules_config)
+    preset_target = map_rules.get("target_vp", room.game.rules_config.target_vp if room.game else 10)
     msg = {
         "type": "room_state",
         "room_code": room.room_code,
         "map_revision": room.map_revision,
         "config_revision": room.config_revision,
-        "settings": room.settings.public(room.selected_rules_config.get("target_vp", 10)),
+        "settings": room.settings.public(preset_target),
         "chat_history": list(room.chat_history),
         "chat_revision": room.chat_revision,
         "host_pid": room.host_pid,
@@ -132,11 +135,11 @@ def room_state_message(room) -> Dict[str, Any]:
     if hasattr(room, "selected_map_id"):
         msg["map_id"] = getattr(room, "selected_map_id")
     if hasattr(room, "selected_map_meta"):
-        msg["map_meta"] = getattr(room, "selected_map_meta")
+        msg["map_meta"] = public_map_metadata(room.selected_map_meta)
     if hasattr(room, "map_presets"):
-        msg["map_presets"] = getattr(room, "map_presets")
+        msg["map_presets"] = [public_map_metadata(meta) for meta in room.map_presets]
     if hasattr(room, "selected_rules_config"):
-        msg["map_rules"] = getattr(room, "selected_rules_config")
+        msg["map_rules"] = map_rules
     if room.game is not None:
         msg["ruleset_compatibility"] = compatibility(room.ruleset_id, room.game)
     return msg

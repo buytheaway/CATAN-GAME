@@ -36,7 +36,7 @@ class InspectionLimiter:
 def safe_game(*, room_code, map_name, name, color, player_count, max_players,
               connected_count, status, target_vp, updated_at, winner=None, ruleset=None):
     # Closed allowlist; never pass a Room, database row or private checkpoint through.
-    game = dict(room_code=room_code, map_name=map_name, own_name=name, own_color=color,
+    game = dict(room_code=room_code, map_name=map_name if type(map_name) is str else "Unknown map", own_name=name, own_color=color,
                 player_count=player_count, max_players=max_players,
                 connected_count=connected_count, status=status, target_vp=target_vp,
                 updated_at=updated_at.isoformat(), can_continue=True)
