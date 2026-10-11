@@ -12,6 +12,7 @@
 !app/net_protocol.py
 !app/resource_path.py
 !app/room_options.py
+!app/match_rulesets.py
 !app/game_events.py
 !app/test_tools.py
 !app/persistence/
