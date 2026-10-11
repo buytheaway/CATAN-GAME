@@ -9,6 +9,8 @@
 
 import { useMemo } from "react";
 import { colorForPlayer } from "../board/colors";
+import { isHiddenTile, isPublicPort, publicTileCenter, publicTileVisual } from "../board/publicTiles";
+import { FOG_REVEAL_MS } from "../board/fogReveal";
 import type {
   BoardViewProps,
 } from "./BoardView.types";
@@ -31,12 +33,13 @@ import {
 } from "./BoardView.utils";
 
 /** SVG presentation of the shared server-driven board interaction. */
-export default function BoardView({ state, interaction }: BoardViewProps) {
+export default function BoardView({ state, interaction, reveals }: BoardViewProps) {
   const {
-    tiles = [], size = 58, vertices = {}, edges = [], occupied_e = {},
+    tiles = [], size: snapshotSize = 58, vertices = {}, edges = [], occupied_e = {},
     occupied_ships = {}, occupied_v = {}, robber_tile = 0, robbers = [],
     pirate_tile = null, ports = [],
   } = state;
+  const size = Number.isFinite(snapshotSize) && snapshotSize > 0 ? snapshotSize : 58;
   const robberList = robbers.length ? robbers : [robber_tile];
   const bounds = useMemo(() => calculateBounds(tiles, size), [tiles, size]);
   const { targets, selection } = interaction;
@@ -44,7 +47,7 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
     ? [...targets.edges, selection.shipSource] : targets.edges;
 
   return (
-    <div style={UI_STYLES.container}>
+    <div style={UI_STYLES.container} data-renderer="2d">
       {/* Main SVG canvas */}
       <svg
         viewBox={`${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`}
@@ -90,12 +93,18 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
 
         {/* Render tiles */}
         {tiles.map((t, idx) => {
-          const [cx, cy] = t.center || [0, 0];
-          const fill = TERRAIN_COLORS[t.terrain] || "#64748b";
-          const isHighNumber = t.number === 6 || t.number === 8;
+          const [cx, cy] = publicTileCenter(t, size);
+          const visual = publicTileVisual(t);
+          const hidden = visual.visibility === "hidden";
+          const fill = hidden ? "#526879" : TERRAIN_COLORS[visual.terrain];
+          const isHighNumber = visual.number === 6 || visual.number === 8;
+          const started = reveals?.get(idx);
+          const elapsed = started == null ? Infinity : performance.now() - started;
+          const target = !hidden && targets.tiles.includes(idx);
 
           return (
-            <g key={`tile-${idx}`}>
+            <g key={`tile-${idx}`} data-tile-index={idx} data-visibility={visual.visibility} data-terrain={visual.terrain}>
+              <title>{hidden ? `Hex ${idx}: unexplored` : `Hex ${idx}: ${visual.terrain}${visual.number ? ` (${visual.number})` : ""}`}</title>
               {/* Hex polygon */}
               <polygon
                 points={hexCorners(cx, cy, size)}
@@ -106,8 +115,11 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
               />
 
               {/* Number token */}
-              {t.number && (
-                <g>
+              {hidden && <g className="fog-svg-mark" fill="none" stroke="#a6beca" strokeWidth={3} strokeLinecap="round" pointerEvents="none">
+                {[-9, 0, 9].map((dy, i) => <path key={dy} d={`M ${cx - 15 + i * 3} ${cy + dy} h ${30 - i * 4}`} />)}
+              </g>}
+              {visual.number != null && (
+                <g data-number-token={visual.number}>
                   <circle
                     cx={cx}
                     cy={cy}
@@ -125,22 +137,26 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
                     fontWeight={700}
                     fill={isHighNumber ? NUMBER_COLORS.highlight : NUMBER_COLORS.default}
                   >
-                    {t.number}
+                    {visual.number}
                   </text>
                 </g>
               )}
+
+              {elapsed < FOG_REVEAL_MS && <polygon key={`reveal-${started}`} points={hexCorners(cx, cy, size)}
+                className="fog-svg-reveal" data-fog-reveal={idx} fill="#a6beca" pointerEvents="none"
+                style={{ animationDuration: `${FOG_REVEAL_MS}ms`, animationDelay: `-${Math.max(0, elapsed)}ms` }} />}
 
               {/* Clickable overlay */}
               <polygon
                 points={hexCorners(cx, cy, size)}
                 fill="transparent"
-                stroke={targets.tiles.includes(idx) ? "#22c55e" : "transparent"}
+                stroke={target ? "#22c55e" : "transparent"}
                 strokeWidth={4}
-                data-target-tile={targets.tiles.includes(idx) ? idx : undefined}
-                onClick={() => interaction.onTileClick(idx)}
+                data-target-tile={target ? idx : undefined}
+                onClick={() => { if (!hidden) interaction.onTileClick(idx); }}
                 style={{
                   cursor:
-                    targets.tiles.includes(idx)
+                    target
                       ? CURSOR_STYLES.pointer
                       : CURSOR_STYLES.default,
                 }}
@@ -255,9 +271,9 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
         {/* Render robbers */}
         {robberList.map((ti: number, idx: number) => {
           const t = tiles[ti];
-          if (!t) return null;
+          if (isHiddenTile(t)) return null;
 
-          const [cx, cy] = t.center || [0, 0];
+          const [cx, cy] = publicTileCenter(t, size);
           return (
             <g key={`rob-${idx}`}>
               <circle
@@ -285,9 +301,9 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
         {/* Render pirate */}
         {pirate_tile !== null && pirate_tile !== undefined && (() => {
           const t = tiles[pirate_tile];
-          if (!t) return null;
+          if (isHiddenTile(t)) return null;
 
-          const [cx, cy] = t.center || [0, 0];
+          const [cx, cy] = publicTileCenter(t, size);
           return (
             <g key="pirate">
               <circle
@@ -335,6 +351,7 @@ export default function BoardView({ state, interaction }: BoardViewProps) {
         {/* Render ports */}
         {ports.map((p, idx) => {
           const [[a, b], kind] = p;
+          if (!isPublicPort(state, [a, b])) return null;
           const pa = vertices[String(a)];
           const pb = vertices[String(b)];
           if (!pa || !pb) return null;

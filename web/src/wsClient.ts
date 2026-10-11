@@ -14,6 +14,10 @@ export type GameplayEvent = {
   player_pid?: number; victim_pid?: number; quantity?: number; resource?: string;
   resources?: Record<string, number>; paid?: Record<string, number>; gained?: Record<string, number>;
   dice?: number[]; total?: number; card?: string; tile?: number; from_tile?: number; action?: string;
+  terrain?: import("./board/publicTiles").KnownTerrain;
+  number?: number | null;
+  reward?: { kind: "none" | "gold_choice"; quantity: 0 | 1 }
+    | { kind: "resource"; resource: "wood" | "brick" | "sheep" | "wheat" | "ore"; quantity: 0 | 1 };
 };
 export type ChatMessage = { id: number; name: string; color: string | null; text: string; sent_at_ms: number };
 export type TurnTimerState = {

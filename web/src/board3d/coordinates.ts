@@ -1,4 +1,5 @@
 import type { Tile } from "../components/BoardView.types";
+import { publicTileCenter } from "../board/publicTiles";
 import type { BoardBounds, BoardRenderModel, Point3D, RenderPort } from "./types";
 
 export const TILE_TOP = 0.26;
@@ -23,11 +24,7 @@ export function toScenePosition([x, y]: [number, number], size: number, elevatio
 }
 
 export function tilePosition(tile: Tile, size: number): Point3D {
-  if (tile.center) return toScenePosition(tile.center, size);
-  const q = tile.q ?? 0;
-  const r = tile.r ?? 0;
-  // Axial fallback uses the same pointy-top orientation as the server.
-  return [Math.sqrt(3) * (q + r / 2), 0, 1.5 * r];
+  return toScenePosition(publicTileCenter(tile, size), size);
 }
 
 export function edgePlacement(a: Point3D, b: Point3D) {

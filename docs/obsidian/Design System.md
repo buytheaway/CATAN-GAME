@@ -1,11 +1,19 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-08
+updated: 2026-10-12
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
+
+## Fog presentation — S2B-2B.3A
+
+**Implemented/fixture-tested 2026-10-12; public Fog DISABLED.** Unknown tiles use a uniform blue-grey `#526879` top, dark `#354958` side and three restrained `#a6beca` mist strokes. The mark means unexplored, never Sea/Gold/Desert or a resource hint. SVG and procedural Three hexes preserve existing public centers, rim contact, ownership pieces and legal hitboxes. No Fog asset, hidden GLB, number token, resource symbol, hidden coast or secret tooltip. Revealed tiles reuse the existing eight terrain visuals/GLBs and number tokens immediately.
+
+Reveal is a finite 420ms translucent veil after a new committed hidden→revealed snapshot, with no gameplay blocking or reward particles; refresh/reconnect/history do not replay it. Reduced motion skips the veil. Existing public Game Log describes discovery and server reward; personal Gold modal explains a current discovery choice without exposing the selected resource to others. No new HUD, fantasy setting, audio cue system or layout redesign. Details — [[React интерфейс#Public Fog presentation — S2B-2B.3A]], [[plans/seafarers-fog]].
+
+Real Chrome fixture screenshots inspected at 1440×900 and 1024×768: partial revealed Forest/Gold/Sea/Desert, all-hidden neutral board, Gold overlay, 50-tile framing and SVG parity. These are synthetic **PUBLIC** presentation fixtures, not live Fog matches or official scenario assets. Artifacts are ignored test output, not design reference assets; reproduction — [fog-rendering.cjs](../../web/e2e/fog-rendering.cjs). Mobile/low-end/load and live security acceptance remain unverified.
 
 ## Product / UX / Visual Polish — Phase 4: Audio
 
@@ -267,7 +275,7 @@ These are screenshots of implemented prepared snapshots, including an artificial
 
 ### Seafarers board
 
-Та же визуальная система и тот же UI вокруг игры. Добавляются sea hexes, несколько островов, ships, pirate, gold field и maritime ports. Fog/unexplored показываются только при фактической поддержке выбранного сценария: сейчас такой модели в engine нет. Поставляемые Seafarers presets имеют один связный land core; несколько островов — направление для будущих custom/generated карт, не описание уже готового сценария. Отдельная fantasy/pirate theme не создаётся.
+Та же визуальная система и тот же UI вокруг игры; отдельная fantasy/pirate theme не создаётся. **Historical concept before S2A/Fog implementation:** sea/islands/ships/pirate/gold/ports и unexplored рассматривались как future direction. Сейчас S2A включает реальные архипелаги, internal Fog engine/projection реализованы и .3A renderer fixture-tested; public Fog gameplay остаётся DISABLED. Актуальные границы — [[Карты и сценарии]], [[plans/seafarers-fog]], раздел Fog presentation выше.
 
 ### Board3D Phase 1 — visual foundation checkpoint
 

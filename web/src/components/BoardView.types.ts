@@ -36,6 +36,10 @@ export interface LegalMoves {
 }
 
 export interface Tile {
+  /** Original server array index; never remap tile/vertex/edge IDs in a renderer. */
+  index?: number;
+  /** Omitted only in historical non-Fog snapshots. */
+  visibility?: "hidden" | "revealed";
   q?: number;
   r?: number;
   center?: [number, number];
@@ -65,9 +69,10 @@ export interface GameBounds {
 
 export interface GameState {
   scenario?: {
-    rules: { starting_islands: number[] | null; new_island_vp: number };
+    rules: { starting_islands: number[] | null; new_island_vp: number; fog?: { profile: "shared-preassigned-v1" } };
     home_islands: Record<string, number[]>;
     awarded_islands: Record<string, number[]>;
+    fog?: { visibility: "shared" };
   };
   tiles: Tile[];
   size: number;
@@ -98,6 +103,7 @@ export interface MoveShipState {
 export interface BoardViewProps {
   state: GameState;
   interaction: import("../board/interaction").BoardInteraction;
+  reveals?: ReadonlyMap<number, number>;
 }
 
 export interface Command {

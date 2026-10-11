@@ -4,6 +4,7 @@ import BoardView from "./BoardView";
 import type { BoardViewProps } from "./BoardView.types";
 import "../board3d/board3d.css";
 import type { DiceRollVisual } from "../game/dice";
+import { useFogReveal } from "../board/fogReveal";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
 
@@ -17,8 +18,10 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean }) {
+export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean; tick?: number }) {
   const [mode, setMode] = useState<"2d" | "3d">("3d");
+  const reveals = useFogReveal({ key: props.matchKey ?? "", tick: props.tick ?? 0,
+    tiles: props.state.tiles, connected: props.connected ?? true });
   return (
     <div className="board-renderer">
       <div className="board-renderer-selector" role="group" aria-label="Board renderer">
@@ -26,11 +29,11 @@ export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceR
         <button type="button" className="game-button" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}>2D</button>
         <button type="button" className="game-button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}>3D</button>
       </div>
-      {mode === "2d" ? <BoardView {...props} /> : (
+      {mode === "2d" ? <BoardView {...props} reveals={reveals} /> : (
         <Board3DErrorBoundary>
           <Suspense fallback={<div className="board3d-fallback" role="status">Loading 3D board…</div>}>
             <Board3D state={props.state} interaction={props.interaction} diceRoll={props.diceRoll}
-              matchKey={props.matchKey} connected={props.connected} />
+              matchKey={props.matchKey} connected={props.connected} reveals={reveals} />
           </Suspense>
         </Board3DErrorBoundary>
       )}

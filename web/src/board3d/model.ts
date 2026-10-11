@@ -1,4 +1,5 @@
 import { edgeId } from "../board/constants";
+import { isHiddenTile, isKnownLand, isKnownSea, isPublicPort, publicTileVisual } from "../board/publicTiles";
 import { boardBounds, edgePlacement, tilePosition, toScenePosition, TILE_TOP } from "./coordinates";
 import type { BoardRenderModel, BoardSnapshot, Point3D, RenderEdge } from "./types";
 
@@ -6,7 +7,7 @@ import type { BoardRenderModel, BoardSnapshot, Point3D, RenderEdge } from "./typ
 export function createRenderModel(state: BoardSnapshot): BoardRenderModel {
   const tiles = state.tiles.map((tile, tileIndex) => ({
     tileIndex, position: tilePosition(tile, state.size),
-    terrain: tile.terrain, number: tile.number ?? null,
+    ...publicTileVisual(tile),
   }));
   const vertices = Object.fromEntries(Object.entries(state.vertices).map(([id, point]) =>
     [id, toScenePosition(point, state.size, TILE_TOP)]));
@@ -28,11 +29,12 @@ export function createRenderModel(state: BoardSnapshot): BoardRenderModel {
     return [{ vertexId: Number(id), position: vertices[id], owner: occupied[0], level: occupied[1] }];
   });
   const ports = (state.ports ?? []).flatMap(([edge, kind]) => {
+    if (!isPublicPort(state, edge)) return [];
     const [a, b] = edge;
     if (!vertices[a] || !vertices[b]) return [];
     const { position: anchor, rotation } = edgePlacement(vertices[a], vertices[b]);
     const land = (state.edge_adj_hexes?.[edgeId(edge)] ?? [])
-      .filter(i => tiles[i] && tiles[i].terrain !== "sea");
+      .filter(i => isKnownLand(state.tiles[i]));
     // Local coast normal also works on inward-facing archipelago shores.
     // Historical snapshots without valid coast adjacency retain the fallback.
     const origin = land.length === 1 ? tiles[land[0]].position : baseBounds.center;
@@ -45,16 +47,17 @@ export function createRenderModel(state: BoardSnapshot): BoardRenderModel {
   });
   const coast = state.edges.flatMap(edge => {
     const adjacent = state.edge_adj_hexes?.[edgeId(edge)] ?? [];
-    const land = adjacent.some(i => state.tiles[i]?.terrain !== "sea");
-    const water = adjacent.length === 1 || adjacent.some(i => state.tiles[i]?.terrain === "sea");
+    if (adjacent.some(i => isHiddenTile(state.tiles[i]))) return [];
+    const land = adjacent.some(i => isKnownLand(state.tiles[i]));
+    const water = adjacent.length === 1 || adjacent.some(i => isKnownSea(state.tiles[i]));
     if (!land || !water || !vertices[edge[0]] || !vertices[edge[1]]) return [];
     const placement = edgePlacement(vertices[edge[0]], vertices[edge[1]]);
     return [{ edge, ...placement, position: [placement.position[0], TILE_TOP - .02, placement.position[2]] as Point3D }];
   });
   const robberIds = state.robbers?.length ? state.robbers : [state.robber_tile];
-  const robbers = robberIds.flatMap(tileIndex => tiles[tileIndex]
+  const robbers = robberIds.flatMap(tileIndex => tiles[tileIndex]?.visibility === "revealed"
     ? [{ tileIndex, position: tiles[tileIndex].position }] : []);
-  const pirate = state.pirate_tile != null && tiles[state.pirate_tile]
+  const pirate = state.pirate_tile != null && tiles[state.pirate_tile]?.visibility === "revealed"
     ? { tileIndex: state.pirate_tile, position: tiles[state.pirate_tile].position } : null;
   return {
     tiles, roads, ships, buildings, ports, coast, robbers, pirate,

@@ -1,11 +1,12 @@
 import type { BoardRenderModel, BoardSnapshot, Point3D } from "./types";
+import { isKnownLand } from "../board/publicTiles";
 
 /** Used on every scenery mesh: decoration is never a tile, edge or vertex target. */
 export const ignoreSceneryRaycast = () => undefined;
 
 export function decorativeShipsEnabled(state: BoardSnapshot) {
   return state.tiles.length > 0 && !state.rules_config?.enable_seafarers
-    && !state.tiles.some(t => t.terrain === "sea")
+    && state.tiles.every(isKnownLand)
     && !Object.keys(state.occupied_ships).length && state.pirate_tile == null;
 }
 

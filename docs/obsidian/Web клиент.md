@@ -6,6 +6,12 @@ tags: [catan, web]
 
 [[React интерфейс]] · [[Стили и визуальные границы]] · [[Сервер и протокол]]
 
+## Fog frontend boundary — S2B-2B.3A
+
+**Implemented/fixture-tested 2026-10-12:** optional public tile visibility/index and discovery reward event fields are typed; GamePage passes committed match tick/key/connection status to the shared BoardRenderer reveal lifecycle. Both SVG/Three consume sanitized public-only tiles, the same graph and controller. WSClient's existing room/match epoch and older-tick rejection is unchanged; refresh/reconnect establishes a presentation baseline. Gold Choose now uses existing ACK-correlated useGameCommand waiting and the same command envelope.
+
+Public Fog is **DISABLED**: default backend snapshots/commands/legal/publication still reject it, and App's F2 LegacyMatchPage takes priority. This phase does not connect internal Python projection helpers to WS or change protocol VERSION/ownership/persistence. Browser [fog-rendering.cjs](../../web/e2e/fog-rendering.cjs) bundles a test-only public fixture entry, static assets and real UI/WSClient with a recorded synthetic transport; no backend/debug endpoint. Production entry/build never imports those fixtures. Verified 269 web/TS/production build; live Fog acceptance belongs to .3B. [[React интерфейс#Public Fog presentation — S2B-2B.3A]], [[plans/seafarers-fog]].
+
 ## Где начинается исполнение
 
 [index.html](../../web/index.html) загружает [main.tsx](../../web/src/main.tsx). main монтирует App и импортирует styles.css.

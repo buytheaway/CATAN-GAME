@@ -1,11 +1,13 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-08
+updated: 2026-10-12
 ---
 
 # Board3D
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[Карты и сценарии]]
+
+**S2B-2B.3A follow-up, 2026-10-12:** Board3D now supports sanitized public Fog tiles, uniform procedural unknown meshes with no actual terrain asset/userData, explicit known-coast/port predicates and finite committed reveal feedback shared with SVG. Existing terrain/building GLBs, logical hit geometry/IDs/controller and camera implementation remain. Implemented/public-fixture-tested (269 web/TS/build, 13 Chrome groups including real GLBs and 50 tiles); **public Fog DISABLED**, live integration/security .3B pending. This supersedes historical pre-Fog rendering scope below, without starting a new general Board3D redesign. Details — [[plans/seafarers-fog]], [[React интерфейс#Public Fog presentation — S2B-2B.3A]].
 
 ## Product / UX / Visual Polish — Phase 3B
 

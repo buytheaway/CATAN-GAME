@@ -9,3 +9,7 @@
 .board3d[data-selectable="true"] canvas { cursor: pointer; }
 .board3d-footer { display: grid; gap: 4px; padding: 10px 12px; font-size: 12px; }
 .board3d-fallback { min-height: 180px; display: grid; place-items: center; padding: 20px; color: #304b58; background: #dce9ed; }
+.fog-svg-mark { opacity: .8; }
+.fog-svg-reveal { animation-name: fog-reveal; animation-timing-function: ease-out; animation-fill-mode: both; }
+@keyframes fog-reveal { from { opacity: .48; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fog-svg-reveal { display: none; } }

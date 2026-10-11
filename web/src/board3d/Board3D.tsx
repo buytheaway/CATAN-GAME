@@ -49,9 +49,10 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
     shadow-camera-far={reach * 4} shadow-bias={-0.0005} shadow-normalBias={0.025} />;
 }
 
-export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true }: {
+export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true, reveals }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
+  reveals?: ReadonlyMap<number, number>;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
@@ -69,7 +70,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
 
   return (
     <div className="board3d" data-renderer="3d" data-tile-count={model.tiles.length}
-      data-selectable={hoveredTile != null && interaction.targets.tiles.includes(hoveredTile)}>
+      data-selectable={hoveredTile != null && model.tiles[hoveredTile]?.visibility === "revealed" && interaction.targets.tiles.includes(hoveredTile)}>
       <div className="board3d-toolbar">
         <button type="button" className="game-button" aria-label="Reset Camera"
           title="Reset camera · Drag the board to orbit; scroll to zoom" onClick={() => setResetVersion(v => v + 1)}>
@@ -100,7 +101,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
-            onHover={hover} onInspect={inspect} />)}
+            reveal={reveals?.get(t.tileIndex)} onHover={hover} onInspect={inspect} />)}
           <Coastline coast={model.coast} />
           {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} color={colorForPlayer(road.owner, state.players)}
             appearance={feedback.get(`e:${edgeId(road.edge)}`)} />)}

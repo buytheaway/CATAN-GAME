@@ -3,6 +3,7 @@
  */
 
 import type { EdgeTuple, GameState, VertexCoordinates, OccupiedEdge } from "./BoardView.types";
+import { publicTileCenter } from "../board/publicTiles";
 import {
   SQRT3,
   SIZE_RATIOS,
@@ -48,7 +49,7 @@ export function getOccupiedColor(occupiedE: OccupiedEdge, a: number, b: number):
 }
 
 export function calculateBounds(
-  tiles: any[],
+  tiles: GameState["tiles"],
   size: number
 ): { minX: number; minY: number; width: number; height: number } {
   let minX = Infinity,
@@ -56,13 +57,15 @@ export function calculateBounds(
     maxX = -Infinity,
     maxY = -Infinity;
 
-  tiles.forEach((t: any) => {
-    const [cx, cy] = t.center || [0, 0];
+  tiles.forEach(t => {
+    const [cx, cy] = publicTileCenter(t, size);
     minX = Math.min(minX, cx - size);
     maxX = Math.max(maxX, cx + size);
     minY = Math.min(minY, cy - size);
     maxY = Math.max(maxY, cy + size);
   });
+
+  if (!tiles.length) { minX = minY = -size; maxX = maxY = size; }
 
   const margin = size * SIZE_RATIOS.bounds;
   return {

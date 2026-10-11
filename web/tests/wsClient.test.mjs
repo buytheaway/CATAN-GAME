@@ -120,6 +120,25 @@ function lobbyClient() {
   return pair;
 }
 
+test("Fog public frames retain committed reveals; stale frames/errors cannot roll back tiles or replay history", () => {
+  const { client, socket } = lobbyClient(); const received = [];
+  client.onMatchState = snapshot => received.push(snapshot);
+  const hidden = { index: 0, center: [0, 0], terrain: "fog", visibility: "hidden", number: null };
+  const message = { type: "match_state", room_code: "ROOM", match_id: 1, tick: 1, state: { you_pid: 0, tiles: [hidden], game_events: [] } };
+  socket.receive(message);
+  const revealed = { ...hidden, terrain: "gold", visibility: "revealed", number: 8 };
+  const committed = { ...message, tick: 2, state: { ...message.state, tiles: [revealed], game_events: [
+    { id: 1, tick: 2, at_ms: 1000, type: "discover_tile", actor_pid: 0, tile: 0, terrain: "gold", number: 8,
+      reward: { kind: "gold_choice", quantity: 1 } }] } };
+  socket.receive(committed); socket.receive(message);
+  socket.receive({ type: "error", code: "invalid", message: "Rejected" });
+  assert.equal(received.length, 2); assert.deepEqual(client.matchState.state.tiles, [revealed]);
+  assert.deepEqual(client.matchState.state.game_events, committed.state.game_events);
+  socket.receive({ ...message, room_code: "OTHER", tick: 50 });
+  socket.receive({ ...message, match_id: 0, tick: 50 });
+  assert.equal(received.length, 2);
+});
+
 test("feature request settles only on its matching ACK, with no settlement from an unrelated snapshot", () => {
   const { client, socket } = connectedClient();const settled = [];
   client.onCommandSettled = (id, applied) => settled.push([id, applied]);

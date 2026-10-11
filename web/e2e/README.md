@@ -1,5 +1,32 @@
 # Game UI / Game Room UX browser checks
 
+## Fog presentation fixtures — S2B-2B.3A
+
+`node web/e2e/fog-rendering.cjs` requires external Playwright (`NODE_PATH`) and
+installed Chrome. It builds `fog-fixture.tsx` using the existing web esbuild,
+starts a temporary loopback static server on an available port, serves existing
+production terrain/building GLBs, and closes browser/server on completion.
+Output defaults to OS temp `catan-fog3a-browser`; `CATAN_E2E_OUTPUT` overrides it.
+Use an ignored/external output directory. No runtime dependency is added.
+
+This runner is **synthetic PUBLIC presentation acceptance**, with a recorded
+fixture transport and real WSClient/GamePage/SVG/R3F/GLBs. It has no backend,
+WebSocket/debug endpoint, trusted assignments, recipe, pool, seed or hidden
+ledger. Neither test entry nor fixtures are imported by production App/build.
+It does **not** prove live Fog multiplayer or bypass any production gate:
+public Fog remains DISABLED, pending S2B-2B.3B integration/security acceptance.
+
+The 13 groups cover uniform hidden Three subtrees/materials/shadows and no
+terrain requests/tokens/coasts, committed finite reveal/idle/stale/error,
+refresh/reconnect/toggle/reduced motion, partial known terrain GLBs and
+ports/pieces, original-ID road/ghost/reject/Cancel, setup/free Ship in both
+renderers, 3D move-source/Cancel/destination, personal Gold ACK/retry/public log
+privacy, 50-tile perspective resize at 1440×900/1024×768 and legacy non-Fog.
+Reports and seven screenshots contain only the public fixtures. Mobile/low-end
+performance, live ownership/privacy/public activation are not certified here.
+
+## Existing real multiplayer runners
+
 The runner uses installed Chrome through Playwright and real production web/backend
 Docker images. Playwright is a test runner only: install it outside the repository
 or provide it through `NODE_PATH`. It is not a frontend runtime dependency.

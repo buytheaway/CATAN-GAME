@@ -22,6 +22,7 @@ export interface RenderTile {
   position: Point3D;
   terrain: string;
   number: number | null;
+  visibility: import("../board/publicTiles").TileVisibility;
 }
 
 export interface RenderEdge {

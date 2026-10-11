@@ -24,6 +24,7 @@ import TestTools, { testModeAccess } from "../game/TestTools";
 import "../game/playtest.css";
 import AudioSettings, { AudioButton } from "../audio/AudioSettings";
 import { useMatchAudio } from "../audio/AudioProvider";
+import { goldDiscoveryReason } from "../game/discovery";
 
 export default function GamePage({ client, match, room, status, log, error, onBackToLobby, freshStart = false }: {
   client: WSClient; match: MatchState; room: RoomState | null; status: string; log: string[]; error: ServerError | null;
@@ -108,7 +109,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       <ContextPrompt state={state} pid={youPid} interaction={interaction} />
       <div className="board-command-surface" style={{ height: "100%", pointerEvents: blocked ? "none" : undefined }}
         aria-busy={request.waiting}><BoardRenderer state={state} interaction={interaction} diceRoll={dice.roll}
-          matchKey={matchKey} connected={status === "connected"} /></div>
+          matchKey={matchKey} tick={match.tick} connected={status === "connected"} /></div>
       {error && <div className="game-error error" role="alert">{error.message}</div>}
       {status !== "connected" && <div className="connection-notice" role="status">Connection: {status}</div>}
     </section>
@@ -186,14 +187,14 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       matchKey={matchKey} error={error} onRematch={() => client.rematch()} onLobby={onBackToLobby} />}
 
     {needGold && <GameOverlay id="gold-choice" title={`Gold Choice: ${goldNeed}`} modal>
-      <p>Choose resources from the bank.</p>
+      <p>{goldDiscoveryReason(state, youPid) ?? "Choose resources from the bank."}</p>
       <div className="gold-fields">
         <label className="field"><span>Resource</span><select aria-label="Gold resource" value={goldRes}
           onChange={e => setGoldRes(e.target.value)}>{RESOURCES.map(r => <option key={r} value={r}>{r}</option>)}</select></label>
         <label className="field"><span>Quantity</span><input aria-label="Gold quantity" type="number" min={1}
           max={goldNeed} value={goldQty} onChange={e => setGoldQty(Number(e.target.value))} /></label>
       </div>
-      <button className="game-button primary-action" onClick={() => client.sendCmd({
+      <button className="game-button primary-action" disabled={blocked} onClick={() => request.submit({
         type: "choose_gold", res: goldRes, qty: Number(goldQty),
       })}>Choose</button>
     </GameOverlay>}
