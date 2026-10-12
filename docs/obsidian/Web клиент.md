@@ -6,6 +6,10 @@ tags: [catan, web]
 
 [[React интерфейс]] · [[Стили и визуальные границы]] · [[Сервер и протокол]]
 
+## Explicit lobby lifecycle — Room Lifecycle Phase 1
+
+`LobbyPage` confirmation calls `WSClient.closeLobby`, a host-only epoch-0 correlated intent. Server `room_closed` calls App's `onRoomClosed` handler and returns to Home with a closure explanation. It clears current guest Continue and pending state; accounts remain signed in and may create another room. Disconnect/Back to home preserves valid recoverable ownership, while explicit closure revokes room credentials. Old socket callbacks and permanently refused reconnect cannot leave stale lobby controls. No Board3D/controller/gameplay changes. Implemented/focused-tested **2026-10-12**; complete verification/limits — [[Project State]], [[React интерфейс#Lobby closure — Room Lifecycle Phase 1]].
+
 ## Development server security — SEC-02
 
 **Implemented/tested 2026-10-12:** [package.json](../../web/package.json) and its lock pin **Vite 6.4.4**; the existing React 18, React plugin 4.7.0, TypeScript and Node 24 remain compatible and unchanged. [vite.config.ts](../../web/vite.config.ts) binds normal dev and preview to **127.0.0.1**, preserving `/api` and `/ws` backend proxy behavior. Filesystem deny patterns cover `.env*`, CRT/PEM with query/NTFS suffixes and `.git`; `fs.strict` and upstream alternate-path checks remain enabled. This is development-server hardening, not a game/protocol/UI change. Production continues to serve Vite output through Nginx.
@@ -22,7 +26,7 @@ Public Fog is **DISABLED**: default backend snapshots/commands/legal/publication
 
 [index.html](../../web/index.html) загружает [main.tsx](../../web/src/main.tsx). main монтирует App и импортирует styles.css.
 
-App создаёт один WSClient через useMemo и хранит `room`, `match`, `status`, `error`, `log`. В useEffect назначает callbacks и один раз запускает restoreCurrentGame. AudioProvider/AuthProvider окружают приложение. При F2 compatibility_required приоритет имеет LegacyMatchPage без игровых controls; иначе match показывает GamePage, отсутствие match — LobbyPage с Home/Host/Join/Recent/Active Games либо текущей комнатой. React Router не используется.
+App создаёт один WSClient через useMemo и хранит `room`, `match`, `status`, `error`, `log` и `closedLobby` для уведомления Home. В useEffect назначает callbacks и один раз запускает restoreCurrentGame. AudioProvider/AuthProvider окружают приложение. При F2 compatibility_required приоритет имеет LegacyMatchPage без игровых controls; иначе match показывает GamePage, отсутствие match — LobbyPage с Home/Host/Join/Recent/Active Games либо текущей комнатой. React Router не используется.
 
 Текущий `defaultWebSocketUrl` в [wsClient.ts](../../web/src/wsClient.ts) выбирает **page-origin /ws**: protocol страницы определяет ws/wss, её host/port сохраняются. В обычном development запрос идёт, например, на ws://localhost:5173/ws; [vite.config.ts](../../web/vite.config.ts) проксирует `/ws` и `/api` в backend, по умолчанию на 127.0.0.1:8000. Это позволяет cookie auth использовать тот же origin. Production /ws и /api обслуживаются через Nginx.
 

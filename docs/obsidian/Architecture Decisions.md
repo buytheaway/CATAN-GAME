@@ -5,6 +5,16 @@ updated: 2026-10-12
 
 # Architecture Decisions
 
+## ADR-022 — Explicit host-owned pre-match lobby closure
+
+Status: **Accepted within authorized Room Lifecycle Phase 1; implemented/focused-tested 2026-10-12.** Supersedes ADR-021's historical lack of a public Close action, not its conservative retention or quota policy.
+
+Decision: expose a correlated `close_room` intent only for a never-started lobby. Require current controlling-socket ownership and host identity, then revalidate durable account session/membership or guest credential inside the closure transaction. Room lock protects takeover/start/join races; the same PostgreSQL advisory lock as room creation serializes quota release with admission. The DB guard checks status, revision, host, epoch and absence of current or historical matches. No client-supplied pid/user/name is an authorization proof.
+
+COMMIT atomically records `closed`, `closed_at`, revoked guest credentials and a bounded operation receipt. Only then fence RAM/controller bindings and send public `room_closed`; no game state is disclosed. Startup excludes closed rooms. Closed never-started metadata can be hydrated only to resolve uncertain COMMIT, never reopened or mistaken for a corrupt match. No gameplay rules, historical snapshot conversion or new SQL migration.
+
+The host confirms **Close Lobby** in React; Home/Continue is refreshed and the closed guest binding is removed. Closing a tab or Back to home only disconnects and retains ownership. Explicit closure releases concurrent IP/global lobby reservations, but does not refund the rolling accepted-creation rate. Repeated closure is safely refused without another write; lost notices cannot reauthorize revoked credentials. Active/finished matches are outside this operation. No automatic expiry, deletion, surrender or account logout is introduced. Details/evidence — [[Сервер и протокол#Explicit lobby closure — Room Lifecycle Phase 1]], [[Project State]], [[Deployment#Room creation admission — SEC-03]].
+
 ## ADR-021 — Durable room admission, conservative lobby retention
 
 Status: **Accepted within authorized SEC-03, implemented/focused-tested 2026-10-12.**
@@ -15,7 +25,7 @@ In durable mode, a PostgreSQL transaction advisory lock serializes quota checks 
 
 No automatic expiration/deletion: disconnect is not abandonment; valid guest credentials and account seats must remain recoverable. Active and finished matches/snapshots are never cleanup targets. Safe never-started expiry requires a separate product/lifecycle policy and transaction proving absence of match history and recoverable ownership, then explicit expired status without deleting historical data. It is **deferred**, not implemented. Defaults, capacity exhaustion and NAT/IPv6 limits — [[Deployment#Room creation admission — SEC-03]], [[Сервер и протокол#Room creation quotas — SEC-03]]. Existing ADR-012 recovery/F1/F2 constraints are preserved.
 
-Final lifecycle verification **2026-10-12** confirms that ordinary legitimate create/leave can exhaust persistent lobby capacity indefinitely. Start Match releases a reservation; the existing internal explicit-close helper can release one for a verified never-started lobby, but has no public/admin entry point and is unsafe as an indiscriminate active-room sweep. Credential expiry and elapsed room expiry timestamp do not change the admission predicate `status="lobby"`. This is a known product limitation accepted for the bounded SEC-03 checkpoint, not a claim of implemented abandonment cleanup.
+**Historical SEC-03 checkpoint lifecycle verification, 2026-10-12:** ordinary legitimate create/leave could exhaust persistent lobby capacity indefinitely. Start Match released a reservation; the internal explicit-close helper had no public/admin entry point and was unsafe as an indiscriminate active-room sweep. ADR-022 subsequently adds safe user-authorized pre-match closure. Credential expiry and elapsed room expiry timestamp still do not change the admission predicate `status="lobby"`; automatic retirement remains deferred.
 
 ## ADR-020 — Exact reverse-proxy peer trust for abuse limits
 

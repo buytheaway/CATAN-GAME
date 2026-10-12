@@ -120,6 +120,93 @@ function lobbyClient() {
   return pair;
 }
 
+function unstartedLobby() {
+  const pair = lobbyClient();
+  pair.socket.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0,
+    reconnect_token: "secret", match_id: 0, last_seq_applied: 0 });
+  return pair;
+}
+
+test("close is a correlated host-only lobby operation, confirmed by server rather than optimistic leave", () => {
+  const { client, socket } = unstartedLobby();
+  client.closeLobby();
+  const request = socket.sent.at(-1);
+  assert.deepEqual(Object.keys(request).sort(), ["expected_match_id", "request_id", "room_code", "type"]);
+  assert.equal(request.type, "close_room");
+  assert.equal(request.expected_match_id, 0);
+  assert.equal(request.room_code, "ROOM");
+  assert.equal(client.closingLobby, true);
+  assert.ok(client.roomState && storedBinding("ROOM", "Alice"));
+  client.closeLobby(); client.startMatch();
+  assert.equal(socket.sent.filter(m => m.type === "close_room").length, 1);
+  assert.equal(socket.sent.filter(m => m.type === "start_match").length, 0);
+  socket.receive({ type: "error", code: "forbidden", message: "Not host", detail: { request_id: request.request_id } });
+  assert.equal(client.closingLobby, false);
+  assert.equal(client.roomState.status, "lobby");
+  client.youPid = 1; client.closeLobby();
+  assert.equal(socket.sent.filter(m => m.type === "close_room").length, 1);
+});
+
+test("confirmed close clears only that guest binding, stops reconnect and fences late frames", () => {
+  const { client, socket } = unstartedLobby(); const notifications = [];
+  const existing = JSON.parse(localStorage.getItem("catan_recent_games"));
+  existing.entries.push({ room_code: "OTHER", reconnect_token: "other-proof", last_known_name: "Alice", last_seen_at: 1, server_url: "ws://test/ws" });
+  localStorage.setItem("catan_recent_games", JSON.stringify(existing));
+  client.onRoomClosed = event => notifications.push(event.room_code);
+  client.closeLobby();
+  const lateFrame = socket.onmessage;
+  socket.receive({ type: "room_closed", room_code: "OTHER" });
+  assert.equal(client.closingLobby, true);
+  socket.receive({ type: "room_closed", room_code: "ROOM", request_id: socket.sent.at(-1).request_id });
+  assert.deepEqual(notifications, ["ROOM"]);
+  assert.equal(client.roomState, null); assert.equal(client.matchState, null);
+  assert.equal(client.youPid, null); assert.equal(client.closingLobby, false);
+  assert.equal(storedBinding("ROOM", "Alice"), null);
+  assert.ok(storedBinding("OTHER", "Alice"));
+  assert.equal(socket.onclose, null); assert.equal(socket.onmessage, null);
+  assert.equal(socket.sent.filter(m => m.type === "leave_room").length, 0);
+  lateFrame({ data: JSON.stringify(lobbyState()) });
+  assert.equal(client.roomState, null);
+});
+
+test("interrupted pre-COMMIT close retries the same operation after valid reconnect", () => {
+  const { client, socket } = unstartedLobby();
+  window.setTimeout = () => 0;
+  client.closeLobby();
+  const request = socket.sent.at(-1);
+  socket.receive({ type: "error", code: "persistence_unavailable", message: "Retry", detail: { request_id: request.request_id, retryable: true } });
+  socket.close();
+  client.connect("ws://test/ws", "Alice"); const fresh = Socket.latest; fresh.open();
+  fresh.receive(lobbyState());
+  fresh.receive({ type: "reconnect_token", room_code: "ROOM", pid: 0, reconnect_token: "secret", match_id: 0, last_seq_applied: 0 });
+  assert.deepEqual(fresh.sent.at(-1), request);
+});
+
+test("an unavailable reconnect after a lost close notice cannot leave stale lobby controls or retry close", () => {
+  const { client, socket } = unstartedLobby();
+  client.closeLobby();
+  client.connect("ws://test/ws", "Alice"); const fresh = Socket.latest; fresh.open();
+  fresh.receive({ type: "error", code: "not_found", message: "Room not found" });
+  assert.equal(client.roomState, null); assert.equal(client.youPid, null);
+  assert.equal(client.closingLobby, false); assert.equal(storedBinding("ROOM", "Alice"), null);
+  let scheduled = 0; window.setTimeout = () => { scheduled++; return 0; };
+  fresh.close();
+  assert.equal(scheduled, 0);
+});
+
+test("account room closure clears current Continue pointer without signing the user out", () => {
+  const { client, socket } = unstartedLobby();
+  const saved = new Map();
+  globalThis.sessionStorage = { setItem: (k, v) => saved.set(k, v), getItem: k => saved.get(k) ?? null, removeItem: k => saved.delete(k) };
+  socket.receive({ type: "seat_identity", ownership: "account", room_code: "ROOM", pid: 0, match_id: 0, last_seq_applied: 0 });
+  assert.ok(saved.has("catan_current_game"));
+  client.closeLobby();
+  socket.receive({ type: "room_closed", room_code: "ROOM" });
+  assert.equal(saved.has("catan_current_game"), false);
+  assert.equal(client.roomState, null);
+  assert.equal(socket.sent.some(m => m.type === "logout"), false);
+});
+
 test("Fog public frames retain committed reveals; stale frames/errors cannot roll back tiles or replay history", () => {
   const { client, socket } = lobbyClient(); const received = [];
   client.onMatchState = snapshot => received.push(snapshot);

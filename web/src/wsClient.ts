@@ -131,7 +131,8 @@ export type CmdAck = {
 };
 
 type SeatIdentity = { type: "seat_identity"; ownership: "account"; room_code: string; pid: number; match_id: number; last_seq_applied: number };
-export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | SeatIdentity | CmdAck | ChatState
+export type RoomClosed = { type: "room_closed"; room_code: string; request_id?: string };
+export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | SeatIdentity | CmdAck | ChatState | RoomClosed
   | { type: "hello"; version: number; test_tools_available?: boolean; connection_nonce?: string };
 
 type MapSelection = { mapId: string; payload: Record<string, any> };
@@ -160,7 +161,7 @@ export class WSClient {
   private pendingReconnect: RecentGame | null = null;
   private accountSeat = false;
   public connectionNonce: string | undefined;
-  private pendingMatchOperation: { roomCode: string; type: "start_match" | "rematch"; request_id: string; expected_match_id: number } | null = null;
+  private pendingMatchOperation: { roomCode: string; type: "start_match" | "rematch" | "close_room"; request_id: string; expected_match_id: number } | null = null;
   private reconnectTimer: number | null = null;
   private reconnectDelay = 1000;
   private pendingAction: { type: "host"; maxPlayers: number } | { type: "join"; roomCode: string } | null = null;
@@ -230,6 +231,7 @@ export class WSClient {
 
   onStatus?: (s: string) => void;
   onRoomState?: (s: RoomState) => void;
+  onRoomClosed?: (s: RoomClosed) => void;
   onMapPending?: (mapId: string | null) => void;
   onMatchState?: (s: MatchState) => void;
   onError?: (e: ServerError) => void;
@@ -327,22 +329,34 @@ export class WSClient {
     this.sendMatchOperation("rematch");
   }
 
-  private sendMatchOperation(type: "start_match" | "rematch") {
+  get closingLobby(): boolean { return this.pendingMatchOperation?.type === "close_room"; }
+
+  closeLobby() {
+    if (this.roomState?.status !== "lobby" || this.matchId !== 0 || this.youPid !== this.roomState.host_pid) return;
+    this.sendMatchOperation("close_room");
+    this.onConfigPending?.();
+  }
+
+  private sendMatchOperation(type: "start_match" | "rematch" | "close_room") {
     if (needsCompatibility(this.roomState)) return;
     if (!this.isOpen() || !this.roomCode || this.pendingMatchOperation) return;
     this.pendingMatchOperation = { roomCode: this.roomCode, type, request_id: genId(), expected_match_id: this.matchId };
     const { roomCode: _room, ...payload } = this.pendingMatchOperation;
-    this.send(payload);
+    this.send({ ...payload, ...(type === "close_room" ? { room_code: this.roomCode } : {}) });
   }
 
   leaveRoom() {
+    this.send({ type: "leave_room" });
+    this.clearRoomConnection();
+  }
+
+  private clearRoomConnection(closeSocket = true) {
     clearCurrentGame();
     this.pendingMatchOperation = null;
     this.resetConfig();
-    this.send({ type: "leave_room" });
     if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
-    if (this.ws) {
+    if (closeSocket && this.ws) {
       this.ws.onclose = this.ws.onmessage = this.ws.onerror = this.ws.onopen = null;
       this.ws.close();
       this.ws = null;
@@ -357,7 +371,7 @@ export class WSClient {
     this.youPid = null;
     this.matchId = this.seq = this.lastSeqApplied = 0;
     // Saved room tokens remain available for an explicit later Join.
-    this.onStatus?.("idle");
+    if (closeSocket) this.onStatus?.("idle");
   }
 
   setMap(mapId?: string, mapData?: Record<string, any>) {
@@ -453,7 +467,8 @@ export class WSClient {
     this.ws.onerror = () => {
       this.onStatus?.("error");
     };
-    this.ws.onmessage = (ev) => this.handleMessage(ev.data);
+    const socket = this.ws;
+    socket.onmessage = (ev) => { if (this.ws === socket) this.handleMessage(ev.data); };
   }
 
   private scheduleReconnect() {
@@ -478,6 +493,14 @@ export class WSClient {
       this.connectionNonce = data.connection_nonce;
       this.testToolsAvailable = data.test_tools_available === true;
       this.onCapabilities?.();
+      return;
+    }
+    if (data.type === "room_closed") {
+      if (data.room_code !== this.roomCode) return;
+      const guest = this.guestBinding();
+      if (guest) removeRecentGame(guest);
+      this.clearRoomConnection(); // No leave intent, reconnect or old callbacks after closure.
+      this.onRoomClosed?.(data);
       return;
     }
     if (data.type === "room_state") {
@@ -543,10 +566,13 @@ export class WSClient {
       }
       const operation = this.pendingMatchOperation;
       if (operation?.roomCode === data.room_code) {
-        if (data.match_id > operation.expected_match_id) this.pendingMatchOperation = null;
+        if (data.match_id > operation.expected_match_id) {
+          this.pendingMatchOperation = null;
+          this.onConfigPending?.();
+        }
         else {
           const { roomCode: _room, ...payload } = operation;
-          this.send(payload); // Same request ID and epoch after an interrupted durable operation.
+          this.send({ ...payload, ...(operation.type === "close_room" ? { room_code: _room } : {}) });
         }
       }
       this.replayPending();
@@ -580,13 +606,12 @@ export class WSClient {
       }
       if (data.detail?.request_id === this.pendingMatchOperation?.request_id && !data.detail?.retryable)
         this.pendingMatchOperation = null;
+      this.onConfigPending?.();
       this.finishConfig(data.detail?.request_id);
       if (this.mapInFlight && data.detail?.request_type === "set_map") this.finishMapSelection();
       if (this.pendingReconnect && !data.detail?.retryable && (data.code === "forbidden" || data.code === "not_found")) {
         removeRecentGame(this.pendingReconnect);
-        this.reconnectToken = null;
-        this.pendingReconnect = null;
-        clearCurrentGame();
+        this.clearRoomConnection(false); // Remove stale lobby controls; keep the socket usable for Host/Join.
       }
       if (data.code === "out_of_order") {
         const expected = data.detail?.expected_seq;

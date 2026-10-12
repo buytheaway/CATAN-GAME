@@ -50,6 +50,16 @@ class Coordinator:
             manager.creation_admission.check(manager.rooms.values(), peer, time.monotonic())
             yield None
 
+    @asynccontextmanager
+    async def lobby_closure(self, room, actor_id):
+        if not self.ready or room.persistence_blocked:
+            raise PersistenceUnavailable("Persistence temporarily unavailable")
+        if self.repository:
+            async with self.repository.lobby_closure(room, actor_id) as session:
+                yield session
+        else:
+            yield None
+
     async def commit(self, before, candidate, *, _session=None, **kwargs):
         validate_transition(before, candidate, **kwargs)
         if not self.ready or (before and before.persistence_blocked):
@@ -70,6 +80,7 @@ class Coordinator:
                 if bundle and bundle["room"]["durable_revision"] == expected:
                     restored = restore_room(bundle)
                     landed = (restored.match_id == candidate.match_id and restored.tick == candidate.tick
+                              and restored.status == candidate.status and restored.closed_at == candidate.closed_at
                               and restored.ruleset_id == candidate.ruleset_id
                               and bundle["room"]["config"] == room_config(candidate)
                               and [p.id for p in restored.players if p.name] == [p.id for p in candidate.players if p.name])

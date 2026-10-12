@@ -133,6 +133,14 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "room_code required; identity comes from session")
         return {"ok": True}
 
+    if mtype == "close_room":
+        if (set(msg) != {"type", "room_code", "request_id", "expected_match_id"}
+                or not isinstance(msg["room_code"], str) or not 1 <= len(msg["room_code"]) <= 32
+                or not isinstance(msg["request_id"], str) or not 1 <= len(msg["request_id"]) <= 128
+                or type(msg["expected_match_id"]) is not int or msg["expected_match_id"] != 0):
+            return _err("invalid", "Close requires room_code, request_id and unstarted match epoch")
+        return {"ok": True}
+
     if mtype in ("leave_room", "start_match", "rematch", "enable_test_mode"):
         if "request_id" in msg and (not isinstance(msg["request_id"], str) or not 1 <= len(msg["request_id"]) <= 128):
             return _err("invalid", "Invalid request_id")

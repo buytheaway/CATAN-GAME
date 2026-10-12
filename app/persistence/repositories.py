@@ -15,6 +15,7 @@ from .errors import PersistenceUnavailable, CommitUncertain
 from app.auth.security import AuthError, authorize_transaction
 from .recovery import room_config, match_checkpoint, checksum
 from app.match_rulesets import compatibility, restricted, validate_transition
+from app.engine import RuleError
 
 
 class Repository:
@@ -200,7 +201,7 @@ class Repository:
                     await session.execute(delete(m.room_operations).where(m.room_operations.c.room_id == candidate.id,
                                                                          m.room_operations.c.request_id.in_(old)))
                 if candidate.status == "closed":
-                    await session.execute(update(m.seat_tokens).where(m.seat_tokens.c.room_player_id.in_(ids)).values(revoked_at=now))
+                    await session.execute(update(m.seat_tokens).where(m.seat_tokens.c.room_player_id.in_(ids)).values(revoked_at=candidate.closed_at))
                     await session.execute(update(m.matches).where(m.matches.c.room_id == candidate.id,
                         m.matches.c.status == "active").values(status="abandoned", updated_at=now))
                 self._fault("before_commit")
@@ -249,6 +250,43 @@ class Repository:
             global_lobbies = (await session.execute(select(func.count()).select_from(m.rooms).where(lobby))).scalar_one()
             limits.check(recent, peer_lobbies, global_lobbies)
             # save() commits this session. Context exit rolls back any refusal/cancellation.
+            yield session
+
+    @asynccontextmanager
+    async def lobby_closure(self, room, actor_id):
+        """Authorize a never-started lobby and release capacity in one transaction."""
+        from app.auth.security import authorization
+        async with self.db.sessions() as session, session.begin():
+            # Same lock/order as creation: a freed slot is visible only after COMMIT.
+            await session.execute(select(func.pg_advisory_xact_lock(0x4354414E, 3)))
+            await authorize_transaction(session)
+            row = (await session.execute(select(m.rooms).where(m.rooms.c.id == room.id)
+                                         .with_for_update())).mappings().one_or_none()
+            history = (await session.execute(select(m.matches.c.id).where(
+                m.matches.c.room_id == room.id).limit(1))).first()
+            if (row is None or row["status"] != "lobby" or row["closed_at"] is not None
+                    or row["current_match_id"] is not None or row["match_no"] != 0 or history is not None
+                    or row["durable_revision"] != room.durable_revision):
+                raise RuleError("invalid", "Only an unstarted lobby can be closed")
+            if row["host_room_player_id"] != actor_id:
+                raise RuleError("forbidden", "Only the host can close the lobby")
+            member = (await session.execute(select(m.room_players).where(
+                m.room_players.c.id == actor_id, m.room_players.c.room_id == room.id,
+                m.room_players.c.status == "active").with_for_update(read=True))).mappings().one_or_none()
+            who = authorization.get()
+            if member is None:
+                raise RuleError("forbidden", "Room membership required")
+            if member["user_id"] is not None:
+                if who is None or member["user_id"] != who["user_id"]:
+                    raise RuleError("forbidden", "Account seat ownership required")
+            else:
+                slot = next(p for p in room.players if p.id == actor_id)
+                token = (await session.execute(select(m.seat_tokens.c.room_player_id).where(
+                    m.seat_tokens.c.room_player_id == actor_id, m.seat_tokens.c.token_hash == slot.token_hash,
+                    m.seat_tokens.c.revoked_at.is_(None), m.seat_tokens.c.expires_at > utcnow())
+                    .with_for_update(read=True))).first()
+                if token is None:
+                    raise RuleError("forbidden", "Guest seat credential expired or revoked")
             yield session
 
     async def codes(self):

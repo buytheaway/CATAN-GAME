@@ -91,8 +91,9 @@ def restore_room(bundle):
     named = sorted(bundle["members"], key=lambda p: p["current_pid"])
     pids = [p["current_pid"] for p in named]
     _require(len(pids) == len(set(pids)) and all(type(p) is int and 0 <= p < row["max_players"] for p in pids))
-    capacity = row["max_players"] if row["status"] == "lobby" else len(named)
-    _require(row["status"] in ("lobby", "in_match") and pids == list(range(len(named))))
+    closed_lobby = row["status"] == "closed" and row["match_no"] == 0 and row["current_match_id"] is None
+    capacity = row["max_players"] if row["status"] == "lobby" or closed_lobby else len(named)
+    _require((row["status"] in ("lobby", "in_match") or closed_lobby) and pids == list(range(len(named))))
     players = [PlayerSlot(pid=i) for i in range(capacity)]
     for member in named:
         token = bundle["tokens"].get(member["id"])
@@ -123,8 +124,13 @@ def restore_room(bundle):
     for c in room.chat_history:
         _require(set(c) == {"id", "name", "color", "text", "sent_at_ms"}
                  and isinstance(c["text"], str) and 1 <= len(c["text"]) <= 500)
-    if row["status"] == "lobby":
+    if row["status"] == "lobby" or closed_lobby:
         _require(row["current_match_id"] is None and room.match_id == 0)
+        if closed_lobby:
+            # Only COMMIT resolution may hydrate this terminal metadata. Startup
+            # excludes closed rooms; never recover them into an open lobby.
+            _require(room.closed_at is not None and bundle["match"] is None and bundle["head"] is None
+                     and all(p.user_id is not None or p.token_revoked_at is not None for p in players if p.name))
         return room
     match, head = bundle["match"], bundle["head"]
     _require(match is not None and head is not None

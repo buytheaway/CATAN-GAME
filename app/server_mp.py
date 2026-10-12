@@ -803,7 +803,11 @@ async def _persistence_monitor() -> None:
                     async with room.lock:
                         try:
                             recovered = await persistence.resolve(room)
+                            recipients = [c.ws for c in manager.connections.values() if c.room_code == room.room_code]
                             _promote(room, recovered)
+                            if room.status == "closed" and room.game is None:
+                                await _finish_lobby_close(room, recipients)
+                                continue
                             # Revalidate credentials and deliver the resolved head through ordinary reconnect.
                             # This also resumes a paused timer after a same-process DB outage.
                             for slot in room.players:
@@ -821,7 +825,7 @@ async def _persistence_monitor() -> None:
 
 
 async def close_room(code: str) -> None:
-    """Internal lifecycle API; close/revoke atomically, no new client/UI route."""
+    """Legacy internal maintenance helper; never exposed directly to clients."""
     room = manager.rooms.get(code)
     if not room:
         return
@@ -830,6 +834,47 @@ async def close_room(code: str) -> None:
         candidate.status, candidate.closed_at, candidate.timer = "closed", utcnow(), None
         await _commit(room, candidate)
         manager.destroy_room(code)
+
+
+async def _finish_lobby_close(room: Room, recipients, request_id=None) -> None:
+    """Fence first, then deliver a public terminal notice after durable closure."""
+    manager.destroy_room(room.room_code)
+    for slot in room.players:
+        slot.active_ws, slot.connected = None, False
+    message = {"type": "room_closed", "room_code": room.room_code}
+    if request_id is not None:
+        message["request_id"] = request_id
+    for ws in recipients:
+        with suppress(WebSocketDisconnect, RuntimeError, OSError, asyncio.TimeoutError):
+            await _send(ws, message)
+
+
+async def _close_lobby(room: Room, conn: ClientConn, data: Dict) -> None:
+    if (room.status != "lobby" or room.game is not None or room.match_uuid is not None
+            or room.match_id != 0 or data["expected_match_id"] != 0 or room.closed_at is not None):
+        raise RuleError("invalid", "Only an unstarted lobby can be closed")
+    if data["room_code"] != room.room_code:
+        raise RuleError("invalid", "room_code mismatch")
+    if conn.pid != room.host_pid:
+        raise RuleError("forbidden", "Only the host can close the lobby")
+    actor_id = room.players[conn.pid].id
+    request_id = data["request_id"]
+    async with persistence.lobby_closure(room, actor_id) as session:
+        if not _owns(conn, room):
+            raise RuleError("forbidden", "Current host ownership required")
+        if persistence.repository and await persistence.repository.operation(room.id, request_id):
+            raise RuleError("invalid", "request_id conflict")
+        candidate = clone_room(room)
+        candidate.status, candidate.closed_at, candidate.timer = "closed", utcnow(), None
+        candidate.last_activity_ts = time.time()
+        for slot in candidate.players:
+            if slot.token_hash is not None:
+                slot.token_revoked_at, slot.reconnect_token = candidate.closed_at, None
+        operation = {"request_id": request_id, "room_player_id": actor_id, "kind": "close_room",
+                     "payload_hash": checksum(data), "expected_epoch": 0}
+        recipients = [c.ws for c in manager.connections.values() if c.room_code == room.room_code]
+        await _commit(room, candidate, operation=operation, _session=session)
+    await _finish_lobby_close(room, recipients, request_id)
 
 
 def _set_room_settings(room: Room, pid: int, patch: Dict[str, Any]) -> None:
@@ -1010,6 +1055,8 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
         raise RuleError("seat_not_owned" if kind == "account_continue" else "not_found",
                         "Room unavailable" if kind == "account_continue" else "Room not found")
     async with room.lock:
+        if manager.rooms.get(room.room_code) is not room or room.status == "closed":
+            raise RuleError("not_found", "Room not found")
         if room.persistence_blocked:
             raise PersistenceUnavailable("Room persistence temporarily blocked")
         if kind == "join_room":
@@ -1063,6 +1110,9 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             return
         if not _owns(conn, room):
             raise RuleError("forbidden", "Room membership required")
+        if kind == "close_room":
+            await _close_lobby(room, conn, data)
+            return
         if kind not in ("leave_room", "chat"):
             _require_compatible(room)
         if kind == "leave_room":

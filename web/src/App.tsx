@@ -20,6 +20,7 @@ export default function App() {
   const [match, setMatch] = useState<MatchState | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<ServerError | null>(null);
+  const [closedLobby, setClosedLobby] = useState<string | null>(null);
 
   useEffect(() => {
     client.onStatus = setStatus;
@@ -28,6 +29,12 @@ export default function App() {
       setRoom(rs);
       if (needsCompatibility(rs)) setMatch(null);
       setError(null);
+      setClosedLobby(null);
+    };
+    client.onRoomClosed = (closed) => {
+      lobbyRoom.current = null; freshStart.current = null;
+      setRoom(null); setMatch(null); setError(null); setLog([]);
+      setClosedLobby(closed.room_code);
     };
     client.onMatchState = (ms) => {
       if (lobbyRoom.current === ms.room_code) {
@@ -37,7 +44,8 @@ export default function App() {
       setError(null);
     };
     client.onError = (err) => {
-      if (["session_expired", "seat_taken_over", "seat_not_owned", "unauthenticated"].includes(err.code)) {
+      if (["session_expired", "seat_taken_over", "seat_not_owned", "unauthenticated"].includes(err.code)
+          || (["not_found", "forbidden"].includes(err.code) && client.roomState === null)) {
         lobbyRoom.current = null; freshStart.current = null;
         setMatch(null); setRoom(null);
       }
@@ -85,6 +93,7 @@ export default function App() {
           status={status}
           wsDefault={WS_DEFAULT}
           error={error}
+          closedLobby={closedLobby}
           onBackToHome={() => { client.leaveRoom(); lobbyRoom.current = null; freshStart.current = null; setRoom(null); setError(null); setLog([]); }}
         />
         </PageShell>

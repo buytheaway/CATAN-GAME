@@ -7,6 +7,10 @@ updated: 2026-10-12
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Lobby lifecycle controls
+
+Room Lifecycle Phase 1 uses the existing lobby heading action styles for a plainly labelled **Close Lobby**, host-only before the first match. A native confirmation explains that all participants return to Home and this lobby is no longer reconnectable. Cancel is harmless; pending closure disables edits until the authoritative response. Home shows a compact status notice and the ordinary Host/Join paths. Back to home is separately described as disconnecting, with reconnect retained. No custom modal framework, new visual assets, CSS redesign or in-match abandonment controls. Implemented/focused-tested **2026-10-12**; [[React интерфейс#Lobby closure — Room Lifecycle Phase 1]], [[Project State]].
+
 ## Fog presentation — S2B-2B.3A
 
 **Implemented/fixture-tested 2026-10-12; public Fog DISABLED.** Unknown tiles use a uniform blue-grey `#526879` top, dark `#354958` side and three restrained `#a6beca` mist strokes. The mark means unexplored, never Sea/Gold/Desert or a resource hint. SVG and procedural Three hexes preserve existing public centers, rim contact, ownership pieces and legal hitboxes. No Fog asset, hidden GLB, number token, resource symbol, hidden coast or secret tooltip. Revealed tiles reuse the existing eight terrain visuals/GLBs and number tokens immediately.

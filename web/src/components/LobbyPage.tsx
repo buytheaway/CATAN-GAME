@@ -14,6 +14,7 @@ export default function LobbyPage({
   status,
   wsDefault,
   error,
+  closedLobby,
   onBackToHome,
 }: {
   client: WSClient;
@@ -21,6 +22,7 @@ export default function LobbyPage({
   status: string;
   wsDefault: string;
   error: ServerError | null;
+  closedLobby?: string | null;
   onBackToHome?: () => void;
 }) {
   const [url, setUrl] = useState(wsDefault);
@@ -72,7 +74,7 @@ export default function LobbyPage({
     client.join(code);
   };
 
-  const connected = status === "connected";
+  const connected = status === "connected" && !client.closingLobby;
   const confirmationPending = pendingMapId !== null || client.configPending;
   const onlinePlayers = room?.players.filter(p => p.name && p.connected).length ?? 0;
   const mapName = room?.map_meta?.name ?? room?.map_id ?? "Base Standard";
@@ -90,6 +92,7 @@ export default function LobbyPage({
 
   return <div className="session-hub">
     {error && <div className="shell-error" role="alert">{error.message}</div>}
+    {!room && closedLobby && <p className="shell-help" role="status">Lobby {closedLobby} was closed by its host. Reconnect is no longer available. You can host or join another room.</p>}
     {!room ? <>
       <section className="home-intro" aria-labelledby="home-title">
         <div><p className="shell-eyebrow">Your next island awaits</p><h1 id="home-title">Good company. A new frontier.</h1>
@@ -138,7 +141,11 @@ export default function LobbyPage({
           <div className="shell-actions"><button className="btn subtle" onClick={() => {
             void navigator.clipboard?.writeText(room.room_code).then(() => setCopyStatus("Room code copied.")).catch(() => setCopyStatus("Select the room code to copy it."));
             if (!navigator.clipboard) setCopyStatus("Select the room code to copy it.");
-          }}>Copy code</button>{onBackToHome && <button className="btn subtle" onClick={onBackToHome}>Back to home</button>}</div>
+          }}>Copy code</button>{onBackToHome && <button className="btn subtle" onClick={onBackToHome}>Back to home</button>}
+            {isHost && room.status === "lobby" && <button className="btn subtle" disabled={!connected} onClick={() => {
+              if (window.confirm(`Close lobby ${room.room_code}? All participants will leave and this lobby cannot be reconnected to. Saved match history is preserved.`)) client.closeLobby();
+            }}>{client.closingLobby ? "Closing lobby…" : "Close Lobby"}</button>}</div>
+          {room.status === "lobby" && <span className="shell-help">Back to home or closing this tab only disconnects you; the lobby remains available for reconnect.</span>}
           {copyStatus && <span className="shell-help" role="status">{copyStatus}</span>}
         </div></header>
       <div className="room-layout"><div className="room-primary">

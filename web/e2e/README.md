@@ -1,5 +1,24 @@
 # Game UI / Game Room UX browser checks
 
+## Explicit lobby closure — Room Lifecycle Phase 1
+
+`node web/e2e/lobby-lifecycle.cjs` uses external Playwright (`NODE_PATH`) and
+installed Chrome against a running **isolated localhost** Docker/Nginx/backend/PG
+stack. Default `CATAN_E2E_ORIGIN` is `http://127.0.0.1:18094`, using the SEC-04
+test overlay in [Deployment](../../docs/obsidian/Deployment.md); do not run it against a user's normal database.
+It creates disposable guest rooms, one Base match and a synthetic account. No
+volumes/data are deleted. Reports/screenshots default to OS temp
+`catan-lobby-lifecycle`; `CATAN_E2E_OUTPUT` can select an ignored external path.
+
+Checks: participant denial, native confirmation cancel/accept, guest disconnect
+and Continue, terminal notice for both clients, closed-room Join after refresh,
+fresh Base start/active closure rejection, account Active Games exclusion,
+retained login and new-room creation. Registration uses ordinary Enter activation
+of Create account; mouse mode-switch behavior is not certified by this runner.
+No game mocks/fixtures or Fog activation.
+Run separately from the opt-in Docker pytest acceptance: those tests restart
+their disposable backend to check limiter recovery and can interrupt browsers.
+
 ## Fog presentation fixtures — S2B-2B.3A
 
 `node web/e2e/fog-rendering.cjs` requires external Playwright (`NODE_PATH`) and
