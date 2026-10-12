@@ -109,6 +109,7 @@ def restore_room(bundle):
     room.id, room.durable_revision = row["id"], row["durable_revision"]
     room.status, room.match_id, room.tick = row["status"], row["match_no"], row["tick"]
     room.created_at, room.last_activity_ts = row["created_at"], row["last_activity_at"].timestamp()
+    room.creation_peer_hash = bytes(row["creation_peer_hash"]) if row.get("creation_peer_hash") is not None else None
     room.closed_at, room.expires_at = row["closed_at"], row["expires_at"]
     room.selected_map_id, room.selected_map_meta = config["map_id"], deepcopy(config["map_meta"])
     room.selected_map_data, room.selected_rules_config = deepcopy(config["map_data"]), deepcopy(config["rules"])

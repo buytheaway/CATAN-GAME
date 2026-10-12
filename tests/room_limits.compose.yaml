@@ -1,0 +1,32 @@
+# Add after auth_proxy.compose.yaml, under a separate explicit *-test project.
+# Separate disposable volume/database; no user stack or existing test data reset.
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: catan_sec03_runtime_test
+    ports: !override
+      - "127.0.0.1:55442:5432"
+  backend:
+    networks:
+      proxy:
+        ipv4_address: 172.30.253.3
+    environment:
+      POSTGRES_DB: catan_sec03_runtime_test
+      FORWARDED_ALLOW_IPS: 172.30.253.2
+      CATAN_AUTH_ORIGINS: http://sec04.test,http://127.0.0.1:18096
+      CATAN_ROOM_CREATE_LIMIT: 3
+      CATAN_ROOM_CREATE_LOBBIES_PER_IP: 5
+      CATAN_ROOM_CREATE_LOBBIES_GLOBAL: 100
+  web:
+    networks:
+      proxy:
+        ipv4_address: 172.30.253.2
+    ports: !override
+      - "127.0.0.1:18096:8080"
+
+networks:
+  proxy:
+    ipam:
+      config: !override
+        - subnet: 172.30.253.0/29
+        - subnet: fd42:c47a:0:3::/64

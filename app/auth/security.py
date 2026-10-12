@@ -1,4 +1,5 @@
 import os
+import ipaddress
 from contextvars import ContextVar
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -10,6 +11,17 @@ from app.persistence.credentials import utcnow
 COOKIE = "catan_session"
 SESSION_AGE = timedelta(days=30)
 authorization = ContextVar("account_authorization", default=None)
+
+
+def client_ip(request):
+    """Canonical ASGI peer authenticated by Uvicorn; never parse client headers."""
+    client = getattr(request, "client", None)
+    peer = client.host if client else "unknown"
+    try:
+        address = ipaddress.ip_address(peer)
+    except ValueError:
+        return peer
+    return str(address.ipv4_mapped or address) if address.version == 6 else str(address)
 
 
 class AuthError(Exception):

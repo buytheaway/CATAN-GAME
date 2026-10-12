@@ -2,8 +2,8 @@
 import uuid
 import asyncio
 import logging
-from contextlib import suppress
-from datetime import datetime, timezone
+from contextlib import suppress, nullcontext, asynccontextmanager
+from datetime import datetime, timezone, timedelta
 from time import perf_counter
 
 from sqlalchemy import select, insert, update, delete, or_, and_, func, Integer
@@ -80,7 +80,7 @@ class Repository:
         return results
 
     async def save(self, before, candidate, *, snapshot=False, receipt=None, operation=None,
-                   trusted_fog=False):
+                   trusted_fog=False, _session=None):
         validate_transition(before, candidate, snapshot=snapshot, receipt=receipt, operation=operation,
                             trusted_fog=trusted_fog)
         started = perf_counter()
@@ -98,11 +98,13 @@ class Repository:
                       chat_history=candidate.chat_history, is_test=candidate.test_mode,
                       created_at=candidate.created_at, updated_at=now,
                       last_activity_at=datetime.fromtimestamp(candidate.last_activity_ts, timezone.utc),
+                      creation_peer_hash=candidate.creation_peer_hash,
                       closed_at=candidate.closed_at, expires_at=candidate.expires_at)
         committing = False
-        async with self.db.sessions() as session:
+        async with (nullcontext(_session) if _session is not None else self.db.sessions()) as session:
             try:
-                await session.begin()
+                if not session.in_transaction():
+                    await session.begin()
                 await authorize_transaction(session)
                 self._fault("before_write")
                 if before is None:
@@ -228,6 +230,26 @@ class Repository:
         ended = perf_counter()
         self.last_metrics = {"encode_ms": (encoded-started)*1000, "transaction_ms": (ended-encoded)*1000,
                              "durable_ms": (ended-started)*1000}
+
+    @asynccontextmanager
+    async def room_creation(self, limits, peer):
+        """Admission and insertion share one transaction and a database-wide lock."""
+        async with self.db.sessions() as session:
+            await session.begin()
+            # Two integer keys reserve an application namespace, not a room ID.
+            await session.execute(select(func.pg_advisory_xact_lock(0x4354414E, 3)))
+            await authorize_transaction(session)
+            cutoff = utcnow() - timedelta(seconds=limits.window_seconds)
+            origin = m.rooms.c.creation_peer_hash == peer
+            lobby = m.rooms.c.status == "lobby"
+            recent = (await session.execute(select(func.count()).select_from(m.rooms).where(
+                origin, m.rooms.c.created_at > cutoff))).scalar_one()
+            peer_lobbies = (await session.execute(select(func.count()).select_from(m.rooms).where(
+                origin, lobby))).scalar_one()
+            global_lobbies = (await session.execute(select(func.count()).select_from(m.rooms).where(lobby))).scalar_one()
+            limits.check(recent, peer_lobbies, global_lobbies)
+            # save() commits this session. Context exit rolls back any refusal/cancellation.
+            yield session
 
     async def codes(self):
         async with self.db.sessions() as session:

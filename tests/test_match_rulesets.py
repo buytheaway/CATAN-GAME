@@ -234,6 +234,9 @@ def test_additive_migration_preserves_heads_and_does_not_backfill(database_url, 
             assert bundle["match"]["ruleset_id"] is None
             expected = deepcopy(original)
             expected["match"]["ruleset_id"] = None
+            # The deliberate pre-F2 downgrade also removes SEC-03 metadata.
+            # Upgrade cannot infer a historic origin from a socket or account.
+            expected["room"]["creation_peer_hash"] = None
             assert bundle == expected
             assert restricted(restore_room(bundle))
             await coord.database.migrate()  # Idempotent; never marks existing v2 heads current.

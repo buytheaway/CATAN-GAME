@@ -25,7 +25,7 @@ from app.persistence.errors import PersistenceUnavailable, RecoveryError
 from app.persistence.recovery import clone_room, resume_timer, checksum
 from app.persistence.inspection import MAX_CREDENTIALS, MAX_BODY_BYTES, InspectionLimiter, inspect_memory
 from app.auth.routes import router as auth_router
-from app.auth.security import AuthError, COOKIE, allowed_origin, same_origin_guest, authorization, authorize_transaction
+from app.auth.security import AuthError, COOKIE, allowed_origin, same_origin_guest, authorization, authorize_transaction, client_ip
 from app.auth.service import AuthService
 
 from app import net_protocol
@@ -51,6 +51,7 @@ from app.engine.serialize import to_player_dict, project_fog_player_dict
 from app.room_options import (BALANCED_ALGORITHM, CHAT_LIMIT, CHAT_MAX_LENGTH,
                              CHAT_RATE_COUNT, CHAT_RATE_SECONDS, COLORS,
                              RoomSettings, TurnTimer, shuffled_bag)
+from app.room_admission import RoomCreationLimits, MemoryRoomAdmission, peer_hash
 
 
 @dataclass
@@ -122,6 +123,7 @@ class Room:
     ruleset_id: Optional[str] = None
     durable_revision: int = 0
     created_at: datetime = field(default_factory=utcnow)
+    creation_peer_hash: Optional[bytes] = field(default=None, repr=False)
     closed_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False, compare=False)
@@ -134,6 +136,8 @@ class RoomManager:
         self.rooms: Dict[str, Room] = {}
         self.connections: Dict[WebSocket, ClientConn] = {}
         self.create_lock = asyncio.Lock()
+        self.creation_limits = RoomCreationLimits.configured()
+        self.creation_admission = MemoryRoomAdmission(self.creation_limits)
 
     def _gen_code(self) -> str:
         while True:
@@ -982,10 +986,15 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
         raise PersistenceUnavailable("Database/recovery temporarily unavailable")
     if kind == "create_room":
         async with manager.create_lock:
-            who = authorization.get()
-            room = manager.create_room(who["display_name"] if who else data["name"].strip(),
-                                       data.get("max_players", 4), register=False, user_id=conn.user_id)
-            await persistence.commit(None, room)
+            peer = peer_hash(client_ip(conn.ws))
+            async with persistence.room_creation(manager, peer) as session:
+                who = authorization.get()
+                room = manager.create_room(who["display_name"] if who else data["name"].strip(),
+                                           data.get("max_players", 4), register=False, user_id=conn.user_id)
+                room.creation_peer_hash = peer
+                await persistence.commit(None, room, _session=session)
+            if not persistence.repository:
+                manager.creation_admission.accepted(peer, time.monotonic())
             manager.rooms[room.room_code] = room
             manager.bind_player(conn, room, 0)
             await _send(ws, net_protocol.room_state_message(room))

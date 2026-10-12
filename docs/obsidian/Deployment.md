@@ -58,6 +58,47 @@ docker compose --env-file .env.example -p catan-sec04-test -f compose.yaml -f te
 
 Windows `RUN_SERVER.bat` installs `requirements-server.txt`, including persistence and Argon2 dependencies. The existing desktop/test `requirements.txt` is separate; it is not the server runtime lock.
 
+## Room creation admission — SEC-03
+
+Implemented/focused-tested **2026-10-12**. [room_admission.py](../../app/room_admission.py) loads positive integer settings at RoomManager startup. [compose.yaml](../../compose.yaml) and [.env.example](../../.env.example) expose the same defaults; changing settings requires backend restart. There is no client override.
+
+| Configuration | Default | Meaning |
+| --- | ---: | --- |
+| CATAN_ROOM_CREATE_LIMIT | 20 | Accepted creations per originating IP during the rolling window |
+| CATAN_ROOM_CREATE_WINDOW_SECONDS | 600 | Rolling window in seconds; includes rooms already started/closed |
+| CATAN_ROOM_CREATE_LOBBIES_PER_IP | 20 | Concurrent lobby rooms originally created from that IP; offline rooms still count |
+| CATAN_ROOM_CREATE_LOBBIES_GLOBAL | 1000 | All durable rooms with status lobby, including NULL legacy origins and rooms not loaded into RAM |
+| CATAN_ROOM_CREATE_TRACKING_CAPACITY | 4096 | Explicit memory mode only: maximum unexpired creation records across origins; refuse instead of evicting live budgets |
+
+Guests/accounts share the canonical SEC-04 ASGI peer budget. IPv4-mapped spellings normalize; unrelated IPv4 and IPv6 addresses remain separate IPs. NAT households share generous configurable budgets; joining, reconnect, account Continue, start and rematch do not consume a creation budget. IP/username/account is not interchangeable with seat authorization. Additional CDN/LB trust still needs the explicit SEC-04 policy; arbitrary forwarding remains ignored.
+
+Migration **sec03a001** adds nullable `rooms.creation_peer_hash` and `(creation_peer_hash, created_at)` index. No backfill, snapshot/VP/ruleset/result rewrite or data deletion. The internal unsalted digest avoids storing a new raw-IP string, but is linkable/guessable and is **not anonymization**; neither digest nor originating IP is published in room/match/Continue DTOs. Existing rooms with unknown origin count globally; per-origin historical consumption cannot be reconstructed safely.
+
+Final migration check **2026-10-12**: Alembic has one head, `sec03a001`, following `f2a001`. Normal backend lifespan calls `Coordinator.initialize` → `Database.migrate` → `upgrade("head")` before recovery/readiness; the image includes Alembic/migrations and Compose retains `postgres_data`. Offline SQL contains only additive DDL/version update in a transaction. The focused PostgreSQL migration regression verifies exact old match/head/token preservation except the new NULL origin, and idempotent startup upgrade. No volume reset is required; additive DDL can briefly lock the table.
+
+Durable admission reads PostgreSQL, holds `pg_advisory_xact_lock(0x4354414E, 3)` from check through COMMIT, and uses the same session for aggregate insertion. Six independent concurrent transactions with capacity 2 accept exactly two. No peer tracking dictionary grows with socket churn. Genuine DB failure still fences writes, with no automatic switch to memory. Explicit memory budgets reset at process restart; durable budgets do not. One gameplay worker/replica remains required even though admission itself is database-serialized.
+
+**Retention:** no automatic cleanup is added. All offline lobby reservations keep existing ownership/reconnect semantics. Active/finished matches and confirmed snapshots are never deleted or superseded by admission. Exhausted capacity refuses new creation while existing joins/Continue/start remain usable; starting an existing lobby releases its concurrent lobby capacity but not its recent creation record. Existing deployments already above the configured cap retain all data and refuse additional rooms. Raising a cap is an operator decision, not a data cleanup.
+
+**Confirmed product limitation — final lifecycle verification, 2026-10-12:** legitimate repeated create → leave without Start Match can permanently exhaust the default 20 origin / 1000 global lobby reservations. Neither the 600-second window, guest-token expiration, elapsed `rooms.expires_at`, nor restart changes a stored `status="lobby"`; all such rows still count. A room with elapsed `expires_at` is excluded from recovery, but not from admission counts. Disconnected guests with valid credentials and offline account seats remain reconnectable and must not be treated as abandoned.
+
+The existing internal [close_room](../../app/server_mp.py) commits explicit `closed` status and credential revocation before removing the RAM entry; closing a verified never-started lobby frees both lobby quotas while retaining all durable rows. A committed non-lobby state such as `expired` also falls outside the count predicate, but no automatic expiry writer, public Close action or administrative closure command exists. `RoomManager.destroy_room` alone only removes RAM and cannot reclaim durable capacity. **Do not use `close_room` as an automatic sweep:** it can mark an active match abandoned if invoked on one. Successful Start Match is the only ordinary user lifecycle transition that releases a lobby reservation. Safe explicit retirement tooling/policy remains deferred.
+
+Final focused checks: **36 passed** across local admission and PostgreSQL tests, including four new cases: IP/global capacity released by explicit never-started closure with rows retained across restart, and capacity retained after credential/room timestamp expiry across restart. Existing tests cover reconnectable offline retention, window expiry, Start Match release and protected match/rematch history. These checks supplement the earlier full 1342-test run; no new full-suite result is claimed.
+
+**Deferred expiry policy:** prove under room/database locks that a room never started (`match_no=0`, no current or historical Match), has no recoverable account membership or valid guest credential, and meets an approved inactivity policy. Only then could a maintenance operation COMMIT an explicit expired state. The existing disconnect/leave path retains named members and cannot establish these conditions; account ownership has no implicit offline expiry. TTL/maintenance operations and closed-data retention need a separate lifecycle task. A global cap bounds simultaneous unstarted lobby growth, not every legitimate match/history byte or a distributed denial of service; address rotation can exhaust the shared cap.
+
+Focused tests — [test_room_creation_limits.py](../../tests/test_room_creation_limits.py), [test_room_creation_postgres.py](../../tests/test_room_creation_postgres.py). Real bounded Docker/Nginx/PG raw WebSocket acceptance — [test_room_creation_docker.py](../../tests/test_room_creation_docker.py). Add [room_limits.compose.yaml](../../tests/room_limits.compose.yaml) after the SEC-04 overlay under a **separate disposable** project, with strict 3/window, 5/IP lobby and 100 global limits; fresh actual IPv6 probe addresses permit repeats without clearing durable budgets. Backend remains IPv4 internally; Nginx accepts IPv6 and supplies that real client to trusted Uvicorn. Test-only full-suite fixtures use larger finite limits because hundreds of unrelated test rooms share one disposable DB; SEC-03 tests explicitly restore small budgets and verify production defaults.
+
+```powershell
+docker compose --env-file .env.example -p catan-sec03-test -f compose.yaml -f tests/auth_proxy.compose.yaml -f tests/room_limits.compose.yaml up --build -d --wait
+$env:CATAN_ROOM_LIMIT_TEST_PROJECT = 'catan-sec03-test'
+python -B -m pytest tests/test_room_creation_docker.py -p no:cacheprovider
+docker compose --env-file .env.example -p catan-sec03-test -f compose.yaml -f tests/auth_proxy.compose.yaml -f tests/room_limits.compose.yaml stop
+```
+
+All test ports bind localhost, separate networks/volumes/databases preserve the user's PostgreSQL data. Full verification status and remaining limits — [[Project State]], [[Результаты аудита#SEC-03 room creation quotas — verified 2026-10-12]].
+
 Verified: Docker backend/web build, host/container pip check, nginx -t, previous-schema upgrade and real Chrome/Nginx/PG cross-browser/mixed-room/claim/logout/SIGKILL/full down/up without -v. Test-only tests/persistence.compose.yaml explicitly sets development + origin :18081; main compose retains secure defaults. Reproduction: node web/e2e/auth.cjs using external Playwright/Chrome and the isolated catan-persistence-test project. Existing volume was retained; no normal production stack restart. Detailed gate/measurements — [[plans/persistence-auth#Auth Phase 1 — completed 2026-10-07]].
 
 ## Continue API — Persistence 1C

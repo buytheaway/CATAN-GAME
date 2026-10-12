@@ -48,6 +48,7 @@ rooms = Table("rooms", metadata,
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Column("last_activity_at", DateTime(timezone=True), nullable=False),
+    Column("creation_peer_hash", LargeBinary),
     Column("closed_at", DateTime(timezone=True)),
     Column("expires_at", DateTime(timezone=True)),
     CheckConstraint("max_players BETWEEN 2 AND 6", name="room_capacity"),
@@ -56,6 +57,7 @@ rooms = Table("rooms", metadata,
     ForeignKeyConstraint(["current_match_id", "id"], ["matches.id", "matches.room_id"], name="room_current_match", deferrable=True, initially="DEFERRED", use_alter=True),
 )
 Index("rooms_recovery", rooms.c.status, rooms.c.last_activity_at)
+Index("rooms_creation_peer", rooms.c.creation_peer_hash, rooms.c.created_at)
 
 room_players = Table("room_players", metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),

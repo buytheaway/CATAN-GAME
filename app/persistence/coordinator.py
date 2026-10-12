@@ -1,6 +1,8 @@
 """Commit gate; no gameplay rules, socket publication or SQL in callers."""
 import logging
 import asyncio
+import time
+from contextlib import asynccontextmanager
 from app.match_rulesets import validate_transition
 from .errors import PersistenceUnavailable, CommitUncertain, RecoveryError
 from .repositories import Repository
@@ -37,7 +39,18 @@ class Coordinator:
             manager.rooms[room.room_code] = room
         self.ready = True
 
-    async def commit(self, before, candidate, **kwargs):
+    @asynccontextmanager
+    async def room_creation(self, manager, peer):
+        if not self.ready:
+            raise PersistenceUnavailable("Persistence temporarily unavailable")
+        if self.repository:
+            async with self.repository.room_creation(manager.creation_limits, peer) as session:
+                yield session
+        else:
+            manager.creation_admission.check(manager.rooms.values(), peer, time.monotonic())
+            yield None
+
+    async def commit(self, before, candidate, *, _session=None, **kwargs):
         validate_transition(before, candidate, **kwargs)
         if not self.ready or (before and before.persistence_blocked):
             raise PersistenceUnavailable("Persistence temporarily unavailable")
@@ -45,7 +58,7 @@ class Coordinator:
             candidate.durable_revision = (before.durable_revision if before else 0) + 1
             return
         try:
-            await self.repository.save(before, candidate, **kwargs)
+            await self.repository.save(before, candidate, _session=_session, **kwargs)
         except asyncio.CancelledError:
             self.ready = False
             raise

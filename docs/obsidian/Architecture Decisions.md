@@ -5,13 +5,25 @@ updated: 2026-10-12
 
 # Architecture Decisions
 
+## ADR-021 — Durable room admission, conservative lobby retention
+
+Status: **Accepted within authorized SEC-03, implemented/focused-tested 2026-10-12.**
+
+Decision: admit new rooms using configurable accepted-creation rate per canonical ASGI IP, concurrent lobby capacity per origin and total durable lobby capacity. Reuse SEC-04's exact proxy trust; IP is an abuse budget, never an identity/ownership proof. Guests and accounts on the same network share that budget. Store only an internal SHA-256 origin digest and the existing creation timestamp; the digest is not anonymization or a credential and must never enter public DTOs. Legacy origins remain NULL, still counting toward global capacity.
+
+In durable mode, a PostgreSQL transaction advisory lock serializes quota checks across admission callers; check before allocating Room/seat/credential, then insert using that same transaction. COMMIT precedes registration/binding/publication. Rejection performs no write and does not disable persistence. Read authoritative DB metadata rather than creating a RAM fallback or an unbounded IP cache; accepted budgets survive reconnect/restart. Single-worker gameplay architecture remains unchanged. Explicit memory mode uses a bounded, expiring accepted-creation deque and refuses when full instead of evicting live budgets.
+
+No automatic expiration/deletion: disconnect is not abandonment; valid guest credentials and account seats must remain recoverable. Active and finished matches/snapshots are never cleanup targets. Safe never-started expiry requires a separate product/lifecycle policy and transaction proving absence of match history and recoverable ownership, then explicit expired status without deleting historical data. It is **deferred**, not implemented. Defaults, capacity exhaustion and NAT/IPv6 limits — [[Deployment#Room creation admission — SEC-03]], [[Сервер и протокол#Room creation quotas — SEC-03]]. Existing ADR-012 recovery/F1/F2 constraints are preserved.
+
+Final lifecycle verification **2026-10-12** confirms that ordinary legitimate create/leave can exhaust persistent lobby capacity indefinitely. Start Match releases a reservation; the existing internal explicit-close helper can release one for a verified never-started lobby, but has no public/admin entry point and is unsafe as an indiscriminate active-room sweep. Credential expiry and elapsed room expiry timestamp do not change the admission predicate `status="lobby"`. This is a known product limitation accepted for the bounded SEC-03 checkpoint, not a claim of implemented abandonment cleanup.
+
 ## ADR-020 — Exact reverse-proxy peer trust for abuse limits
 
 Status: **Accepted within authorized SEC-04, implemented/focused-tested 2026-10-12.**
 
 Decision: authenticate proxy identity at Uvicorn's ASGI boundary; trust only the reserved web address on a dedicated Compose proxy network. Nginx overwrites forwarding with its actual client peer. Reserve backend's separate address too to prevent startup allocation collisions. Keep PostgreSQL on the original default network/volume, with no backend/DB host ports. Local module startup and standalone image use empty trust. Never use `*` or a whole Docker subnet as a convenient fix.
 
-Auth reads canonical ASGI IP for its unchanged per-peer/global budgets; it does not interpret client forwarding or use IP as session/seat identity. IPv4/IPv6/NAT/global-cap/single-worker limits and extra upstream proxy policy are explicit in [[Deployment#Trusted proxy and auth budgets — SEC-04]]. Existing cookie/Origin and persistence/publication ADRs remain unchanged; no distributed limiter or SEC-03 quotas are introduced.
+Auth reads canonical ASGI IP for its unchanged per-peer/global budgets; it does not interpret client forwarding or use IP as session/seat identity. IPv4/IPv6/NAT/global-cap/single-worker limits and extra upstream proxy policy are explicit in [[Deployment#Trusted proxy and auth budgets — SEC-04]]. Existing cookie/Origin and persistence/publication ADRs remain unchanged. **Historical SEC-04 scope:** no distributed limiter or SEC-03 quotas were introduced by that fix; subsequent room admission is ADR-021.
 
 ## ADR-019 — Corrective theft and shortage execution, unchanged ruleset family
 

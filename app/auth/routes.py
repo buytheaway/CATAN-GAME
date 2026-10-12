@@ -1,4 +1,3 @@
-import ipaddress
 import json
 import logging
 import secrets
@@ -13,7 +12,8 @@ from app.persistence.credentials import utcnow, valid_token, token_hash
 from app.persistence.inspection import InspectionLimiter, safe_game
 from app.match_rulesets import compatibility
 from app.persistence.recovery import clone_room
-from .security import (AuthError, COOKIE, authorization, require_origin, set_cookie, clear_cookie)
+from .security import (AuthError, COOKIE, authorization, require_origin, set_cookie, clear_cookie,
+                       client_ip as auth_peer)
 from .service import AuthService, safe_user
 
 class SafeRoute(APIRoute):
@@ -32,16 +32,6 @@ class SafeRoute(APIRoute):
 router = APIRouter(route_class=SafeRoute)
 login_limit = InspectionLimiter(limit=15)
 register_limit = InspectionLimiter(limit=5)
-
-
-def auth_peer(request):
-    # Uvicorn authenticates proxy peers; never read forwarded headers here.
-    peer = request.client.host if request.client else "unknown"
-    try:
-        address = ipaddress.ip_address(peer)
-    except ValueError:
-        return peer
-    return str(address.ipv4_mapped or address) if address.version == 6 else str(address)
 
 
 def service():
