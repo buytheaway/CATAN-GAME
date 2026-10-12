@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import math
+import unicodedata
 from typing import Any, Dict, Optional, Tuple
 from app.engine.public_projection import public_map_metadata, public_rules_config
+from app.engine.rules import RuleError, dev_card_options
 
 VERSION = 1
 
@@ -13,9 +16,81 @@ def _err(code: str, message: str, detail: Optional[Dict[str, Any]] = None):
     }
 
 
+def _storage_safe(value: Any) -> bool:
+    """JSONB/Text cannot store NUL or unpaired surrogates, including in keys."""
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            if "\x00" in item:
+                return False
+            try:
+                item.encode("utf-8")
+            except UnicodeError:
+                return False
+        elif isinstance(item, dict):
+            if any(not isinstance(key, str) for key in item):
+                return False
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, (list, tuple)):
+            pending.extend(item)
+        elif isinstance(item, float):
+            if not math.isfinite(item):
+                return False
+        elif item is not None and type(item) not in (int, bool):
+            return False
+    return True
+
+
+def _display_name(value: Any) -> bool:
+    return (isinstance(value, str) and 1 <= len(value.strip()) <= 32
+            and not any(unicodedata.category(c).startswith("C") for c in value))
+
+
+def _validate_command(cmd: Dict) -> None:
+    # Syntactic types only. Turn/cost/targets/authority remain engine checks.
+    kind = cmd["type"]
+    fields = {
+        "place_settlement": {"vid": int, "setup": bool},
+        "place_road": {"eid": list, "setup": bool, "free": bool},
+        "upgrade_city": {"vid": int}, "build_ship": {"eid": list, "setup": bool, "free": bool},
+        "move_ship": {"from_eid": list, "to_eid": list},
+        "move_robber": {"tile": int, "victim": int, "victim_pid": int},
+        "move_pirate": {"tile": int, "victim": int, "victim_pid": int},
+        "discard": {"discards": dict}, "choose_gold": {"res": str, "qty": int},
+        "trade_bank": {"give": str, "get": str, "get_qty": int},
+        "trade_offer_create": {"give": dict, "get": dict, "to": int, "to_pid": int},
+        "trade_offer_accept": {"offer_id": int, "id": int},
+        "trade_offer_decline": {"offer_id": int, "id": int},
+        "trade_offer_cancel": {"offer_id": int, "id": int},
+    }
+    nullable = {"victim", "victim_pid", "to", "to_pid"}
+    for key, expected in fields.get(kind, {}).items():
+        if key not in cmd or (key in nullable and cmd[key] is None):
+            continue
+        value = cmd[key]
+        if type(value) is not expected:
+            raise RuleError("invalid", f"cmd.{key} must be {expected.__name__}")
+        if key in ("eid", "from_eid", "to_eid"):
+            if len(value) != 2 or any(type(v) is not int for v in value):
+                raise RuleError("invalid", f"cmd.{key} must contain two integers")
+        if key in ("give", "get", "discards") and isinstance(value, dict):
+            if any(type(qty) is not int for qty in value.values()):
+                raise RuleError("invalid", f"cmd.{key} quantities must be integers")
+    if kind == "play_dev":
+        dev_card_options(cmd)
+
+
 def validate_client_message(msg: Any) -> Dict[str, Any]:
     if not isinstance(msg, dict):
         return _err("invalid", "message must be object")
+    if not _storage_safe(msg):
+        return _err("invalid", "Payload contains invalid JSON/storage values")
+    if "request_id" in msg and (not isinstance(msg["request_id"], str) or not 1 <= len(msg["request_id"]) <= 128):
+        return _err("invalid", "Invalid request_id")
+    if "room_code" in msg and not isinstance(msg["room_code"], str):
+        return _err("invalid", "room_code must be string")
     mtype = msg.get("type")
     if not isinstance(mtype, str):
         return _err("invalid", "type must be string")
@@ -28,8 +103,8 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
         return {"ok": True}
 
     if mtype == "create_room":
-        if not isinstance(msg.get("name"), str) or not msg["name"].strip():
-            return _err("invalid", "name required")
+        if not _display_name(msg.get("name")):
+            return _err("invalid", "name must be 1..32 characters without controls")
         max_players = msg.get("max_players", 4)
         if type(max_players) is not int or not (2 <= max_players <= 6):
             return _err("invalid", "max_players must be 2..6")
@@ -41,8 +116,8 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
     if mtype == "join_room":
         if not isinstance(msg.get("room_code"), str):
             return _err("invalid", "room_code required")
-        if not isinstance(msg.get("name"), str) or not msg["name"].strip():
-            return _err("invalid", "name required")
+        if not _display_name(msg.get("name")):
+            return _err("invalid", "name must be 1..32 characters without controls")
         return {"ok": True}
 
     if mtype == "reconnect":
@@ -72,6 +147,8 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "map_id or map_data required")
         if map_data is not None and not isinstance(map_data, dict):
             return _err("invalid", "map_data must be object")
+        if map_id is not None and not isinstance(map_id, str):
+            return _err("invalid", "map_id must be string")
         return {"ok": True}
 
     if mtype in ("set_settings", "set_color"):
@@ -102,6 +179,10 @@ def validate_client_message(msg: Any) -> Dict[str, Any]:
             return _err("invalid", "cmd must be object")
         if not isinstance(cmd.get("type"), str):
             return _err("invalid", "cmd.type required")
+        try:
+            _validate_command(cmd)
+        except RuleError as exc:
+            return _err(exc.code, exc.message)
         return {"ok": True}
 
     return _err("unknown", f"unknown type: {mtype}")

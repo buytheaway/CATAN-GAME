@@ -892,7 +892,7 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
     if isinstance(source, dict):
         try:
             map_loader.validate_map_data(source)
-        except Exception as exc:
+        except map_loader.MapValidationError as exc:
             raise RuleError("invalid", f"Invalid map_data: {exc}") from exc
         name = str(source.get("name", "custom"))
         map_id = map_id if isinstance(map_id, str) and map_id else name
@@ -1173,7 +1173,7 @@ async def websocket_endpoint(ws: WebSocket):
     if cookie:
         try:
             who = await AuthService(persistence.database).resolve(cookie) if persistence.ready and persistence.database else None
-        except Exception:
+        except (SQLAlchemyError, PersistenceUnavailable):
             await _send(ws, net_protocol.error_message("persistence_unavailable", "Session temporarily unavailable", {"retryable": True}))
             await ws.close(code=1013)
             return
@@ -1196,7 +1196,7 @@ async def websocket_endpoint(ws: WebSocket):
             try:
                 data = json.loads(raw)
                 json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, RecursionError):
                 await _send(ws, net_protocol.error_message("invalid", "Invalid JSON"))
                 continue
             validation = net_protocol.validate_client_message(data)
@@ -1218,7 +1218,7 @@ async def websocket_endpoint(ws: WebSocket):
                                                           {**detail, "retryable": True}))
                 await ws.close(code=1013)
                 return
-            except Exception:
+            except SQLAlchemyError:
                 # Database driver errors in receipt/recovery reads are also temporary;
                 # logs deliberately omit SQL values, credential, URL and private state.
                 if persistence.database:

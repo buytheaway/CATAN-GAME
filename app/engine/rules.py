@@ -104,6 +104,10 @@ def make_setup_order(n_players: int, starting_pid: int = 0) -> List[int]:
 
 
 def parse_rules_config(rules: Dict[str, Any]) -> RulesConfig:
+    try:
+        map_loader.validate_rules_config_data(rules)
+    except map_loader.MapValidationError as exc:
+        raise RuleError("invalid", str(exc)) from None
     target_vp = int(rules.get("target_vp", rules.get("victory_points", 10)))
     limits = rules.get("limits", {})
     if not isinstance(limits, dict):
@@ -645,6 +649,22 @@ def buy_dev(g: GameState, pid: int) -> str:
         g.players[pid].vp += 1
         check_win(g)
     return card
+
+
+def dev_card_options(cmd: Dict) -> Dict:
+    """Closed input shape, shared by protocol validation and engine dispatch."""
+    card = cmd.get("card")
+    if not isinstance(card, str):
+        raise RuleError("invalid", "card must be string")
+    shapes = {"year_of_plenty": {"a": str, "b": str, "qa": int, "qb": int},
+              "monopoly": {"r": str}}
+    options = shapes.get(card.strip().lower(), {})
+    if set(cmd) - {"type", "card", "pid", *options}:
+        raise RuleError("invalid", "Unexpected development card fields")
+    for key, kind in options.items():
+        if key in cmd and type(cmd[key]) is not kind:
+            raise RuleError("invalid", f"{key} must be {kind.__name__}")
+    return {key: cmd[key] for key in options if key in cmd}
 
 
 def play_dev(g: GameState, pid: int, card_type: str, **kwargs) -> Dict:
@@ -1411,7 +1431,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict, *, trusted_fog: bool = False, t
 
     if ctype == "play_dev":
         card = cmd.get("card")
-        extra = {k: v for k, v in cmd.items() if k not in ("type", "card", "pid")}
+        extra = dev_card_options(cmd)
         result = play_dev(g, pid, card, **extra)
         events.append({"type": "play_dev", "card": card, "result": result})
         return g, events

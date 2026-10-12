@@ -150,13 +150,40 @@ def get_preset_meta(name: str) -> Optional[Dict[str, str]]:
     return {"id": preset["id"], "name": preset["name"], "description": preset["description"]}
 
 
+def validate_rules_config_data(rules: Dict[str, Any]) -> None:
+    """Validate every parsed alias before any coercion or durable write."""
+    if not isinstance(rules, dict):
+        raise MapValidationError("rules must be object")
+    integers = ("target_vp", "victory_points", "robber_count", "discard_threshold",
+                "max_roads", "max_settlements", "max_cities", "max_ships")
+    for key in integers:
+        if key in rules and type(rules[key]) is not int:
+            raise MapValidationError(f"rules.{key} must be int")
+    for key in ("enable_seafarers", "enable_pirate", "enable_gold", "enable_move_ship"):
+        if key in rules and type(rules[key]) is not bool:
+            raise MapValidationError(f"rules.{key} must be bool")
+    if "discard_threshold" in rules and not 1 <= rules["discard_threshold"] <= 50:
+        raise MapValidationError("rules.discard_threshold must be 1..50")
+    if "limits" in rules:
+        limits = rules["limits"]
+        if not isinstance(limits, dict):
+            raise MapValidationError("rules.limits must be object")
+        for key in ("roads", "settlements", "cities", "ships",
+                    "max_roads", "max_settlements", "max_cities", "max_ships"):
+            if key in limits and type(limits[key]) is not int:
+                raise MapValidationError(f"rules.limits.{key} must be int")
+
+
 def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise MapValidationError("map must be object")
     raw_version = data.get("version", MAP_VERSION)
     if type(raw_version) is int and raw_version == FOG_MAP_VERSION:
         return _validate_fog_recipe(data)
-    version = int(raw_version)  # Preserve the existing v1 input contract.
+    try:
+        version = int(raw_version)  # Preserve the existing v1 input contract.
+    except (TypeError, ValueError, OverflowError):
+        raise MapValidationError("invalid map version") from None
     if version != MAP_VERSION:
         raise MapValidationError("unsupported map version", {"version": version})
     name = data.get("name")
@@ -247,8 +274,8 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
                 raise MapValidationError("ports_auto.deck contains unknown port type")
 
     rules = data.get("rules")
-    if rules is not None and not isinstance(rules, dict):
-        raise MapValidationError("rules must be object")
+    if "rules" in data:
+        validate_rules_config_data(rules)
     if isinstance(rules, dict):
         try:
             config = parse_scenario_rules(rules)
@@ -256,29 +283,6 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
                 raise ValueError("Fog requires a version 2 recipe")
         except ValueError as exc:
             raise MapValidationError(str(exc)) from exc
-        if "target_vp" in rules and not isinstance(rules.get("target_vp"), int):
-            raise MapValidationError("rules.target_vp must be int")
-        if "victory_points" in rules and not isinstance(rules.get("victory_points"), int):
-            raise MapValidationError("rules.victory_points must be int")
-        if "robber_count" in rules and not isinstance(rules.get("robber_count"), int):
-            raise MapValidationError("rules.robber_count must be int")
-        if "enable_seafarers" in rules and not isinstance(rules.get("enable_seafarers"), bool):
-            raise MapValidationError("rules.enable_seafarers must be bool")
-        if "max_ships" in rules and not isinstance(rules.get("max_ships"), int):
-            raise MapValidationError("rules.max_ships must be int")
-        if "enable_pirate" in rules and not isinstance(rules.get("enable_pirate"), bool):
-            raise MapValidationError("rules.enable_pirate must be bool")
-        if "enable_gold" in rules and not isinstance(rules.get("enable_gold"), bool):
-            raise MapValidationError("rules.enable_gold must be bool")
-        if "enable_move_ship" in rules and not isinstance(rules.get("enable_move_ship"), bool):
-            raise MapValidationError("rules.enable_move_ship must be bool")
-        limits = rules.get("limits")
-        if limits is not None:
-            if not isinstance(limits, dict):
-                raise MapValidationError("rules.limits must be object")
-            for key in ("roads", "settlements", "cities", "ships"):
-                if key in limits and not isinstance(limits.get(key), int):
-                    raise MapValidationError("rules.limits values must be int", {"key": key})
 
     robber_tile = data.get("robber_tile")
     if robber_tile is not None and type(robber_tile) is not int:
