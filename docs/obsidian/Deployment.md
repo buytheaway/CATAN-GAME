@@ -1,6 +1,6 @@
 ---
 tags: [catan, deployment, docker]
-updated: 2026-10-07
+updated: 2026-10-12
 ---
 
 # Deployment
@@ -60,6 +60,8 @@ Auth/TLS/backup/multi-worker remain future. Details — [[plans/persistence-auth
 
 ## Local development
 
+Normal Vite dev now binds **127.0.0.1:5173**; normal preview binds **127.0.0.1:4173**. Network/LAN exposure requires an explicit operator override. Details and verified scope — [[Deployment#Vite development security — SEC-02]].
+
 Из корня репозитория, желательно в своём Python 3.12 virtualenv:
 
 ```sh
@@ -75,11 +77,27 @@ npm ci
 npm run dev
 ```
 
-Открыть http://localhost:5173. Backend по умолчанию слушает 0.0.0.0:8000; main() поддерживает CATAN_HOST/CATAN_PORT. Vite dev использует VITE_WS_URL из web/.env / web/.env.local либо ws://127.0.0.1:8000/ws. Для LAN значение может быть ws://<IP backend>:8000/ws; пример — [web/.env.example](../../web/.env.example).
+Открыть http://127.0.0.1:5173. Backend по умолчанию слушает 0.0.0.0:8000; main() поддерживает CATAN_HOST/CATAN_PORT. Vite proxy использует VITE_WS_URL из web/.env / web/.env.local либо ws://127.0.0.1:8000/ws. Browser default — page-origin `/ws`; явный VITE_WS_URL также переопределяет browser connection, как и раньше. LAN backend URL сам по себе не открывает Vite наружу; пример override — [web/.env.example](../../web/.env.example).
 
 Desktop по-прежнему использует свои requirements и RUN_*.bat. requirements-server.txt не устанавливает PySide или тесты. Существующий [tools/run_lan.ps1](../../tools/run_lan.ps1) остаётся способом локального запуска.
 
 Без DATABASE_URL local dev использует memory mode; явный CATAN_PERSISTENCE_MODE=memory не допускает игнорировать заданный DB URL. Durable mode требует postgresql+psycopg URL либо полный POSTGRES_USER/PASSWORD/DB + CATAN_DATABASE_HOST. При DB outage durable mode не переключается в RAM. `python -m app.server_mp` на Windows явно использует SelectorEventLoop для psycopg; прямой Uvicorn CLI с durable DB требует `--loop app.persistence.db:selector_event_loop`. Linux Docker CMD не меняется. Основание — [Psycopg async/Windows](https://www.psycopg.org/psycopg3/docs/advanced/async.html).
+
+## Vite development security — SEC-02
+
+**Implemented/tested 2026-10-12.** Vite **5.4.21 → 6.4.4**, exact package pin and reproducible `npm ci`. [Official release policy](https://vite.dev/releases) currently supports 6.4 for security backports. Node 24.12.0 and existing `@vitejs/plugin-react` 4.7.0 satisfy engines/peers; React, TypeScript and the plugin are not upgraded. Only Vite and its necessary esbuild/globbing dependency subtree changed in the lockfile. No audit-force update, Docker image/architecture or Nginx configuration change.
+
+Advisory applicability checked against primary sources:
+
+- [GHSA-fx2h-pf6j-xcff](https://github.com/vitejs/vite/security/advisories/GHSA-fx2h-pf6j-xcff): Windows ADS/8.3 deny bypass, patched in 6.4.3 and included in 6.4.4.
+- **October 6, 2026:** [GHSA-rq7h-c2jc-7f22](https://github.com/vitejs/vite/security/advisories/GHSA-rq7h-c2jc-7f22) (non-Windows safe-module allow bypass) and [GHSA-9jrq-w75r-8gcw](https://github.com/vitejs/vite/security/advisories/GHSA-9jrq-w75r-8gcw) (custom-middleware cross-origin script) are patched in 6.4.4. CATAN uses normal SPA mode, not the affected custom HTML middleware.
+- [GHSA-vfpm-58rq-9qcg](https://github.com/vitejs/vite/security/advisories/GHSA-vfpm-58rq-9qcg), also October 6, affects 8.2/8.3; neither old Vite 5 nor selected 6.4 is in its affected range. Do not describe it as a Vite 6 vulnerability fixed by this update.
+
+Dev/preview defaults are **127.0.0.1**. Synthetic Windows reproduction on 5.4.21 returned direct `.env` 403 but `::$DATA?raw` 200 with the canary. After upgrade, stock exact deny patterns still missed resolved raw-query suffixes locally; explicit `.env*`/`*.{crt,pem}*` patterns close this tested gap and retain `.git` denial. Resolving direct/raw/ADS requests now return refusal without file contents; percent-encoded paths that do not resolve return the normal HTML SPA fallback, also without the canary. Strict allow-list and patched path checks are not disabled. Real secrets/private files were never requested. Native 8.3 filename generation and the Linux/custom-middleware exploit chains were not separately reproduced; their upstream fixes are included by version, not claimed as local exploit acceptance.
+
+Verified: six [live Vite security groups](../../web/tests/viteSecurity.test.mjs), all **275 web tests**, TypeScript, production build, `docker compose build web` with existing Node 24 Alpine/Nginx and actual Windows listener addresses. Real Chrome/two guests/isolated PostgreSQL also passed Home/create/join/Base start, `/api/auth/me`, same-origin `/ws`, personalized privacy and visible Board3D/terrain GLBs, no JS errors. Backend test used localhost 18092 because Windows reserves 7929–8028; Vite proxy was temporarily overridden for the probe and guest Advanced connection pointed to Vite `/ws`. Repository defaults remain backend 8000. Temporary services are stopped after verification; existing development/production DBs, accounts and volumes are untouched.
+
+`npm audit` reports **17 affected dev-toolchain package records: 15 high, 1 moderate, 1 low; 0 critical**. `npm audit --omit=dev`: **0**. Remaining chains include Rollup, PostCSS/nanoid/source-map-js, Babel/browserslist/baseline-browser-mapping and ESLint/glob tools. They are not additional Vite GHSA records and are not fixed in this scope; build-time risks remain. Large Board3D chunk warning remains. Python/scenario suites were not repeated because backend/gameplay are unchanged; SEC-01's full 1292 result is separate evidence. SEC-03/04 are not started. [[Project State]], [[Результаты аудита#SEC-02 Vite hardening — verified 2026-10-12]].
 
 ## Docker production-like
 

@@ -6,6 +6,12 @@ tags: [catan, web]
 
 [[React интерфейс]] · [[Стили и визуальные границы]] · [[Сервер и протокол]]
 
+## Development server security — SEC-02
+
+**Implemented/tested 2026-10-12:** [package.json](../../web/package.json) and its lock pin **Vite 6.4.4**; the existing React 18, React plugin 4.7.0, TypeScript and Node 24 remain compatible and unchanged. [vite.config.ts](../../web/vite.config.ts) binds normal dev and preview to **127.0.0.1**, preserving `/api` and `/ws` backend proxy behavior. Filesystem deny patterns cover `.env*`, CRT/PEM with query/NTFS suffixes and `.git`; `fs.strict` and upstream alternate-path checks remain enabled. This is development-server hardening, not a game/protocol/UI change. Production continues to serve Vite output through Nginx.
+
+[viteSecurity.test.mjs](../../web/tests/viteSecurity.test.mjs) uses synthetic temporary roots/files only: actual listeners, dev/preview pages, direct/raw/NTFS/encoded paths, outside-allow-list/Wasm queries and configured HTTP proxy. All six groups pass on Windows; full web suite **275 passed**, TS/build/Docker build passed. Real Chrome additionally verifies two guests, regular Base start, actual FastAPI HTTP/WS proxy and Board3D GLBs. Version support, official advisory applicability, remaining audit findings and host limitations — [[Deployment#Vite development security — SEC-02]], [[Результаты аудита#SEC-02 Vite hardening — verified 2026-10-12]]. No real `.env`, private file or credential was probed.
+
 ## Fog frontend boundary — S2B-2B.3A
 
 **Implemented/fixture-tested 2026-10-12:** optional public tile visibility/index and discovery reward event fields are typed; GamePage passes committed match tick/key/connection status to the shared BoardRenderer reveal lifecycle. Both SVG/Three consume sanitized public-only tiles, the same graph and controller. WSClient's existing room/match epoch and older-tick rejection is unchanged; refresh/reconnect establishes a presentation baseline. Gold Choose now uses existing ACK-correlated useGameCommand waiting and the same command envelope.
@@ -40,7 +46,7 @@ Development `VITE_WS_URL` остаётся явным override browser URL и о
 
 Методы не возвращают новое состояние игры. Оно приходит отдельным сообщением.
 
-Historical verification 2026-10-02, Phase 1: персональный network view, consumed-seq/ACK/reconnect ordering проверялись прежним suite. Эти семантики сохранены, но 7 transport cases не являются сегодняшним числом тестов. Последний полный web результат — **241 passed, F2, 2026-10-08**; последний полный Python — **757 passed, F3**. Даты/границы — [[Project State]]. F1 защищает каждую private publication актуальным ownership; F2 подавляет playable match_state/commands для restricted rulesets, сохраняя Continue notice и ownership.
+Historical verification 2026-10-02, Phase 1: персональный network view, consumed-seq/ACK/reconnect ordering проверялись прежним suite. Эти семантики сохранены, но 7 transport cases не являются сегодняшним числом тестов. **241 web passed, F2, 2026-10-08** и **757 Python passed, F3** — historical checkpoint results. Latest verified counts/границы — [[Project State]]. F1 защищает каждую private publication актуальным ownership; F2 подавляет playable match_state/commands для restricted rulesets, сохраняя Continue notice и ownership.
 
 ```mermaid
 sequenceDiagram

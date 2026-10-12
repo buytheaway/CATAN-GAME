@@ -8,13 +8,18 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      host: true,
+      host: "127.0.0.1",
       port: 5173,
+      fs: {
+        // Resolved raw imports can retain query/NTFS suffixes at the deny check.
+        deny: [".env*", "*.{crt,pem}*", "**/.git/**"],
+      },
       proxy: {
         // Same backend as the configured development WebSocket.
         "/api": backend.origin,
         "/ws": { target: backend.origin, ws: true },
       },
     },
+    preview: { host: "127.0.0.1" },
   };
 });
