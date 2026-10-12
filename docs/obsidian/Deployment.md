@@ -29,7 +29,32 @@ Only development sets Secure=false. .env.example documents this local profile. F
 
 Nginx already proxies /api and /ws; Set-Cookie/Cookie/Origin pass unchanged, no auth token/password in URL or access-log body. Auth HTTP limits bodies to 4 KiB inside the existing 16 KiB proxy ceiling. Vite now proxies both /api and /ws to the configured backend, default 127.0.0.1:8000; browser default WS is page-origin /ws. For local Python/Vite auth set development plus allowed http://localhost:5173/http://127.0.0.1:5173 origins. Keep account HTTP/WS on the same site; explicit foreign/manual WS remains guest scope.
 
-Dependencies: only argon2-cffi 25.1.0 and its pinned bindings/CFFI/pycparser were added; backend Docker copies app/auth. No new services/ports/worker/JWT/framework. Auth rate limits are process-local (register 5/min, login 15/min/peer, global 5× each); default Nginx may share peer budget. Not a distributed brute-force/load solution.
+Dependencies: only argon2-cffi 25.1.0 and its pinned bindings/CFFI/pycparser were added; backend Docker copies app/auth. No new services/ports/worker/JWT/framework. Auth rate limits are process-local (register 5/min, login 15/min/peer, global 5× each). The original Nginx shared-peer defect is addressed by SEC-04 below; this remains a single-worker limit, not a distributed brute-force/load solution.
+
+## Trusted proxy and auth budgets — SEC-04
+
+Uvicorn's original default trusted only loopback, so Docker Nginx's address became every user's `request.client.host`. Real isolated reproduction: client A (`172.24.0.5`) received 15 input refusals then 429; different client B (`172.24.0.6`) immediately received 429, with Nginx at `172.24.0.4`. Health remained 200.
+
+[compose.yaml](../../compose.yaml) now connects web/backend through a dedicated `proxy` bridge. Defaults: subnet **172.30.250.0/29**, web **172.30.250.2**, backend **172.30.250.3**. PostgreSQL stays on the original default network with backend; web cannot directly reach it. Existing named DB volume, services, published web port and single worker remain. Neither backend nor PostgreSQL has a host port. Both proxy endpoints reserve addresses so backend cannot dynamically claim the proxy's trusted address before web starts.
+
+Compose sets **FORWARDED_ALLOW_IPS to exactly the web address**, not `*`, loopback, a Docker subnet or service DNS name. Nginx overwrites X-Forwarded-For with `$remote_addr` on API/WS/health and X-Forwarded-Proto with `$scheme`; client-supplied chains are not authoritative. Uvicorn authenticates the connecting peer and updates ASGI client/scheme. [auth/routes.py](../../app/auth/routes.py) reads only that ASGI peer and canonicalizes IPv6/IPv4-mapped addresses. Login 15/min, register 5/min, global 5× caps/window/bucket bound/Argon concurrency are unchanged. Cookie, Origin/CSRF, ownership, F1 publication and persistence do not derive authority from IP.
+
+Standalone backend image defaults to **empty FORWARDED_ALLOW_IPS**. `python -m app.server_mp` explicitly uses empty trust, even if the shell exports `*`: localhost/Vite development keeps HTTP/WS working but direct clients cannot select IP via headers. A separate operator-managed reverse-proxy launch must configure its own exact trusted peer through Uvicorn CLI; do not use unrestricted trust.
+
+If the reserved subnet conflicts with a local network, configure **CATAN_PROXY_SUBNET, CATAN_PROXY_IP and CATAN_BACKEND_PROXY_IP together**, with two distinct addresses inside that subnet. Invalid/conflicting Docker IPAM fails startup; it never switches to broad trust or changes the database. [tests/persistence.compose.yaml](../../tests/persistence.compose.yaml) uses separate 172.30.251.0/29 (.2 proxy/.3 backend) so normal and test projects can coexist. Extra simultaneous test projects need their own non-overlapping subnet too. Docker daemon administrators are inside the trust boundary.
+
+Nginx accepts IPv4/IPv6 clients; upstream Docker DNS is deliberately IPv4, keeping the trusted peer exact. Normal Compose does not enable IPv6 networking automatically. The isolated acceptance network enables IPv6 only for testing. Clients behind the same NAT still share an IP budget. Additional external CDN/LB/TLS reverse-proxy hops need an explicit Nginx trusted-real-IP policy; arbitrary incoming forwarding headers remain ignored. Global protective caps are still shared, and budgets reset with the process.
+
+Evidence: [test_auth_proxy.py](../../tests/test_auth_proxy.py), opt-in real [test_auth_proxy_docker.py](../../tests/test_auth_proxy_docker.py), and [[Project State#Current verification and status]]. Actual Docker acceptance uses disposable `_test` PostgreSQL/accounts and three separate client containers, real Nginx/Uvicorn IPv4 and IPv6, independent login/register budgets, forged forwarding, direct internal backend connections, login/cookies, account Continue, guest reconnect and Origin refusals. The normal user stack/volume is untouched. Primary configuration references: [Uvicorn 0.40 proxy settings](https://github.com/Kludex/uvicorn/blob/0.40.0/docs/settings.md#http), [Compose networks/IPAM](https://docs.docker.com/reference/compose-file/networks/), [Nginx header replacement](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header).
+
+Repeat only in an explicit disposable project, using [auth_proxy.compose.yaml](../../tests/auth_proxy.compose.yaml). This overlay forces a local `_test` database, intentionally public synthetic credentials, empty external DATABASE_URL and localhost test ports; it must never be applied to `catan-game` or a user volume. The example env file avoids implicitly loading private `.env` values. Existing project data is not reset.
+
+```powershell
+docker compose --env-file .env.example -p catan-sec04-test -f compose.yaml -f tests/auth_proxy.compose.yaml up --build -d --wait
+$env:CATAN_PROXY_TEST_PROJECT = 'catan-sec04-test'
+python -B -m pytest tests/test_auth_proxy.py tests/test_auth_proxy_docker.py -p no:cacheprovider
+docker compose --env-file .env.example -p catan-sec04-test -f compose.yaml -f tests/auth_proxy.compose.yaml stop
+```
 
 Windows `RUN_SERVER.bat` installs `requirements-server.txt`, including persistence and Argon2 dependencies. The existing desktop/test `requirements.txt` is separate; it is not the server runtime lock.
 
@@ -97,7 +122,7 @@ Dev/preview defaults are **127.0.0.1**. Synthetic Windows reproduction on 5.4.21
 
 Verified: six [live Vite security groups](../../web/tests/viteSecurity.test.mjs), all **275 web tests**, TypeScript, production build, `docker compose build web` with existing Node 24 Alpine/Nginx and actual Windows listener addresses. Real Chrome/two guests/isolated PostgreSQL also passed Home/create/join/Base start, `/api/auth/me`, same-origin `/ws`, personalized privacy and visible Board3D/terrain GLBs, no JS errors. Backend test used localhost 18092 because Windows reserves 7929–8028; Vite proxy was temporarily overridden for the probe and guest Advanced connection pointed to Vite `/ws`. Repository defaults remain backend 8000. Temporary services are stopped after verification; existing development/production DBs, accounts and volumes are untouched.
 
-`npm audit` reports **17 affected dev-toolchain package records: 15 high, 1 moderate, 1 low; 0 critical**. `npm audit --omit=dev`: **0**. Remaining chains include Rollup, PostCSS/nanoid/source-map-js, Babel/browserslist/baseline-browser-mapping and ESLint/glob tools. They are not additional Vite GHSA records and are not fixed in this scope; build-time risks remain. Large Board3D chunk warning remains. Python/scenario suites were not repeated because backend/gameplay are unchanged; SEC-01's full 1292 result is separate evidence. SEC-03/04 are not started. [[Project State]], [[Результаты аудита#SEC-02 Vite hardening — verified 2026-10-12]].
+At SEC-02 verification, `npm audit` reported **17 affected dev-toolchain package records: 15 high, 1 moderate, 1 low; 0 critical**. `npm audit --omit=dev`: **0**. Remaining chains include Rollup, PostCSS/nanoid/source-map-js, Babel/browserslist/baseline-browser-mapping and ESLint/glob tools. They are not additional Vite GHSA records and are not fixed in this scope; build-time risks remain. Large Board3D chunk warning remains. Python/scenario suites were not repeated for SEC-02 because backend/gameplay were unchanged; SEC-01's full 1292 result is separate evidence. SEC-03/04 were not started at that checkpoint; SEC-04's later state is described above. [[Project State]], [[Результаты аудита#SEC-02 Vite hardening — verified 2026-10-12]].
 
 ## Docker production-like
 
@@ -155,8 +180,8 @@ flowchart LR
 | Service / route | Поведение |
 | --- | --- |
 | web | Единственный опубликованный host port: 80, override CATAN_WEB_PORT |
-| backend | Порт 8000 доступен внутри Compose network; ports mapping отсутствует |
-| postgres | Private 5432 в Compose network, без host ports; named volume, pg_isready healthcheck |
+| backend | Private 8000 в proxy/default networks; ports mapping отсутствует, trusted proxy peer — только web |
+| postgres | Private 5432 в default network с backend, web не подключён; без host ports; named volume, pg_isready healthcheck |
 | / | React production build, SPA fallback на index.html |
 | /assets/ | Реальные static files; отсутствующий asset возвращает 404 |
 | /ws | Только exact route; HTTP/1.1, Upgrade/Connection headers, 3600s proxy read/send timeout |

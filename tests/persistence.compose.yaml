@@ -1,12 +1,26 @@
 # Isolated, explicit opt-in test project. Never reuse the normal production volume.
+# Separate proxy subnet/peer so this stack can coexist with normal Compose.
 services:
   backend:
+    networks:
+      proxy:
+        ipv4_address: 172.30.251.3
     environment:
+      FORWARDED_ALLOW_IPS: 172.30.251.2
       CATAN_AUTH_MODE: development
       CATAN_AUTH_ORIGINS: http://127.0.0.1:18081
   postgres:
     ports:
       - "127.0.0.1:15432:5432"
   web:
+    networks:
+      proxy:
+        ipv4_address: 172.30.251.2
     ports: !override
       - "127.0.0.1:18081:8080"
+
+networks:
+  proxy:
+    ipam:
+      config: !override
+        - subnet: 172.30.251.0/29

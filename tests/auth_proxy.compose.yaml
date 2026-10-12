@@ -1,0 +1,36 @@
+# Disposable SEC-04 acceptance only: always use an explicit *-test project.
+# Synthetic credentials are intentionally public; never apply to the user stack.
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: catan_sec04_runtime_test
+      POSTGRES_USER: catan
+      POSTGRES_PASSWORD: public-sec04-disposable-password
+    ports:
+      - "127.0.0.1:55441:5432"
+  backend:
+    networks:
+      proxy:
+        ipv4_address: 172.30.252.3
+    environment:
+      FORWARDED_ALLOW_IPS: 172.30.252.2
+      CATAN_AUTH_MODE: development
+      CATAN_AUTH_ORIGINS: http://sec04.test,http://127.0.0.1:18094
+      DATABASE_URL: ""
+      POSTGRES_DB: catan_sec04_runtime_test
+      POSTGRES_USER: catan
+      POSTGRES_PASSWORD: public-sec04-disposable-password
+  web:
+    networks:
+      proxy:
+        ipv4_address: 172.30.252.2
+    ports: !override
+      - "127.0.0.1:18094:8080"
+
+networks:
+  proxy:
+    enable_ipv6: true
+    ipam:
+      config: !override
+        - subnet: 172.30.252.0/29
+        - subnet: fd42:c47a:0:4::/64

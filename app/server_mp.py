@@ -1252,7 +1252,8 @@ def main():
     except ValueError:
         port = 8000
     loop = "app.persistence.db:selector_event_loop" if os.name == "nt" else "auto"
-    uvicorn.run("app.server_mp:app", host=host, port=port, reload=False, workers=1, loop=loop)
+    uvicorn.run("app.server_mp:app", host=host, port=port, reload=False, workers=1, loop=loop,
+                forwarded_allow_ips="")
 
 
 if __name__ == "__main__":

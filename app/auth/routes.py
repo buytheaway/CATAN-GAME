@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import logging
 import secrets
@@ -31,6 +32,16 @@ class SafeRoute(APIRoute):
 router = APIRouter(route_class=SafeRoute)
 login_limit = InspectionLimiter(limit=15)
 register_limit = InspectionLimiter(limit=5)
+
+
+def auth_peer(request):
+    # Uvicorn authenticates proxy peers; never read forwarded headers here.
+    peer = request.client.host if request.client else "unknown"
+    try:
+        address = ipaddress.ip_address(peer)
+    except ValueError:
+        return peer
+    return str(address.ipv4_mapped or address) if address.version == 6 else str(address)
 
 
 def service():
@@ -90,7 +101,7 @@ async def fence_session(session_id):
 async def authenticate(request: Request):
     require_origin(request)
     register = request.url.path.endswith("register")
-    if not (register_limit if register else login_limit).allow(request.client.host if request.client else "unknown"):
+    if not (register_limit if register else login_limit).allow(auth_peer(request)):
         raise AuthError("rate_limited", 429)
     data = await body(request, ("username", "display_name", "password") if register else ("username", "password"))
     incoming = await identity(request, required=False)

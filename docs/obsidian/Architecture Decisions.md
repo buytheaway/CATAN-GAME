@@ -5,6 +5,14 @@ updated: 2026-10-12
 
 # Architecture Decisions
 
+## ADR-020 — Exact reverse-proxy peer trust for abuse limits
+
+Status: **Accepted within authorized SEC-04, implemented/focused-tested 2026-10-12.**
+
+Decision: authenticate proxy identity at Uvicorn's ASGI boundary; trust only the reserved web address on a dedicated Compose proxy network. Nginx overwrites forwarding with its actual client peer. Reserve backend's separate address too to prevent startup allocation collisions. Keep PostgreSQL on the original default network/volume, with no backend/DB host ports. Local module startup and standalone image use empty trust. Never use `*` or a whole Docker subnet as a convenient fix.
+
+Auth reads canonical ASGI IP for its unchanged per-peer/global budgets; it does not interpret client forwarding or use IP as session/seat identity. IPv4/IPv6/NAT/global-cap/single-worker limits and extra upstream proxy policy are explicit in [[Deployment#Trusted proxy and auth budgets — SEC-04]]. Existing cookie/Origin and persistence/publication ADRs remain unchanged; no distributed limiter or SEC-03 quotas are introduced.
+
 ## ADR-019 — Corrective theft and shortage execution, unchanged ruleset family
 
 Status: **Accepted within the authorized B1/B2 correctness fix, implemented/focused-tested 2026-10-12.**
