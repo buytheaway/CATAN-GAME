@@ -841,7 +841,10 @@ def test_fifty_hex_custom_fixture_round_trip():
     restore(g)
 
 
-def test_restored_robber_moves_and_theft_remain_equivalent():
+def test_restored_robber_moves_and_theft_remain_equivalent(monkeypatch):
+    # Compare recovery under the same draw; independent random steals need not
+    # select the same card. The codec preserves hands, not a theft RNG stream.
+    monkeypatch.setattr(rules._THEFT_RNG, "randrange", lambda stop: stop - 1)
     g = build_case("multiple_victims")
     tile = next(t for t in range(len(g.tiles)) if t != g.robber_tile
                 and len(rules._victims_for_tile(g, t, 0)) == 2)

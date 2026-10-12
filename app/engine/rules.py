@@ -25,6 +25,11 @@ from app.engine.state import (
 )
 
 
+# Independent of the public map seed. Tests may replace this private provider;
+# neither commands nor snapshots can supply a draw or RNG state.
+_THEFT_RNG = random.SystemRandom()
+
+
 class RuleError(Exception):
     def __init__(self, code: str, message: str, details: Optional[Dict] = None):
         super().__init__(message)
@@ -358,6 +363,7 @@ def pay_to_bank(g: GameState, pid: int, cost: Dict[str, int]) -> None:
 
 def distribute_for_roll(g: GameState, roll: int) -> None:
     robbers = set(getattr(g, "robbers", []) or [g.robber_tile])
+    demands: Dict[str, Dict[int, int]] = {res: {} for res in RESOURCES}
     for vid, (pid, level) in g.occupied_v.items():
         for ti in g.vertex_adj_hexes.get(vid, []):
             if not tile_is_known(g, ti):
@@ -371,9 +377,18 @@ def distribute_for_roll(g: GameState, roll: int) -> None:
             if not res:
                 continue
             amount = 2 if level == 2 else 1
-            give = min(amount, g.bank.get(res, 0))
-            if give <= 0:
-                continue
+            demands[res][pid] = demands[res].get(pid, 0) + amount
+
+    # A shortage shared by multiple players cancels this resource's entire
+    # production. A single recipient takes the remaining cards instead.
+    for res, recipients in demands.items():
+        available = g.bank.get(res, 0)
+        if not recipients or available <= 0:
+            continue
+        if len(recipients) > 1 and sum(recipients.values()) > available:
+            continue
+        for pid, amount in recipients.items():
+            give = min(amount, available)
             g.bank[res] -= give
             g.players[pid].res[res] += give
 
@@ -842,16 +857,19 @@ def _finish_route(g: GameState, pid: int, edge: Tuple[int, int], command: str,
         _finish_setup_route(g)
 
 
-def _steal_one(g: GameState, thief_pid: int, victim_pid: int) -> Optional[str]:
+def _steal_one(g: GameState, thief_pid: int, victim_pid: int, *, rng=None) -> Optional[str]:
     res = g.players[victim_pid].res
-    choices = [r for r, q in res.items() if q > 0]
-    if not choices:
+    cards = [(r, res.get(r, 0)) for r in RESOURCES if res.get(r, 0) > 0]
+    total = sum(quantity for _, quantity in cards)
+    if not total:
         return None
-    choices.sort(key=lambda r: (-int(res.get(r, 0)), r))
-    r = choices[0]
-    res[r] -= 1
-    g.players[thief_pid].res[r] += 1
-    return r
+    ticket = (_THEFT_RNG if rng is None else rng).randrange(total)
+    for resource, quantity in cards:
+        if ticket < quantity:
+            res[resource] -= 1
+            g.players[thief_pid].res[resource] += 1
+            return resource
+        ticket -= quantity
 
 
 def _clean_trade_payload(payload: Dict) -> Dict[str, int]:
@@ -894,9 +912,10 @@ def _find_offer(g: GameState, offer_id: int) -> Optional[TradeOffer]:
     return None
 
 
-def apply_cmd(g: GameState, pid: int, cmd: Dict, *, trusted_fog: bool = False) -> Tuple[GameState, List[Dict]]:
+def apply_cmd(g: GameState, pid: int, cmd: Dict, *, trusted_fog: bool = False, theft_rng=None) -> Tuple[GameState, List[Dict]]:
     # Internal execution is explicit and is never read from a command payload.
     # Public server, debug, UI serialization and Qt keep their independent gates.
+    # RNG injection is in-process only, for tests and isolated legal probes.
     if has_fog(g):
         if trusted_fog is not True:
             raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
@@ -1309,7 +1328,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict, *, trusted_fog: bool = False) -
         g.pirate_tile = tile
         stolen = None
         if victim_pid is not None:
-            stolen = _steal_one(g, pid, victim_pid)
+            stolen = _steal_one(g, pid, victim_pid, rng=theft_rng)
         g.pending_action = None
         g.pending_pid = None
         g.pending_victims = []
@@ -1335,7 +1354,7 @@ def apply_cmd(g: GameState, pid: int, cmd: Dict, *, trusted_fog: bool = False) -
                 g.robbers[0] = tile
         stolen = None
         if victim_pid is not None:
-            stolen = _steal_one(g, pid, victim_pid)
+            stolen = _steal_one(g, pid, victim_pid, rng=theft_rng)
         g.pending_action = None
         g.pending_pid = None
         g.pending_victims = []

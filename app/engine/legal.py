@@ -1,5 +1,6 @@
 """Personal board-action hints, checked by the existing command executor."""
 from copy import deepcopy
+import random
 
 from .rules import (
     RuleError, apply_cmd, can_place_road, can_place_settlement, can_place_ship,
@@ -24,13 +25,15 @@ def board_legal_moves(g: GameState, pid: int, *, trusted_fog: bool = False) -> d
     # Never reuse live data. Non-fog probes may share an isolated base geometry;
     # fog probes get a complete copy, including terrain and discovery history.
     base = deepcopy(g)
+    # Hints execute only on copies and must not draw from gameplay entropy.
+    probe_rng = random.Random(0)
     geometry = (base.tiles, base.vertices, base.edges, base.vertex_adj_hexes,
                 base.edge_adj_hexes, base.board.ports) if not has_fog(g) else ()
 
     def accepts(cmd):
         probe = deepcopy(base, {id(value): value for value in geometry})
         try:
-            apply_cmd(probe, pid, cmd, trusted_fog=trusted_fog)
+            apply_cmd(probe, pid, cmd, trusted_fog=trusted_fog, theft_rng=probe_rng)
         except RuleError:
             return False
         return True

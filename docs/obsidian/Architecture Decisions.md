@@ -5,6 +5,18 @@ updated: 2026-10-12
 
 # Architecture Decisions
 
+## ADR-019 — Corrective theft and shortage execution, unchanged ruleset family
+
+Status: **Accepted within the authorized B1/B2 correctness fix, implemented/focused-tested 2026-10-12.**
+
+Decision: use server-owned, card-weighted secure theft and the official aggregate bank-shortage policy for **future accepted commands**. They enforce the already approved Base/Seafarers rules rather than introduce new scenario mechanics, state/value domains or achievement formulas. Therefore this focused patch does **not** require a new gameplay compatibility marker: new matches keep `catan-seafarers-s2b-2`, existing verified-compatible S1/S2B-1/S2B-2 matches keep their original immutable marker. The marker identifies an approved rules family, not a claim that historical binaries had no implementation bugs. Existing S1 scenario constraints and unknown/Fog compatibility restrictions are unchanged.
+
+Recorded resource hands are primary persisted history and cannot safely be reconstructed from today's board. Neither recovery nor this patch recalculates historical theft/production, VP/achievements or finished results. No snapshot/schema version, database migration, provenance backfill, dual engine or automatic conversion is needed. Snapshot v4/3 and released historical readers remain. F2 Strategy C still protects unknown provenance; Strategy D remains future explicit maintenance, not implemented here.
+
+RNG is a private execution dependency independent of map seed; internal tests and isolated legal probes may inject it, but no client payload or persistence codec can do so. A committed random outcome is recovered through exact hands/events and durable receipts. Failed pre-COMMIT execution may discard its draw; after COMMIT/lost ACK/uncertain response, the recorded outcome must be reused without another execution. Candidate/COMMIT/publication and F1 recipient checks remain constraints.
+
+Rollback: these snapshots have no new format requirements, but restoring an older buggy binary reintroduces biased theft/order-dependent future production; it must not be presented as equivalent gameplay. Historical accepted outcomes are preserved in either direction, never reconciled automatically. Evidence/limits — [[Игровой движок#Random theft and bank shortages — B1/B2]], [[Состояние игры#Theft/production persistence — B1/B2]], [[Project State]].
+
 [[00 Главная]] · [[Project State]] · [[Documentation Policy]]
 
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.

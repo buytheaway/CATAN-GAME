@@ -622,6 +622,8 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
         return None
     if ctype not in MULTIPLAYER_COMMANDS:
         return net_protocol.error_message("forbidden", "Command is not available in multiplayer")
+    if ctype in ("move_robber", "move_pirate") and set(cmd) - {"type", "tile", "victim", "victim_pid"}:
+        return net_protocol.error_message("invalid", "Send only the movement target and optional victim")
     if ctype == "discard" and not isinstance(cmd.get("discards"), dict):
         return net_protocol.error_message("invalid", "discards must be object")
 
