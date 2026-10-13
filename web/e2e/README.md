@@ -204,3 +204,59 @@ personalized privacy, 37 terrain GLBs/number tokens/ports/ownership IDs, SVG/3D,
 wait for the actual React reset effect. Summary/screenshots contain geometry and
 counts, without reconnect proofs or dumped private hands. Stop only the local
 test server/container you started after verification; leave other services alone.
+
+## Natural full matches — Base and official New Shores
+
+`tests/test_natural_full_matches.py` runs actual TCP WebSocket clients against a
+separate FastAPI process and durable PostgreSQL. Its cooperative test players
+use their own personalized wire snapshots. Setup, production, trades, build
+costs, card maturity, mandatory choices and victory follow normal server rules.
+No Test Tools, resource grants, VP edits or live GameState edits are used.
+
+The private test launcher controls map/deck/dice/theft RNG for reproducibility.
+Dice use the candidate's persisted roll counter, including after restart; this
+is a test-process substitution, never a client command or production override.
+These runs establish complete legal play paths, not competitive balance or
+coverage of every possible dice/deck sequence. The legacy scenario harness and
+its known failures remain separate.
+
+Use an existing isolated localhost PostgreSQL database ending in `_test`.
+The launchers reject other database hosts/names and require Test Tools off.
+Keep credentials in the process environment and transcripts/screenshots outside
+the tracked tree. Never point these checks at the normal development database.
+
+```powershell
+# At repository root, CATAN_TEST_DATABASE_URL must already name the test DB.
+$env:CATAN_FULL_MATCH_OUTPUT = Join-Path $env:TEMP 'catan-natural-traces'
+.venv/Scripts/python.exe -B -X utf8 -m pytest -q tests/test_natural_full_matches.py
+```
+
+This generates synthetic command transcripts for Base and official three-player
+New Shores. The four-player case is a setup/12-roll smoke, not a complete match.
+Transcripts contain test participants' commands (including their discard/Gold
+choices), public-state checksums and result summaries. They contain no reconnect
+proofs, account credentials, trusted snapshot or private-hand dumps, and are not
+logs of real users' games.
+
+For real Chrome replay, build the normal frontend with `npm run build` in
+`web/`, use an external Playwright installation via `NODE_PATH` when necessary,
+and set `DATABASE_URL` to a separate isolated browser test database:
+
+```powershell
+$env:CATAN_NATURAL_TRACE = Join-Path $env:CATAN_FULL_MATCH_OUTPUT 'base_standard.json'
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-natural-base-browser'
+node web/e2e/natural-full-matches.cjs
+$env:CATAN_NATURAL_TRACE = Join-Path $env:CATAN_FULL_MATCH_OUTPUT 'seafarers_official_new_shores_3.json'
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-natural-new-shores-browser'
+node web/e2e/natural-full-matches.cjs
+```
+
+The runner starts/stops only its own loopback backend on port 18768, mounts the
+existing production build and replays normal accepted commands over each
+browser's real owning WebSocket. Representative controls use React UI; most
+commands use the real socket directly to keep full-match runs practical.
+It observes actual personalized frames and Three scenes, checks SVG/Board3D,
+refresh/Continue, results and finished-match recovery. This is not an all-click
+human playthrough. No fixture endpoint or synthetic match_state is installed;
+public Fog remains disabled. Latest executed results and limitations are in
+`docs/obsidian/Project State.md`.

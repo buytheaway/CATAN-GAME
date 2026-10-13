@@ -1130,6 +1130,7 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             await _send(ws, net_protocol.room_state_message(room))
             await _send_reconnect_token(ws, room, pid)
             await _send_match_state_to(ws, room)
+            await _send_room_state(room)
             return
         if not _owns(conn, room):
             raise RuleError("forbidden", "Room membership required")

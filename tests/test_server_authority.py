@@ -516,6 +516,12 @@ def test_ws_rematch_drops_disconnected_player_and_preserves_retained_ownership(l
                 state = await _recv_type(restored, "match_state")
                 assert token["pid"] == 1 and token["last_seq_applied"] == 1
                 assert state["match_id"] == old_match and state["state"]["you_pid"] == 1
+                # Reconnect publishes current presence to the existing peers.
+                # Consume and verify it before expecting the later disconnect.
+                for client in (a, c):
+                    presence = await _recv_type(client, "room_state")
+                    assert presence["room_code"] == room.room_code
+                    assert presence["players"][1]["connected"]
             for client in (a, c):
                 assert not (await _recv_type(client, "room_state"))["players"][1]["connected"]
             before = deepcopy(room, {id(p.active_ws): p.active_ws for p in room.players if p.active_ws})

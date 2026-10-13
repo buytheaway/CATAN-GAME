@@ -229,6 +229,14 @@ def test_raw_invalid_json_and_storage_values_leave_socket_healthy(database_url, 
 
 @pytest.mark.parametrize("stage", ["write", "receipt_read"])
 def test_real_postgres_connection_failure_still_fences_unsafe_operations(database_url, monkeypatch, stage):
+    def canonical_bundle(bundle):
+        # Repository.load's relational SELECTs have no ORDER BY. Compare full
+        # rows by their primary keys, keeping every field and payload array.
+        return {**bundle,
+                "members": sorted(bundle["members"], key=lambda row: row["id"]),
+                "participants": sorted(bundle["participants"], key=lambda row: row["id"]),
+                "receipts": sorted(bundle["receipts"], key=lambda row: (row["match_player_id"], row["seq"]))}
+
     async def run():
         async with live_postgres(database_url, monkeypatch) as (url, base, coord):
             async with websockets.connect(url) as ws, websockets.connect(url) as peer:
@@ -237,7 +245,7 @@ def test_real_postgres_connection_failure_still_fences_unsafe_operations(databas
                 if stage == "receipt_read":
                     await _send(ws, request)
                     assert (await receive(ws, "cmd_ack"))["applied"]
-                before = await coord.repository.load(room.id)
+                before = canonical_bundle(await coord.repository.load(room.id))
                 domain_before, tick = deepcopy(room.game), room.tick
                 # Reserve an unreachable local port; this is an actual TCP failure,
                 # not a mocked DB exception and not an outage of the user's DB.
@@ -256,7 +264,7 @@ def test_real_postgres_connection_failure_still_fences_unsafe_operations(databas
                     finally:
                         coord.repository.db = coord.database
                         await unavailable.close()
-                assert await coord.repository.load(room.id) == before
+                assert canonical_bundle(await coord.repository.load(room.id)) == before
     asyncio.run(run())
 
 

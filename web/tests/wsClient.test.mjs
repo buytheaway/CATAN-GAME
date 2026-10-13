@@ -603,7 +603,13 @@ if (process.env.CATAN_TEST_WS_URL) {
     const sockets = [];
     class LiveSocket extends NativeWebSocket {
       sent = [];
-      constructor(url) { super(url); sockets.push(this); }
+      reconnectConfirmations = 0;
+      constructor(url) {
+        super(url); sockets.push(this);
+        this.addEventListener("message", (event) => {
+          if (JSON.parse(event.data).type === "reconnect_token") this.reconnectConfirmations++;
+        });
+      }
       send(raw) { this.sent.push(JSON.parse(raw)); super.send(raw); }
     }
     globalThis.WebSocket = LiveSocket;
@@ -636,11 +642,20 @@ if (process.env.CATAN_TEST_WS_URL) {
     await waitFor(() => replacement.isOpen());
     replacement.loadToken(room, "Alice");
     replacement.join(room);
-    await waitFor(() => replacement.youPid === 0 && updates === 1);
+    await waitFor(() => replacement.youPid === 0 && sockets[1].reconnectConfirmations >= 1);
     assert.deepEqual(sockets[1].sent.map((msg) => msg.type), ["hello", "reconnect"]);
     assert.equal(replacement.roomState.players.filter((p) => p.name === "Alice").length, 1);
+    const confirmations = sockets[1].reconnectConfirmations;
+    const previousUpdates = updates;
     replacement.join(room);
-    await waitFor(() => updates === 2);
+    // Presence broadcasts can add room_state callbacks. A fresh ownership
+    // confirmation, rather than an exact callback count, proves repeated Join.
+    await waitFor(() => sockets[1].reconnectConfirmations > confirmations && updates > previousUpdates);
+    assert.deepEqual(sockets[1].sent.map((msg) => msg.type), ["hello", "reconnect", "reconnect"]);
+    assert.equal(replacement.roomState.room_code, room);
+    assert.equal(replacement.youPid, 0);
+    assert.equal(replacement.roomState.players.filter((p) => p.name === "Alice").length, 1);
+    assert.equal(replacement.roomState.players[0].connected, true);
     let revokedError;
     owner.onError = (error) => { revokedError = error; };
     owner.startMatch();

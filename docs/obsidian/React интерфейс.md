@@ -4,6 +4,12 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Natural match and endgame acceptance — 2026-10-13
+
+**Tested:** [natural-full-matches.cjs](../../web/e2e/natural-full-matches.cjs) completes Base (2 profiles, 63 rolls/211 accepted commands, 10–3 VP) and official New Shores (3 profiles, 115/323, 14–2–2) using the existing production frontend, normal personalized WebSockets and production/trade-funded actions. React Roll and Base paid SVG Road are clicked through the real controller; bulk replay uses the owning socket. Twelve Chrome groups verify public/private synchronization, early/late SVG/Board3D terrain/numbers/ownership/ships/current figures, refresh/Continue, results for every participant, finished restart and real host Rematch into a fresh setup/match epoch. Actual report and test boundaries — [[Project State]], [reproduction](../../web/e2e/README.md).
+
+The discovered blocker was server presence publication: after another player's refresh, stale `room.players.connected` made `actions.rematchReason()` return `At least two connected players are needed.` and disabled `Endgame`'s host button, while both clients still played to victory. Successful reconnect/account Continue now publishes the room state to other connections, so the existing `WSClient → App.room → GamePage → Endgame` flow updates normally. No React component/controller/renderer/CSS, protocol shape or client-side gameplay rule changed. [[Сервер и протокол#Reconnect presence publication — full-match validation]].
+
 ## Official scenario selection and HUD — S3A
 
 **Implemented; code checked 2026-10-13.** [LobbyPage](../../web/src/components/LobbyPage.tsx) lists the two official 3-/4-player Heading for New Shores variants through existing preset selection and confirmed server descriptors. It explains main-island setup, +2 first-settlement bonus and the 14 VP goal. Start eligibility accounts for the public exact connected-player requirement and confirmed map/configuration; server validation remains authoritative. [RoomSettings](../../web/src/components/RoomSettings.tsx) locks official target/discard controls at 14/7; ordinary preset settings are unchanged.
