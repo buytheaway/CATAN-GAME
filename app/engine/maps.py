@@ -18,6 +18,11 @@ from app.resource_path import resource_path
 MAP_VERSION = 1
 FOG_MAP_VERSION = 2
 DEFAULT_PRESET_ID = "base_standard"
+OFFICIAL_NEW_SHORES_ID = "heading_for_new_shores"
+OFFICIAL_NEW_SHORES_PRESETS = {
+    "seafarers_official_new_shores_3": 3,
+    "seafarers_official_new_shores_4": 4,
+}
 
 PRESET_REGISTRY = [
     {
@@ -92,6 +97,22 @@ PRESET_REGISTRY = [
         "description": "Two islands and a navigable pirate channel, with gold and ship movement.",
         "file": "seafarers_pirate_lanes.json",
     },
+    {
+        "id": "seafarers_official_new_shores_3",
+        "name": "Official Seafarers: Heading for New Shores (3 players)",
+        "description": "Fifth Edition (2021), scenario 1: main-island setup, +2 VP per new island, 14 VP.",
+        "file": "seafarers_official_new_shores_3.json",
+        "required_players": 3,
+        "official_scenario": OFFICIAL_NEW_SHORES_ID,
+    },
+    {
+        "id": "seafarers_official_new_shores_4",
+        "name": "Official Seafarers: Heading for New Shores (4 players)",
+        "description": "Fifth Edition (2021), scenario 1: main-island setup, +2 VP per new island, 14 VP.",
+        "file": "seafarers_official_new_shores_4.json",
+        "required_players": 4,
+        "official_scenario": OFFICIAL_NEW_SHORES_ID,
+    },
 ]
 
 DEFAULT_TERRAIN_DECK = (
@@ -139,15 +160,48 @@ def get_preset_map(name: str) -> Dict[str, Any]:
     return load_map_file(path)
 
 
-def list_presets() -> List[Dict[str, str]]:
-    return [{"id": p["id"], "name": p["name"], "description": p["description"]} for p in PRESET_REGISTRY]
+def list_presets() -> List[Dict[str, Any]]:
+    return [get_preset_meta(p["id"]) for p in PRESET_REGISTRY]
 
 
-def get_preset_meta(name: str) -> Optional[Dict[str, str]]:
+def get_preset_meta(name: str) -> Optional[Dict[str, Any]]:
     preset = next((p for p in PRESET_REGISTRY if p["id"] == name), None)
     if not preset:
         return None
-    return {"id": preset["id"], "name": preset["name"], "description": preset["description"]}
+    keys = ("id", "name", "description", "required_players", "official_scenario")
+    return {key: preset[key] for key in keys if key in preset}
+
+
+def official_preset_meta(data: Dict[str, Any], map_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Authenticate an official recipe against shipped data, only at creation.
+
+    An uploaded name/ID/marker is not evidence of an official board. Historical
+    recovery restores saved boards and does not call this recipe validator.
+    """
+    if not isinstance(data, dict):
+        raise MapValidationError("map must be object")
+    marker = data.get("official_scenario")
+    reserved_id = isinstance(map_id, str) and map_id in OFFICIAL_NEW_SHORES_PRESETS
+    name = data.get("name")
+    reserved_name = isinstance(name, str) and name in OFFICIAL_NEW_SHORES_PRESETS
+    if "official_scenario" not in data and not reserved_id and not reserved_name:
+        if isinstance(data.get("rules"), dict) and data["rules"].get("sea_frame") is True:
+            raise MapValidationError("Sea frame rules require a verified official scenario")
+        return None
+    if (type(marker) is not dict
+            or set(marker) != {"id", "edition", "players", "source_pages"}
+            or marker["id"] != OFFICIAL_NEW_SHORES_ID or marker["edition"] != "5th-2021"
+            or type(marker["players"]) is not int or marker["players"] not in (3, 4)
+            or type(marker["source_pages"]) is not list
+            or any(type(page) is not int for page in marker["source_pages"])
+            or marker["source_pages"] != [8, 9 if marker["players"] == 3 else 10]):
+        raise MapValidationError("Invalid official scenario identity")
+    preset_id = f"seafarers_official_new_shores_{marker['players']}"
+    if reserved_id and map_id != preset_id:
+        raise MapValidationError("Official scenario player variant does not match map_id")
+    if data != get_preset_map(preset_id):
+        raise MapValidationError("Official scenario must use the unchanged canonical board and rules")
+    return get_preset_meta(preset_id)
 
 
 def validate_rules_config_data(rules: Dict[str, Any]) -> None:
@@ -159,7 +213,7 @@ def validate_rules_config_data(rules: Dict[str, Any]) -> None:
     for key in integers:
         if key in rules and type(rules[key]) is not int:
             raise MapValidationError(f"rules.{key} must be int")
-    for key in ("enable_seafarers", "enable_pirate", "enable_gold", "enable_move_ship"):
+    for key in ("enable_seafarers", "enable_pirate", "enable_gold", "enable_move_ship", "sea_frame"):
         if key in rules and type(rules[key]) is not bool:
             raise MapValidationError(f"rules.{key} must be bool")
     if "discard_threshold" in rules and not 1 <= rules["discard_threshold"] <= 50:
@@ -177,6 +231,7 @@ def validate_rules_config_data(rules: Dict[str, Any]) -> None:
 def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise MapValidationError("map must be object")
+    official_preset_meta(data)
     raw_version = data.get("version", MAP_VERSION)
     if type(raw_version) is int and raw_version == FOG_MAP_VERSION:
         return _validate_fog_recipe(data)
@@ -192,6 +247,8 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
     tiles = data.get("tiles")
     if not isinstance(tiles, list) or not tiles:
         raise MapValidationError("tiles must be non-empty list")
+    if "ports_shuffle" in data and type(data["ports_shuffle"]) is not bool:
+        raise MapValidationError("ports_shuffle must be bool")
 
     has_random_terrain = False
     has_random_number = False
@@ -487,6 +544,10 @@ def build_board_from_map(
                 raise MapValidationError("ports cannot share an endpoint", {"edge": [a, b]})
             used_vertices.update(e)
             ports.append((e, str(p["type"])))
+        if data.get("ports_shuffle", False):
+            types = [kind for _, kind in ports]
+            rng.shuffle(types)
+            ports = [(edge, kind) for (edge, _), kind in zip(ports, types)]
     else:
         ports_auto = data.get("ports_auto", {})
         count = int(ports_auto.get("count", 9))

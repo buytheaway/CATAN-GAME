@@ -249,7 +249,7 @@ def test_ruleset_provenance_and_feature_availability_are_independent(marker):
 
 @pytest.mark.parametrize("preset", [p["id"] for p in maps.list_presets()])
 def test_existing_presets_stay_fog_disabled_and_public(preset):
-    g = rules.build_game(17, 2, map_id=preset)
+    g = rules.build_game(17, maps.get_preset_meta(preset).get("required_players", 2), map_id=preset)
     assert g.scenario.rules.fog is None and g.scenario.fog is None
     historical = snapshots.decode_snapshot(released_v3_payload(g))
     assert_equivalent(g, historical)

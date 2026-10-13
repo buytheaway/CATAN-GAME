@@ -13,7 +13,8 @@ from app.engine.state import COST, RESOURCES
 from app.engine.topology import coastal_edges, island_ids, land_components
 from app.persistence import snapshots
 
-SEAFARERS = [p["id"] for p in maps.PRESET_REGISTRY if p["id"].startswith("seafarers_")]
+SEAFARERS = [p["id"] for p in maps.PRESET_REGISTRY
+             if p["id"].startswith("seafarers_") and not p.get("official_scenario")]
 EXPECTED = {"seafarers_simple_1": (19, [13], 6),
             "seafarers_simple_2": (37, [19], 18),
             "seafarers_gold_haven": (37, [8, 7], 22),
@@ -120,16 +121,21 @@ def road_expansion(g, pid):
 
 @pytest.mark.parametrize("preset", [p["id"] for p in maps.PRESET_REGISTRY])
 def test_all_presets_have_deterministic_nonoverlapping_geometry_and_real_ports(preset):
+    meta = maps.get_preset_meta(preset)
+    players = meta.get("required_players", 2)
+    authored_ports = maps.get_preset_map(preset).get("ports") if meta.get("official_scenario") else None
+    port_count = len(authored_ports) if authored_ports is not None else 9
+    port_types = [port["type"] for port in authored_ports] if authored_ports is not None else maps.DEFAULT_PORT_DECK
     for seed in range(1, 21):
-        g = rules.build_game(seed, 2, map_id=preset)
-        assert g == rules.build_game(seed, 2, map_id=preset)
+        g = rules.build_game(seed, players, map_id=preset)
+        assert g == rules.build_game(seed, players, map_id=preset)
         assert len({(t.q, t.r) for t in g.tiles}) == len(g.tiles)
         assert all(len(h) in (1, 2) for h in g.edge_adj_hexes.values())
         assert all(len(h) <= 3 for h in g.vertex_adj_hexes.values())
-        assert len(g.ports) == 9
+        assert len(g.ports) == port_count
         assert {e for e, _ in g.ports} <= coastal_edges(g.board)
-        assert len({v for e, _ in g.ports for v in e}) == 18
-        assert sorted(kind for _, kind in g.ports) == sorted(maps.DEFAULT_PORT_DECK)
+        assert len({v for e, _ in g.ports for v in e}) == 2 * port_count
+        assert sorted(kind for _, kind in g.ports) == sorted(port_types)
         ids = island_ids(g.board)
         assert ids == island_ids(snapshots.loads_snapshot(snapshots.dumps_snapshot(g)).board)
         assert set(ids) == {i for i, t in enumerate(g.tiles) if t.terrain != "sea"}
@@ -143,7 +149,7 @@ def test_all_presets_have_deterministic_nonoverlapping_geometry_and_real_ports(p
                 assert len(sea_components(g.board)) == 1
                 # Even vertex-level contact cannot create an accidental land bridge.
                 assert all(len({ids[i] for i in h if i in ids}) <= 1 for h in g.vertex_adj_hexes.values())
-        else:
+        elif not meta.get("official_scenario"):
             assert len(g.tiles) == 19 and len(land_components(g.board)) == 1
 
 

@@ -42,8 +42,8 @@ export type RoomState = {
   status: "lobby" | "in_match";
   ruleset_compatibility?: RulesetCompatibility;
   map_id?: string;
-  map_meta?: { id?: string; name?: string; description?: string };
-  map_presets?: { id: string; name: string; description?: string }[];
+  map_meta?: { id?: string; name?: string; description?: string; official_scenario?: string; required_players?: number };
+  map_presets?: { id: string; name: string; description?: string; official_scenario?: string; required_players?: number }[];
   map_rules?: {
     target_vp?: number;
     robber_count?: number;

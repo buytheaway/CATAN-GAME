@@ -64,6 +64,35 @@ test("custom JSON map IDs get a visible select option instead of an unrelated pr
   assert.match(view.html, /<option value="Custom Test Map" selected="">Custom Test Map<\/option>/);
 });
 
+test("official New Shores layouts require their exact connected player count", () => {
+  for (const required of [3, 4]) {
+    const id = `seafarers_official_new_shores_${required}`;
+    for (const online of [2, 3, 4]) {
+      const players = Array.from({ length: 4 }, (_, pid) => ({ pid, name: `Player ${pid}`, connected: pid < online }));
+      const view = render(null, id, { room: { max_players: 4, players,
+        map_meta: { official_scenario: "heading_for_new_shores", required_players: required }, map_rules: { target_vp: 14 },
+        map_presets: [{ id, name: `Heading for New Shores (${required} players)` }] } });
+      assert.equal(view.start.disabled, online !== required, `${required}-player layout with ${online} online`);
+      assert.match(view.html, new RegExp(`exactly ${required} connected players \\(${online} currently online\\)`));
+      assert.match(view.html, /Fifth Edition \(2021\)/);
+      assert.match(view.html, /Goal: 14 VP/);
+      view.select.onChange({ target: { value: id } });
+      assert.deepEqual(view.sent, [id]);
+    }
+  }
+});
+
+test("official Start still waits for configuration confirmation and host ownership", () => {
+  const id = "seafarers_official_new_shores_3";
+  const room = { map_meta: { official_scenario: "heading_for_new_shores", required_players: 3 }, map_rules: { target_vp: 14 },
+    players: Array.from({ length: 3 }, (_, pid) => ({ pid, name: `Player ${pid}`, connected: true })) };
+  assert.equal(render(id, id, { room }).start.disabled, true);
+  assert.equal(render(null, id, { room, client: { configPending: true } }).start.disabled, true);
+  assert.equal(render(null, id, { room, client: { youPid: 1 } }).start.disabled, true);
+  assert.equal(render(null, id, { room, status: "disconnected" }).start.disabled, true);
+  assert.equal(render(null, id, { room }).start.disabled, false);
+});
+
 test("Close Lobby is host-only, disabled offline/pending, and requires explicit confirmation", () => {
   const previousWindow = globalThis.window;
   try {

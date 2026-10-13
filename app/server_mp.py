@@ -30,7 +30,7 @@ from app.auth.service import AuthService
 
 from app import net_protocol
 from app import game_events, test_tools
-from app.match_rulesets import CURRENT_RULESET, COMPATIBILITY_MESSAGE, restricted
+from app.match_rulesets import CURRENT_RULESET, OFFICIAL_S3A_RULESET, COMPATIBILITY_MESSAGE, restricted
 from app.engine import (
     DEFAULT_PRESET_ID,
     GameState,
@@ -525,14 +525,22 @@ def _rematch_host_pid(room: Room) -> Optional[int]:
 def _start_match(room: Room, *, rebind: bool = True) -> None:
     _require_compatible(room)
     try:
-        require_non_fog_data(room.selected_map_data if room.selected_map_data is not None
-                             else get_preset_map(room.selected_map_id))
+        source = room.selected_map_data if room.selected_map_data is not None else get_preset_map(room.selected_map_id)
+        official = map_loader.official_preset_meta(source, room.selected_map_id)
+        if official is not None and (room.settings.target_vp not in (None, 14)
+                                     or room.settings.discard_threshold != 7):
+            raise RuleError("invalid", "Official Heading for New Shores requires 14 VP and discard threshold 7")
+        require_non_fog_data(source)
+    except map_loader.MapValidationError as exc:
+        raise RuleError("invalid", str(exc)) from None
     except FogUnavailableError as exc:
         raise RuleError("feature_disabled", str(exc)) from None
     participants = [p for p in room.players if p.name and p.connected]
     host_pid = _rematch_host_pid(room)
     if len(participants) < 2 or host_pid not in [p.pid for p in participants]:
         raise RuleError("invalid", "Need the host and at least 2 connected players")
+    if official is not None and len(participants) != official["required_players"]:
+        raise RuleError("invalid", f"This official board requires exactly {official['required_players']} connected players")
     seed = secrets.randbits(64)
     mapping = {slot.pid: pid for pid, slot in enumerate(participants)}
     starter = mapping[host_pid] if room.settings.starting_player == "host" else secrets.randbelow(len(participants))
@@ -573,7 +581,7 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     room.seed = seed
     room.match_id += 1
     room.match_uuid = uuid.uuid4()
-    room.ruleset_id = CURRENT_RULESET
+    room.ruleset_id = OFFICIAL_S3A_RULESET if official is not None else CURRENT_RULESET
     room.tick = 0
     room.dice = None
     room.roll_count = 0
@@ -886,6 +894,10 @@ def _set_room_settings(room: Room, pid: int, patch: Dict[str, Any]) -> None:
         updated = room.settings.updated(patch)
     except ValueError as exc:
         raise RuleError("invalid", str(exc)) from exc
+    meta = get_preset_meta(room.selected_map_id)
+    if meta and meta.get("official_scenario") and (updated.target_vp not in (None, 14)
+                                                   or updated.discard_threshold != 7):
+        raise RuleError("invalid", "Official Heading for New Shores requires 14 VP and discard threshold 7")
     room.settings = updated
     room.selected_rules_config = {**room.selected_rules_config, "discard_threshold": updated.discard_threshold}
     if updated.target_vp is not None:
@@ -946,7 +958,7 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
         name = str(source.get("name", "custom"))
         map_id = map_id if isinstance(map_id, str) and map_id else name
         meta = {"id": map_id, "name": name, "description": str(source.get("description", ""))}
-        room.selected_map_data = source
+        selected_map_data = source
     else:
         meta = get_preset_meta(map_id) if isinstance(map_id, str) else None
         if not meta:
@@ -956,13 +968,24 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
             require_non_fog_data(source)
         except FogUnavailableError as exc:
             raise RuleError("feature_disabled", str(exc)) from None
-        room.selected_map_data = None
+        selected_map_data = None
+    try:
+        official = map_loader.official_preset_meta(source, map_id)
+    except map_loader.MapValidationError as exc:
+        raise RuleError("invalid", str(exc)) from None
     rules_raw = source.get("rules", {})
-    room.selected_rules_config = vars(parse_rules_config(rules_raw if isinstance(rules_raw, dict) else {}))
+    selected_rules_config = vars(parse_rules_config(rules_raw if isinstance(rules_raw, dict) else {}))
+    settings = room.settings
+    if official is not None:
+        map_id, meta = official["id"], official
+        settings = RoomSettings(**{**vars(settings), "target_vp": None, "discard_threshold": 7})
+    room.selected_map_data = selected_map_data
+    room.selected_rules_config = selected_rules_config
     room.selected_map_id, room.selected_map_meta = map_id, dict(meta)
-    if room.settings.target_vp is not None:
-        room.selected_rules_config["target_vp"] = room.settings.target_vp
-    room.selected_rules_config["discard_threshold"] = room.settings.discard_threshold
+    room.settings = settings
+    if settings.target_vp is not None:
+        room.selected_rules_config["target_vp"] = settings.target_vp
+    room.selected_rules_config["discard_threshold"] = settings.discard_threshold
     room.map_revision += 1
     room.config_revision += 1
 

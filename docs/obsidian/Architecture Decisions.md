@@ -1,9 +1,23 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-12
+updated: 2026-10-13
 ---
 
 # Architecture Decisions
+
+## ADR-023 — Canonical official New Shores boards and sea-frame provenance
+
+Status: **Implemented, authorized Official Seafarers S3A scope, 2026-10-13.** Verification and limits — [[Project State]]; source/layout — [[Карты и сценарии#Official Heading for New Shores — S3A]].
+
+Decision: register separate canonical `seafarers_official_new_shores_3` / `seafarers_official_new_shores_4` boards from the Fifth Edition 2021 printed pp. 8–10. Required actual participant counts are exactly 3/4; setup uses main component 0, existing per-player/per-island ledger awards +2, victory target is 14 on the player's turn. Selection clears inherited target/discard overrides; subsequent contradictory target/discard settings reject. Official IDs/markers alone are not trusted: new selection/construction compares the entire supplied recipe against the shipped canonical source. Existing four custom presets retain their original data and policy.
+
+The two complete printed frame sea positions are materialized as ordinary sea tiles after the 35/42 loose components. Explicit `rules.sea_frame=true` permits shipping on singleton graph edges bordering the physical inner sea frame. No arbitrary sea halo or paths on the unprinted outer frame are generated. This opt-in is a new execution capability, rather than another game's scoring model.
+
+New official matches therefore receive durable immutable **`catan-seafarers-s3a-new-shores`**. Base/custom new matches retain **`catan-seafarers-s2b-2`**; existing verified S1/S2B-1/S2B-2 provenance remains unchanged. Older/unknown markers cannot silently execute sea-frame state. S3A compatibility checks recorded identity, exact count/metadata, frame flag, starting region, bonus, target and discard threshold without reconstructing the board or recalculating gameplay. Current-ruleset metadata identifies the applicable family; snapshot version alone never establishes provenance.
+
+Codec **v4 / engine compatibility 3** already stores raw rules, materialized board/ports and island ledger; no new GameState field, SQL migration, historical backfill or score/achievement conversion is needed. Recovery restores committed data exactly, never reloads today's preset or executes rules. Rematch creates a fresh epoch and empty ledger and rechecks connected count. Older binaries do not know the S3A marker and must restrict those matches rather than resume them. F1 publication ownership, F2 restriction, durable receipts/COMMIT-before-ACK and public Fog DISABLED remain constraints.
+
+Scope: fixed illustrated terrain/token layouts; harbor anchors fixed and types shuffled under general Seafarers setup (pp.3/7). Optional variable layouts, official scenarios 2–9 and a physical cardboard-frame renderer are not implemented. The pp.8/9 three-player robber/pirate typo is documented explicitly in the map note.
 
 ## ADR-022 — Explicit host-owned pre-match lobby closure
 

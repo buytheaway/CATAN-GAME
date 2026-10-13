@@ -77,6 +77,8 @@ export default function LobbyPage({
   const connected = status === "connected" && !client.closingLobby;
   const confirmationPending = pendingMapId !== null || client.configPending;
   const onlinePlayers = room?.players.filter(p => p.name && p.connected).length ?? 0;
+  const requiredPlayers = room?.map_meta?.required_players;
+  const playerCountReady = requiredPlayers !== undefined ? onlinePlayers === requiredPlayers : onlinePlayers >= 2;
   const mapName = room?.map_meta?.name ?? room?.map_id ?? "Base Standard";
 
   const connectionFields = <>
@@ -158,9 +160,10 @@ export default function LobbyPage({
             {p.pid === room.host_pid && p.name && <StatusBadge tone="warm">Host</StatusBadge>}
           </li>)}</ul>
           <PlayerColors client={client} room={room} connected={connected} />
-          <div className="room-start"><button onClick={() => client.startMatch()} className="btn primary" disabled={confirmationPending || !connected || room.status !== "lobby" || !isHost || onlinePlayers < 2}>Start Match</button>
+          <div className="room-start"><button onClick={() => client.startMatch()} className="btn primary" disabled={confirmationPending || !connected || room.status !== "lobby" || !isHost || !playerCountReady}>Start Match</button>
             <p className="shell-help" role="status">{confirmationPending ? "Confirming room configuration…" : !connected ? "Waiting for the connection to return."
               : room.status !== "lobby" ? "This room already has a match." : !isHost ? "Your host will start the match."
+              : requiredPlayers !== undefined ? `This official layout requires exactly ${requiredPlayers} connected players (${onlinePlayers} currently online).${playerCountReady ? " You can start." : ""}`
               : onlinePlayers < 2 ? "Invite at least one more player to start." : "At least two players are connected. You can start."}</p></div>
         </Panel>
         <Panel className="room-conversation"><SectionHeader title="Room chat" eyebrow="Before the first roll" />
@@ -173,6 +176,7 @@ export default function LobbyPage({
           {mapId !== "base_standard" && !mapPresets.some(p => p.id === mapId) && <option value={mapId}>{mapId}</option>}
         </select></label>
         {room.map_meta?.description && <p className="shell-help">{room.map_meta.description}</p>}
+        {room.map_meta?.official_scenario && <p className="shell-help">Official Seafarers · Fifth Edition (2021) · {requiredPlayers} players. Initial settlements belong on the main island; each player's first settlement on each small island earns 2 special VP. Goal: {room.map_rules?.target_vp} VP.</p>}
         <details className="shell-details"><summary>Custom map</summary><label className="field"><span>Custom map (JSON)</span>
           <input type="file" accept=".json" disabled={!isHost || !connected || room.status !== "lobby"} onChange={e => {
             const file = e.target.files?.[0];

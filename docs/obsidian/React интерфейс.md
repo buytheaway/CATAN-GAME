@@ -4,13 +4,21 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Official scenario selection and HUD — S3A
+
+**Implemented; code checked 2026-10-13.** [LobbyPage](../../web/src/components/LobbyPage.tsx) lists the two official 3-/4-player Heading for New Shores variants through existing preset selection and confirmed server descriptors. It explains main-island setup, +2 first-settlement bonus and the 14 VP goal. Start eligibility accounts for the public exact connected-player requirement and confirmed map/configuration; server validation remains authoritative. [RoomSettings](../../web/src/components/RoomSettings.tsx) locks official target/discard controls at 14/7; ordinary preset settings are unchanged.
+
+`WSClient` types the additive public `official_scenario` / `required_players` map facts; no trusted recipe/frame metadata, new command or rules model is added to React. Existing `contextPrompt`, `ScenarioSummary`, `PlayerStrip.special_vp`, Goal and `useBoardInteraction` consume the already-personalized scenario/legal data. Public scenario VP is displayed separately but already included in total VP. `GamePage → BoardRenderer → BoardView / Board3D` stays unchanged: same snapshot/IDs, default interactive 3D, preserved SVG, actual sea/Gold/ports/pirate/ship geometry and existing camera auto-fit.
+
+Focused frontend coverage is in [LobbyPage tests](../../web/tests/LobbyPage.test.mjs) and [RoomSettings tests](../../web/tests/RoomSettings.test.mjs). TypeScript/build and final actually executed browser/full-suite results — [[Project State]]. No UI redesign, new artwork, Fog activation or client-side reward/placement validation is introduced. [[Карты и сценарии#Official Heading for New Shores — S3A]], [[Сервер и протокол#Official scenario admission — S3A]].
+
 ## Lobby closure — Room Lifecycle Phase 1
 
 Implemented/focused-tested **2026-10-12**: [LobbyPage](../../web/src/components/LobbyPage.tsx) exposes **Close Lobby** only to the unstarted room's host. Native confirmation explains irreversible reconnect loss; cancel sends nothing. Pending closure disables lobby mutations. Back to home/tab closure retains the disconnected lobby and its saved binding. No close control is offered inside GamePage or for finished matches.
 
 [WSClient.closeLobby](../../web/src/wsClient.ts) reuses the bounded correlated lifecycle intent with `request_id` and epoch 0. It waits for the server; it does not optimistically delete a room. `room_closed` clears only the current room's guest binding/current pointer, pending commands/configuration and socket callbacks, stops reconnect, then calls `onRoomClosed`. [App](../../web/src/App.tsx) clears old room/match/log and shows Home's explicit closed-by-host notice. Late old frames cannot restore the lobby. Permanent generic reconnect refusal also clears stale controls. Account cookies/session are not logged out; Active Games re-fetch excludes closed rooms.
 
-Current frontend verification **2026-10-12: 282 web tests passed, 0 skipped; TypeScript and production build passed** (seven new lifecycle cases). Chrome/Docker and full backend results — [[Project State]]. Backend remains authoritative; Board3D/SVG/game controller architecture, Fog gate and gameplay UI are unchanged. [[Design System#Lobby lifecycle controls]], [[Сервер и протокол#Explicit lobby closure — Room Lifecycle Phase 1]].
+Historical Room Lifecycle frontend verification **2026-10-12: 282 web tests passed, 0 skipped; TypeScript and production build passed** (seven new lifecycle cases). Latest S3A results and Chrome/Docker/backend evidence — [[Project State]]. Backend remains authoritative; Board3D/SVG/game controller architecture, Fog gate and gameplay UI are unchanged. [[Design System#Lobby lifecycle controls]], [[Сервер и протокол#Explicit lobby closure — Room Lifecycle Phase 1]].
 
 ## Verification scope after S1/F1/F2/F3
 

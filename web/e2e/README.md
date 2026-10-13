@@ -1,5 +1,13 @@
 # Game UI / Game Room UX browser checks
 
+## Official Heading for New Shores — S3A
+
+`node web/e2e/official-new-shores.cjs` uses external Playwright (`NODE_PATH`) and installed Chrome against an **isolated localhost** Docker/Nginx/backend/PostgreSQL stack. Override `CATAN_E2E_ORIGIN` to that stack; the default is `http://127.0.0.1:18094`. Test Tools must be explicitly enabled on this disposable development backend; never enable them on the user's production stack for this test.
+
+It creates three and four real browser profiles for the separate official 2021 layouts. Checks cover exact-count Start rejection, canonical map selection, fixed target/discard settings, natural snake setup with ships, paid island crossing/+2 VP and city non-duplication, personalized snapshots, terrain GLBs/figures/ports/numbers, SVG parity, orbit/zoom/reset, desktop resize and guest refresh. Expansion resources/dice use the existing explicit Test Room tools: this is a focused funded acceptance, not a complete natural competitive game.
+
+Reports/screenshots default to the OS temporary directory `catan-official-new-shores`; `CATAN_E2E_OUTPUT` may select another ignored external path. The report records public geometry/checks rather than credentials or private hands. Public Fog remains disabled and is not tested by bypassing its gates. No volumes, accounts, historical matches or snapshots are deleted. Actual executed results and limitations — [Project State](../../docs/obsidian/Project%20State.md).
+
 ## Explicit lobby closure — Room Lifecycle Phase 1
 
 `node web/e2e/lobby-lifecycle.cjs` uses external Playwright (`NODE_PATH`) and

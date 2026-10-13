@@ -4,6 +4,18 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
+## Official Scenario 1 — Heading for New Shores
+
+**Implemented; official source verified 2026-10-13.** [Fifth Edition (2021) rules](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf), p. 8 and distinct 3-/4-player diagrams on pp. 9–10. Only `seafarers_official_new_shores_3` / `_4` enable this official profile; existing custom presets retain their previous policies.
+
+- Exactly 3 or 4 players on the corresponding board. Both initial settlements must be on the main island; coastal openings may use an anchored ship instead of a road.
+- Each player's first settlement on each smaller island earns +2 special VP, independent of opponents' earlier settlements. Additional settlements/cities/retries do not repeat the bonus; ordinary settlement/city VP remains.
+- Victory requires 14 VP during the player's own turn. Official target/discard threshold (7) cannot be overridden in the lobby.
+- Both pirate and robber, normal ships/Gold/Longest Trade Route and development-card rules apply. Islands are fully visible; this is not Fog discovery.
+- Three-player robber starts on hills 12, four-player robber in the desert; pirate starts on the marked bottom frame sea. The p. 8 three-player pirate-on-hills wording is corrected as a diagram-confirmed typo.
+
+Fixed land/token layouts and harbor anchors reproduce the printed edition. Harbor types are shuffled at those anchors under the general pp. 3/7 procedure (four-player shuffle also explicit on p. 8); variable terrain/token setup is not implemented. Two printed full frame sea spaces are represented separately from loose component inventory. Inner frame shipping uses the canonical official profile without inventing outer routes. Exact inventory, frame treatment, edition limits and code/test references — [[Карты и сценарии#Official Heading for New Shores — S3A]]. Final executed verification — [[Project State]].
+
 ## Approved custom fog profile — internal exploration
 
 Approved S2B-2A/S2B-2B.1 decisions: `shared-preassigned-v1` privately assigns actual terrain/tokens before play, shares monotonic discovery with all players, allows one reward per discovered hex and preserves undiscovered secrecy even after game_over/recovery. It is explicit opt-in, not an existing named preset or official Fog Islands draw-on-reveal replica. Initial profile excludes starting_islands and automatic island VP bonuses.
@@ -12,7 +24,7 @@ Foundation implemented/tested 2026-10-09; **internal exploration engine implemen
 
 ## Explicit starting islands and special VP — S2B-1
 
-**Implemented/tested 2026-10-09, custom opt-in only.** Existing Coastal Lanes, Sea Ring, Gold Haven and Pirate Lanes do not enable start restrictions or island VP; their target remains 10 unless overridden by the host. These are custom layouts, not official scenario replicas. The [official rulebook](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf) describes different bonus/target policies per scenario; Heading for New Shores's main-island/+2/14 VP policy is not silently assigned to this project's maps.
+**Historical S2B-1 implementation/verification 2026-10-09, custom opt-in scope.** Existing Coastal Lanes, Sea Ring, Gold Haven and Pirate Lanes do not enable start restrictions or island VP; their target remains 10 unless overridden by the host. These four custom layouts retain that policy after S3A. The [official rulebook](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf) assigns different policies per scenario; Heading for New Shores's main-island/+2/14 VP policy applies only to the separately verified official presets above, not silently to the four custom maps.
 
 An explicitly configured custom `rules.scenario.starting_islands` restricts setup settlements to those land components and prevents openings that leave insufficient distance-rule positions for remaining placements. Missing/null is unrestricted. Anchored initial road/ship choices remain. `new_island_vp` explicitly sets 0..10 extra VP (0/missing disables it), not a universal +2 assumption.
 

@@ -1,6 +1,6 @@
 ---
 tags: [catan, seafarers, план]
-updated: 2026-10-09
+updated: 2026-10-13
 ---
 
 # Seafarers S2B-1 — explicit scenario rules
@@ -10,6 +10,8 @@ updated: 2026-10-09
 ## Scope and checkpoint
 
 Historical S2B-1 checkpoint scope below. S2B-2B.1 supersedes new writer/marker with v4/3 and S2B-2, retaining explicit old schemas and non-fog rules. Trusted fog foundation is implemented/tested; public fog gameplay remains DISABLED. Current boundaries — [[plans/seafarers-fog]], [[Project State]].
+
+**S3A extension implemented 2026-10-13:** the existing scenario configuration, setup-capacity check and per-player island award ledger now power the separate official Heading for New Shores 3-/4-player variants. Main island `[0]`, +2 once per smaller island and target 14 come from the verified 2021 pp. 8–10, not the custom presets. Exact canonical identity/frame/player-count admission and a native `catan-seafarers-s3a-new-shores` marker are additional S3A constraints; writer remains v4/3. Existing custom JSON/defaults and historical S2B-1 marker are not reinterpreted. [[Карты и сценарии#Official Heading for New Shores — S3A]], [[Состояние игры#Official scenario persistence — S3A]]. The original verification/deferred list below describes its dated checkpoint, not the latest official-scenario status.
 
 **Completed/verified 2026-10-09; READY FOR CHECKPOINT in explicit custom scenario scope.** S2A is committed as `e79dee4`; the working tree was clean before this task. A completed-phase commit and clean working tree satisfy the checkpoint gate. Tags are optional unless the user explicitly requires one. No automatic commit/tag. Named presets retain their approved existing rules; unapproved per-preset parameters remain deferred.
 

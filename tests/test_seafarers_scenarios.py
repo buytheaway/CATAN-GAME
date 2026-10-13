@@ -326,7 +326,7 @@ def test_v3_history_is_required_and_references_are_validated(change):
 
 
 def test_all_existing_base_and_seafarers_presets_keep_scenario_disabled_and_victory_targets():
-    for preset in maps.PRESET_REGISTRY:
+    for preset in (p for p in maps.PRESET_REGISTRY if not p.get("official_scenario")):
         g = rules.build_game(17, 2, map_id=preset["id"])
         assert g.scenario == ScenarioState()
         source = maps.get_preset_map(preset["id"])["rules"]

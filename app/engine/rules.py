@@ -169,6 +169,12 @@ def build_game(
             map_data = map_loader.get_preset_map(map_id)
     if map_id is None:
         map_id = map_name or str(map_data.get("name", "custom"))
+    official = map_loader.official_preset_meta(map_data, map_id)
+    if official is not None:
+        if type(max_players) is not int or max_players != official["required_players"]:
+            raise map_loader.MapValidationError(
+                f"This official board requires exactly {official['required_players']} players")
+        map_id = official["id"]
     board, robber_tile, rules = map_loader.build_board_from_map(map_data, rng, size, fog_rng=fog_rng)
     g.board = board
     g.robber_tile = robber_tile
@@ -272,10 +278,15 @@ def can_place_road(g: GameState, pid: int, e: Tuple[int, int], must_touch_vid: O
 
 
 def _edge_has_sea(g: GameState, e: Tuple[int, int]) -> bool:
-    for ti in g.edge_adj_hexes.get(e, []):
+    adjacent = g.edge_adj_hexes.get(e, [])
+    for ti in adjacent:
         if is_known_sea(g, ti):
             return True
-    return False
+    # Explicit official physical sea frame: a boundary of the materialized
+    # hex region borders sea even where the frame is not a full hex slot.
+    # No synthetic tiles, new graph IDs, or undiscovered-terrain inference.
+    return (g.rules.get("sea_frame") is True and len(adjacent) == 1
+            and tile_is_known(g, adjacent[0]))
 
 
 def _edge_is_sea(g: GameState, e: Tuple[int, int]) -> bool:

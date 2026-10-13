@@ -231,7 +231,8 @@ def test_base_lifecycle_full_round_trip(case):
 
 @pytest.mark.parametrize("preset", [p["id"] for p in maps.PRESET_REGISTRY])
 def test_every_preset_preserves_materialized_board_ids_and_order(preset, monkeypatch):
-    g = rules.build_game(123456, 2, map_id=preset)
+    players = maps.get_preset_meta(preset).get("required_players", 2)
+    g = rules.build_game(123456, players, map_id=preset)
     def prohibited(*args, **kwargs):
         pytest.fail("Restore must not build/shuffle/materialize anything")
     monkeypatch.setattr(rules, "build_game", prohibited)
