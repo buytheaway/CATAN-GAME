@@ -93,6 +93,24 @@ test("official Start still waits for configuration confirmation and host ownersh
   assert.equal(render(null, id, { room }).start.disabled, false);
 });
 
+test("Four Islands explains personal home islands and fixes the correct 13 VP variant", () => {
+  for (const required of [3, 4]) {
+    const id = `seafarers_official_four_islands_${required}`;
+    for (const online of [2, 3, 4, 5]) {
+      const view = render(null, id, { room: { max_players: 6,
+        players: Array.from({ length: online }, (_, pid) => ({ pid, name: `Player ${pid}`, connected: true })),
+        map_meta: { official_scenario: "the_four_islands", required_players: required }, map_rules: { target_vp: 13 },
+        map_presets: [{ id, name: `The Four Islands (${required} players)` }] } });
+      assert.equal(view.start.disabled, online !== required);
+      assert.match(view.html, /Start on one or two islands of your choice/);
+      assert.match(view.html, /first settlement on each foreign island earns 2 special VP/);
+      assert.match(view.html, /Goal: 13 VP/);
+      assert.doesNotMatch(view.html, /belong on the main island/);
+      assert.equal(view.select.value, id);
+    }
+  }
+});
+
 test("Close Lobby is host-only, disabled offline/pending, and requires explicit confirmation", () => {
   const previousWindow = globalThis.window;
   try {

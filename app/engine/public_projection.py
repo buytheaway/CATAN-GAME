@@ -16,11 +16,16 @@ def public_map_metadata(source) -> dict:
     result = {key: source[key] for key in ("id", "name", "description")
               if type(source.get(key)) is str}
     # Public, fixed registry facts; arbitrary map metadata remains closed.
-    counts = {"seafarers_official_new_shores_3": 3, "seafarers_official_new_shores_4": 4}
-    count = counts.get(result.get("id"))
-    if (count is not None and source.get("official_scenario") == "heading_for_new_shores"
+    official = {
+        "seafarers_official_new_shores_3": (3, "heading_for_new_shores"),
+        "seafarers_official_new_shores_4": (4, "heading_for_new_shores"),
+        "seafarers_official_four_islands_3": (3, "the_four_islands"),
+        "seafarers_official_four_islands_4": (4, "the_four_islands"),
+    }
+    count, scenario = official.get(result.get("id"), (None, None))
+    if (count is not None and source.get("official_scenario") == scenario
             and type(source.get("required_players")) is int and source["required_players"] == count):
-        result.update(official_scenario="heading_for_new_shores", required_players=count)
+        result.update(official_scenario=scenario, required_players=count)
     return result
 
 

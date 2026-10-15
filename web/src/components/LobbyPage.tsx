@@ -176,7 +176,9 @@ export default function LobbyPage({
           {mapId !== "base_standard" && !mapPresets.some(p => p.id === mapId) && <option value={mapId}>{mapId}</option>}
         </select></label>
         {room.map_meta?.description && <p className="shell-help">{room.map_meta.description}</p>}
-        {room.map_meta?.official_scenario && <p className="shell-help">Official Seafarers · Fifth Edition (2021) · {requiredPlayers} players. Initial settlements belong on the main island; each player's first settlement on each small island earns 2 special VP. Goal: {room.map_rules?.target_vp} VP.</p>}
+        {room.map_meta?.official_scenario && <p className="shell-help">Official Seafarers · Fifth Edition (2021) · {requiredPlayers} players. {room.map_meta.official_scenario === "the_four_islands"
+          ? "Start on one or two islands of your choice; each player's first settlement on each foreign island earns 2 special VP."
+          : "Initial settlements belong on the main island; each player's first settlement on each small island earns 2 special VP."} Goal: {room.map_rules?.target_vp} VP.</p>}
         <details className="shell-details"><summary>Custom map</summary><label className="field"><span>Custom map (JSON)</span>
           <input type="file" accept=".json" disabled={!isHost || !connected || room.status !== "lobby"} onChange={e => {
             const file = e.target.files?.[0];

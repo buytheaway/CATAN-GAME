@@ -4,6 +4,14 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Four Islands selection and acceptance — S3B
+
+**Implemented/tested 2026-10-16.** `LobbyPage` lists canonical Four Islands 3-/4-player descriptors from the server, explains one/two personal opening islands and +2 per foreign island, and displays the 13 VP target. Exact connected-count and confirmed-map guards reuse the existing controller. `RoomSettings` already reads the profile target, so its official controls lock at 13/7 without a second UI rule model. New Shores retains its main-island/14 VP guidance. [Lobby tests](../../web/tests/LobbyPage.test.mjs), [settings tests](../../web/tests/RoomSettings.test.mjs).
+
+`GamePage → BoardRenderer → BoardView / Board3D`, default interactive 3D, `useBoardInteraction`, existing legal snapshots/IDs and terrain/building GLBs remain unchanged. `ScenarioSummary` already describes unrestricted opening islands; `PlayerStrip` displays public `special_vp` included in total VP. No scenario-specific rendering, client bonus calculation or new action controller was added.
+
+Real Chrome **155.0.8059.79**, 14 groups, completed both 3-/4-player Four Islands traces using the production frontend and owning WebSockets, no Test Tools/grants/score edits. Verified actual lobby selection/hint/13 VP lock, legal setup, public/private synchronization, two renderer terrain/numbers/pieces/ships/figures parity, +2 ledger/HUD, victory/results for every participant, refresh/Continue, finished backend restart and host rematch. React Roll uses the real UI; bulk setup/build/trade commands use each browser's authorized socket, so this is not an all-click human playthrough. No JS errors/unexpected console warnings; seven connection refusals during intentional outages are recorded separately. [Runner](../../web/e2e/natural-full-matches.cjs), [reproduction](../../web/e2e/README.md), final suites/limits — [[Project State]]. Public Fog stays DISABLED.
+
 ## Natural match and endgame acceptance — 2026-10-13
 
 **Tested:** [natural-full-matches.cjs](../../web/e2e/natural-full-matches.cjs) completes Base (2 profiles, 63 rolls/211 accepted commands, 10–3 VP) and official New Shores (3 profiles, 115/323, 14–2–2) using the existing production frontend, normal personalized WebSockets and production/trade-funded actions. React Roll and Base paid SVG Road are clicked through the real controller; bulk replay uses the owning socket. Twelve Chrome groups verify public/private synchronization, early/late SVG/Board3D terrain/numbers/ownership/ships/current figures, refresh/Continue, results for every participant, finished restart and real host Rematch into a fresh setup/match epoch. Actual report and test boundaries — [[Project State]], [reproduction](../../web/e2e/README.md).

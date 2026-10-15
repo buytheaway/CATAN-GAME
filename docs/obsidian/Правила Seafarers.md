@@ -4,6 +4,18 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
+## Official Scenario 2 — The Four Islands
+
+**Implemented; official source/diagrams verified 2026-10-16.** [Fifth Edition (2021) rulebook](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf), printed pp.11–13. Dedicated canonical `seafarers_official_four_islands_3` / `_4` require exactly 3/4 players; fixed layouts differ. This profile does not change Base, the four custom Seafarers maps or New Shores.
+
+- Two opening settlements may be placed on the same island or two different islands, subject to ordinary setup/distance/anchored Road-or-Ship rules. The actual accepted setup islands are that player's home islands; there is no designated main island.
+- First main-phase settlement on each non-home island grants **2 additional VP**, plus the normal settlement point. An opponent's opening/earlier settlement does not consume another player's award. Further settlements, city upgrades, retries and reconnect do not repeat it.
+- One home island allows at most three foreign-island awards (**6 special VP**); two home islands allow at most two (**4 special VP**). Special VP is public and already included in total VP.
+- Victory is **13 VP on the player's own turn**; official discard threshold remains 7. Standard Seafarers ship construction/movement, Longest Trade Route and robber/pirate rules apply without scenario exceptions.
+- Robber starts on number 12 (3-player pasture; 4-player fields). Pirate starts on the sea space shown by each diagram. Both use nine fixed harbor anchors, with four generic 3:1 and five specialized 2:1 types shuffled under the general pp.3/7 procedure. There are no Gold/desert hexes.
+
+Only illustrated fixed terrain/number layouts are implemented. The optional variable setup described on p.12, other official scenarios and public Fog activation remain future scope. Exact layouts/inventories and executable evidence — [[Карты и сценарии#Official The Four Islands — S3B]], [[Project State]].
+
 ## Official Scenario 1 — Heading for New Shores
 
 **Implemented; official source verified 2026-10-13.** [Fifth Edition (2021) rules](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf), p. 8 and distinct 3-/4-player diagrams on pp. 9–10. Only `seafarers_official_new_shores_3` / `_4` enable this official profile; existing custom presets retain their previous policies.

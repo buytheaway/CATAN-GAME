@@ -23,6 +23,12 @@ OFFICIAL_NEW_SHORES_PRESETS = {
     "seafarers_official_new_shores_3": 3,
     "seafarers_official_new_shores_4": 4,
 }
+OFFICIAL_FOUR_ISLANDS_ID = "the_four_islands"
+OFFICIAL_FOUR_ISLANDS_PRESETS = {
+    "seafarers_official_four_islands_3": 3,
+    "seafarers_official_four_islands_4": 4,
+}
+OFFICIAL_PRESETS = {**OFFICIAL_NEW_SHORES_PRESETS, **OFFICIAL_FOUR_ISLANDS_PRESETS}
 
 PRESET_REGISTRY = [
     {
@@ -113,6 +119,22 @@ PRESET_REGISTRY = [
         "required_players": 4,
         "official_scenario": OFFICIAL_NEW_SHORES_ID,
     },
+    {
+        "id": "seafarers_official_four_islands_3",
+        "name": "Official Seafarers: The Four Islands (3 players)",
+        "description": "Fifth Edition (2021), scenario 2: one or two home islands, +2 VP per foreign island, 13 VP.",
+        "file": "seafarers_official_four_islands_3.json",
+        "required_players": 3,
+        "official_scenario": OFFICIAL_FOUR_ISLANDS_ID,
+    },
+    {
+        "id": "seafarers_official_four_islands_4",
+        "name": "Official Seafarers: The Four Islands (4 players)",
+        "description": "Fifth Edition (2021), scenario 2: one or two home islands, +2 VP per foreign island, 13 VP.",
+        "file": "seafarers_official_four_islands_4.json",
+        "required_players": 4,
+        "official_scenario": OFFICIAL_FOUR_ISLANDS_ID,
+    },
 ]
 
 DEFAULT_TERRAIN_DECK = (
@@ -181,22 +203,29 @@ def official_preset_meta(data: Dict[str, Any], map_id: Optional[str] = None) -> 
     if not isinstance(data, dict):
         raise MapValidationError("map must be object")
     marker = data.get("official_scenario")
-    reserved_id = isinstance(map_id, str) and map_id in OFFICIAL_NEW_SHORES_PRESETS
+    reserved_id = isinstance(map_id, str) and map_id in OFFICIAL_PRESETS
     name = data.get("name")
-    reserved_name = isinstance(name, str) and name in OFFICIAL_NEW_SHORES_PRESETS
+    reserved_name = isinstance(name, str) and name in OFFICIAL_PRESETS
     if "official_scenario" not in data and not reserved_id and not reserved_name:
         if isinstance(data.get("rules"), dict) and data["rules"].get("sea_frame") is True:
             raise MapValidationError("Sea frame rules require a verified official scenario")
         return None
     if (type(marker) is not dict
             or set(marker) != {"id", "edition", "players", "source_pages"}
-            or marker["id"] != OFFICIAL_NEW_SHORES_ID or marker["edition"] != "5th-2021"
+            or type(marker["id"]) is not str
+            or marker["id"] not in (OFFICIAL_NEW_SHORES_ID, OFFICIAL_FOUR_ISLANDS_ID)
+            or marker["edition"] != "5th-2021"
             or type(marker["players"]) is not int or marker["players"] not in (3, 4)
             or type(marker["source_pages"]) is not list
-            or any(type(page) is not int for page in marker["source_pages"])
-            or marker["source_pages"] != [8, 9 if marker["players"] == 3 else 10]):
+            or any(type(page) is not int for page in marker["source_pages"])):
         raise MapValidationError("Invalid official scenario identity")
-    preset_id = f"seafarers_official_new_shores_{marker['players']}"
+    if marker["id"] == OFFICIAL_NEW_SHORES_ID:
+        prefix, pages = "seafarers_official_new_shores", [8, 9 if marker["players"] == 3 else 10]
+    else:
+        prefix, pages = "seafarers_official_four_islands", [11, 12 if marker["players"] == 3 else 13]
+    if marker["source_pages"] != pages:
+        raise MapValidationError("Invalid official scenario source pages")
+    preset_id = f"{prefix}_{marker['players']}"
     if reserved_id and map_id != preset_id:
         raise MapValidationError("Official scenario player variant does not match map_id")
     if data != get_preset_map(preset_id):

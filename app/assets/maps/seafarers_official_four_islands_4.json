@@ -1,0 +1,325 @@
+{
+  "version": 1,
+  "name": "seafarers_official_four_islands_4",
+  "description": "Official The Four Islands, Fifth Edition 2021, 4 players. One or two home islands, +2 VP per foreign island, 13 VP.",
+  "official_scenario": {
+    "id": "the_four_islands",
+    "edition": "5th-2021",
+    "players": 4,
+    "source_pages": [
+      11,
+      13
+    ]
+  },
+  "tiles": [
+    {
+      "q": 2,
+      "r": -3,
+      "terrain": "pasture",
+      "number": 10
+    },
+    {
+      "q": 1,
+      "r": -3,
+      "terrain": "fields",
+      "number": 11
+    },
+    {
+      "q": 0,
+      "r": -3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -1,
+      "r": -3,
+      "terrain": "fields",
+      "number": 4
+    },
+    {
+      "q": 2,
+      "r": -2,
+      "terrain": "fields",
+      "number": 6
+    },
+    {
+      "q": 1,
+      "r": -2,
+      "terrain": "mountains",
+      "number": 4
+    },
+    {
+      "q": 0,
+      "r": -2,
+      "terrain": "hills",
+      "number": 2
+    },
+    {
+      "q": -1,
+      "r": -2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": -2,
+      "terrain": "mountains",
+      "number": 8
+    },
+    {
+      "q": 2,
+      "r": -1,
+      "terrain": "hills",
+      "number": 4
+    },
+    {
+      "q": 1,
+      "r": -1,
+      "terrain": "pasture",
+      "number": 9
+    },
+    {
+      "q": 0,
+      "r": -1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -1,
+      "r": -1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": -1,
+      "terrain": "forest",
+      "number": 9
+    },
+    {
+      "q": -3,
+      "r": -1,
+      "terrain": "pasture",
+      "number": 11
+    },
+    {
+      "q": 1,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 0,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -1,
+      "r": 0,
+      "terrain": "forest",
+      "number": 6
+    },
+    {
+      "q": -2,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -3,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 1,
+      "r": 1,
+      "terrain": "fields",
+      "number": 5
+    },
+    {
+      "q": 0,
+      "r": 1,
+      "terrain": "forest",
+      "number": 3
+    },
+    {
+      "q": -1,
+      "r": 1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": 1,
+      "terrain": "hills",
+      "number": 5
+    },
+    {
+      "q": -3,
+      "r": 1,
+      "terrain": "mountains",
+      "number": 10
+    },
+    {
+      "q": -4,
+      "r": 1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 0,
+      "r": 2,
+      "terrain": "hills",
+      "number": 10
+    },
+    {
+      "q": -1,
+      "r": 2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": 2,
+      "terrain": "mountains",
+      "number": 3
+    },
+    {
+      "q": -3,
+      "r": 2,
+      "terrain": "fields",
+      "number": 12
+    },
+    {
+      "q": -4,
+      "r": 2,
+      "terrain": "pasture",
+      "number": 5
+    },
+    {
+      "q": -1,
+      "r": 3,
+      "terrain": "pasture",
+      "number": 8
+    },
+    {
+      "q": -2,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -3,
+      "r": 3,
+      "terrain": "forest",
+      "number": 9
+    },
+    {
+      "q": -4,
+      "r": 3,
+      "terrain": "forest",
+      "number": 11
+    },
+    {
+      "q": 2,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -4,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    }
+  ],
+  "ports": [
+    {
+      "edge": [
+        0,
+        5
+      ],
+      "type": "3:1"
+    },
+    {
+      "edge": [
+        18,
+        34
+      ],
+      "type": "3:1"
+    },
+    {
+      "edge": [
+        58,
+        72
+      ],
+      "type": "3:1"
+    },
+    {
+      "edge": [
+        46,
+        47
+      ],
+      "type": "3:1"
+    },
+    {
+      "edge": [
+        50,
+        51
+      ],
+      "type": "2:1:wood"
+    },
+    {
+      "edge": [
+        68,
+        69
+      ],
+      "type": "2:1:brick"
+    },
+    {
+      "edge": [
+        42,
+        43
+      ],
+      "type": "2:1:sheep"
+    },
+    {
+      "edge": [
+        29,
+        45
+      ],
+      "type": "2:1:wheat"
+    },
+    {
+      "edge": [
+        22,
+        23
+      ],
+      "type": "2:1:ore"
+    }
+  ],
+  "ports_shuffle": true,
+  "robber_tile": 29,
+  "pirate_tile": 36,
+  "rules": {
+    "target_vp": 13,
+    "discard_threshold": 7,
+    "robber_count": 1,
+    "enable_seafarers": true,
+    "enable_pirate": true,
+    "enable_gold": false,
+    "enable_move_ship": true,
+    "sea_frame": true,
+    "scenario": {
+      "starting_islands": null,
+      "new_island_vp": 2
+    }
+  },
+  "component_hex_count": 35,
+  "frame_tiles": [
+    35,
+    36
+  ]
+}

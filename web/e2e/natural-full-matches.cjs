@@ -114,6 +114,11 @@ async function create(browser, fixture) {
   assert(clients.every(c => !c.room.test_mode));
   assert(host.room.map_presets.every(p => !/fog/i.test(p.id)), 'Public Fog remains disabled');
   assert.equal(await host.page.getByRole('button', { name: 'Enable Test Room', exact: true }).count(), 0);
+  if (fixture.map_id.includes('official_four_islands')) {
+    assert.match(await host.page.locator('body').innerText(), /Start on one or two islands of your choice/);
+    assert.equal(await host.page.getByLabel('Target VP').inputValue(), '13');
+    assert.equal(await host.page.getByLabel('Target VP').isDisabled(), true);
+  }
   await host.page.getByRole('button', { name: 'Start Match', exact: true }).click();
   await h.wait(() => clients.every(c => c.match), 'ordinary match creation');
   for (const c of clients) await c.page.locator('.game-shell').waitFor();
@@ -122,6 +127,7 @@ async function create(browser, fixture) {
 }
 async function command(clients, entry, serial, ui = false) {
   const c = clients[entry.actor_pid], before = c.match.tick;
+  const oldState = c.match.state;
   if (ui) {
     if (entry.cmd.type === 'place_road') {
       await c.page.getByRole('button', { name: '2D', exact: true }).click();
@@ -142,6 +148,23 @@ async function command(clients, entry, serial, ui = false) {
   }
   synchronized(clients);
   assert.equal(clients[0].match.tick, entry.tick, 'Browser replay has the same accepted-command epoch as the TCP transcript');
+  if (oldState.map_id.includes('official_four_islands')) {
+    const pid = entry.actor_pid, state = c.match.state;
+    const oldAwards = oldState.scenario.awarded_islands[pid] || [];
+    const awards = state.scenario.awarded_islands[pid] || [];
+    assert.equal(state.players[pid].special_vp, awards.length * 2);
+    if (awards.length > oldAwards.length) {
+      assert.equal(entry.cmd.type, 'place_settlement');
+      assert.equal(oldState.phase, 'main');
+      assert.equal(awards.length, oldAwards.length + 1);
+      const newlyAwarded = awards.filter(id => !oldAwards.includes(id));
+      assert.equal(newlyAwarded.length, 1);
+      assert(!state.scenario.home_islands[pid].includes(newlyAwarded[0]));
+      await c.page.getByRole('list', { name: 'Players', exact: true }).locator('li').nth(pid)
+        .getByText(`${awards.length * 2} island VP`, { exact: true }).waitFor();
+    }
+    if (oldState.phase === 'setup') assert.equal(awards.length, 0);
+  }
 }
 async function refresh(clients) {
   const tick = clients[0].match.tick, matchId = clients[0].match.match_id;
@@ -217,6 +240,13 @@ async function run(browser, fixture) {
     assert.equal(final.winner_pid, fixture.result.winner_pid);
     assert.deepEqual(final.players.map(p => p.vp), fixture.result.final_vp);
     assert(final.players[final.winner_pid].vp >= final.rules_config.target_vp);
+    if (fixture.map_id.includes('official_four_islands')) {
+      assert.equal(final.rules_config.target_vp, 13);
+      assert.deepEqual(final.scenario.awarded_islands, fixture.result.awarded_islands);
+      assert(final.scenario.home_islands[final.winner_pid].length >= 1
+        && final.scenario.home_islands[final.winner_pid].length <= 2);
+      check(fixture.map_id + ': real personal island awards, HUD bonus, 13 VP and durable expected ledger');
+    }
     const postgame = [];
     for (const c of clients) {
       const results = c.page.getByRole('dialog', { name: 'Match results', exact: true });

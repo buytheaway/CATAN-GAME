@@ -23,12 +23,13 @@ const loaded = { exports: {} };
 new Script(`(function(require, module, exports) { ${compiled.outputFiles[0].text}\n})`)
   .runInThisContext()(name => name === "react/jsx-runtime" ? traced : require(name), loaded, loaded.exports);
 
-function render(official = true) {
+function render(official = true, scenario = "heading_for_new_shores") {
   selects = new Map();
   const sent = [];
-  const room = { status: "lobby", host_pid: 0, map_rules: { target_vp: official ? 14 : 10 },
-    settings: { target_vp: official ? 14 : 12, discard_threshold: 7 },
-    map_meta: official ? { official_scenario: "heading_for_new_shores", required_players: 3 } : {} };
+  const target = scenario === "the_four_islands" ? 13 : 14;
+  const room = { status: "lobby", host_pid: 0, map_rules: { target_vp: official ? target : 10 },
+    settings: { target_vp: official ? target : 12, discard_threshold: 7 },
+    map_meta: official ? { official_scenario: scenario, required_players: 3 } : {} };
   const client = { youPid: 0, setSettings: patch => sent.push(patch) };
   const html = renderToStaticMarkup(React.createElement(loaded.exports.MatchSettings, { room, client, connected: true }));
   return { sent, selects, html };
@@ -55,4 +56,12 @@ test("custom and Base rooms keep editable victory and discard settings", () => {
   view.selects.get("Discard threshold").onChange({ target: { value: "9" } });
   assert.deepEqual(view.sent, [{ target_vp: 15 }, { discard_threshold: 9 }]);
   assert.doesNotMatch(view.html, /official scenario fixes/);
+});
+
+test("Four Islands uses its own locked target, not New Shores' 14 VP", () => {
+  const view = render(true, "the_four_islands");
+  assert.equal(view.selects.get("Target VP").value, 13);
+  assert.equal(view.selects.get("Target VP").disabled, true);
+  assert.equal(view.selects.get("Discard threshold").value, 7);
+  assert.equal(view.selects.get("Discard threshold").disabled, true);
 });

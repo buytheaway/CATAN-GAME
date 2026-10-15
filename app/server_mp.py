@@ -30,7 +30,7 @@ from app.auth.service import AuthService
 
 from app import net_protocol
 from app import game_events, test_tools
-from app.match_rulesets import CURRENT_RULESET, OFFICIAL_S3A_RULESET, COMPATIBILITY_MESSAGE, restricted
+from app.match_rulesets import CURRENT_RULESET, OFFICIAL_RULESETS, COMPATIBILITY_MESSAGE, restricted
 from app.engine import (
     DEFAULT_PRESET_ID,
     GameState,
@@ -527,9 +527,9 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     try:
         source = room.selected_map_data if room.selected_map_data is not None else get_preset_map(room.selected_map_id)
         official = map_loader.official_preset_meta(source, room.selected_map_id)
-        if official is not None and (room.settings.target_vp not in (None, 14)
+        if official is not None and (room.settings.target_vp not in (None, source["rules"]["target_vp"])
                                      or room.settings.discard_threshold != 7):
-            raise RuleError("invalid", "Official Heading for New Shores requires 14 VP and discard threshold 7")
+            raise RuleError("invalid", f"{official['name']} requires {source['rules']['target_vp']} VP and discard threshold 7")
         require_non_fog_data(source)
     except map_loader.MapValidationError as exc:
         raise RuleError("invalid", str(exc)) from None
@@ -581,7 +581,7 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     room.seed = seed
     room.match_id += 1
     room.match_uuid = uuid.uuid4()
-    room.ruleset_id = OFFICIAL_S3A_RULESET if official is not None else CURRENT_RULESET
+    room.ruleset_id = OFFICIAL_RULESETS[official["official_scenario"]] if official is not None else CURRENT_RULESET
     room.tick = 0
     room.dice = None
     room.roll_count = 0
@@ -895,9 +895,10 @@ def _set_room_settings(room: Room, pid: int, patch: Dict[str, Any]) -> None:
     except ValueError as exc:
         raise RuleError("invalid", str(exc)) from exc
     meta = get_preset_meta(room.selected_map_id)
-    if meta and meta.get("official_scenario") and (updated.target_vp not in (None, 14)
-                                                   or updated.discard_threshold != 7):
-        raise RuleError("invalid", "Official Heading for New Shores requires 14 VP and discard threshold 7")
+    if meta and meta.get("official_scenario"):
+        target = get_preset_map(meta["id"])["rules"]["target_vp"]
+        if updated.target_vp not in (None, target) or updated.discard_threshold != 7:
+            raise RuleError("invalid", f"{meta['name']} requires {target} VP and discard threshold 7")
     room.settings = updated
     room.selected_rules_config = {**room.selected_rules_config, "discard_threshold": updated.discard_threshold}
     if updated.target_vp is not None:

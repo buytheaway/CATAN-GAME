@@ -1,9 +1,21 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-13
+updated: 2026-10-16
 ---
 
 # Architecture Decisions
+
+## ADR-024 — Canonical Four Islands using the existing personal island ledger
+
+Status: **Implemented in authorized Official Seafarers S3B scope, 2026-10-16.** Final verification and limits — [[Project State]]. ADR-023 remains valid for New Shores; this decision adds a separate scenario profile.
+
+Decision: register `seafarers_official_four_islands_3` / `_4` from the Fifth Edition 2021 printed pp.11–13. The two illustrated boards require exactly 3/4 actually connected participants. Opening settlements may be on any island: the player's one or two accepted opening islands become personal home islands. The existing ledger awards +2 once for the first main-phase settlement on each other island, independent of opponents; ordinary own-turn victory uses target 13. No additional gameplay executor or score calculation is introduced.
+
+Selection/construction authenticates the full canonical recipe and typed official identity, preserving original IDs and fixed harbor anchors. Public metadata admits only the two new fixed registry descriptors, retaining the closed projection. Official target/discard constraints are read from the verified recipe (13/7 here, unchanged 14/7 for New Shores); client settings cannot override them. Standard ships, movement, routes, robber/pirate, costs and supply are shared unchanged. Optional variable layouts are outside S3B.
+
+New Four Islands matches receive durable immutable **`catan-seafarers-s3b-four-islands`**, independent from snapshot format. Compatibility verifies the recorded family/variant/count, frame opt-in, unrestricted opening policy, +2 bonus and 13/7 settings. S3A and older markers cannot silently resume this profile. Existing matches retain their provenance; no migration, backfill, historical score/achievement reconciliation or classification by codec is performed.
+
+Writer **v4 / engine compatibility 3** already stores materialized boards, personal homes/awards, VP and ship-turn history. Recovery restores these records without reading today's map recipe or invoking gameplay. Rematch checks the exact currently connected count, creates a new epoch/S3B marker and empty personal ledger, preserving the finished result. Rollback to binaries unaware of this marker must restrict S3B matches; there is no downgrade or older-head fallback. F1/F2, COMMIT-before-publication/ACK, durable receipts and public Fog DISABLED remain required. [[Карты и сценарии#Official The Four Islands — S3B]], [[Состояние игры#Official scenario persistence — S3B]].
 
 ## ADR-023 — Canonical official New Shores boards and sea-frame provenance
 
