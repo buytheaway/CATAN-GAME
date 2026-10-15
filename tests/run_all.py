@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import argparse
 import json
 import os
 import sys
@@ -93,10 +94,11 @@ def _write_bug_report(path: Path, failures: List[Dict[str, Any]]) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def main() -> int:
+def main(reports_dir: Path | None = None) -> int:
     scenarios = _load_scenarios()
     report: Dict[str, Any] = {
         "timestamp": int(time.time()),
+        "seed_policy": {"default_seeds": DEFAULT_SEEDS, "theft_seed_xor": 0xCA7A},
         "scenarios": [],
     }
     failures: List[Dict[str, Any]] = []
@@ -109,7 +111,8 @@ def main() -> int:
 
             def on_step(drv: GameDriver, action: Dict[str, Any], result: Dict[str, Any]):
                 if not result.get("ok", False):
-                    raise ScenarioFailure("action failed", kind="rule", details={"action": action, "result": result})
+                    raise ScenarioFailure("action failed", kind="crash" if "exception" in result else "rule",
+                                          details={"action": action, "result": result})
                 inv = check_invariants(drv.game, drv.expected_totals)
                 if inv:
                     raise ScenarioFailure("invariants failed", kind="invariant", details={"failures": inv})
@@ -130,6 +133,7 @@ def main() -> int:
                     raise ScenarioFailure("invariants failed", kind="invariant", details={"failures": inv})
                 scenario_entry["summary"] = result.get("summary", driver.snapshot())
                 scenario_entry["steps"] = result.get("steps", driver.steps)
+                scenario_entry["outcomes"] = driver.outcomes
             except ScenarioFailure as sf:
                 scenario_entry["ok"] = False
                 scenario_entry["summary"] = driver.snapshot()
@@ -141,6 +145,7 @@ def main() -> int:
                     "reason": str(sf),
                     "details": sf.details,
                     "steps": driver.steps,
+                    "outcomes": driver.outcomes,
                     "logs": driver.logs[-50:],
                 })
             except Exception:
@@ -154,17 +159,20 @@ def main() -> int:
                     "reason": "exception",
                     "details": {},
                     "steps": driver.steps,
+                    "outcomes": driver.outcomes,
                     "logs": driver.logs[-50:],
                     "trace": traceback.format_exc(),
                 })
 
             report["scenarios"].append(scenario_entry)
 
-    reports_dir = Path(__file__).parent / "reports"
+    reports_dir = Path(reports_dir) if reports_dir is not None else Path(__file__).parent / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
     report_path = reports_dir / f"report_{ts}.json"
     report["failures"] = failures
+    report["summary"] = {"total": len(report["scenarios"]), "passed": sum(s["ok"] for s in report["scenarios"]),
+                         "failed": len(failures)}
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
 
     bug_path = reports_dir / "BUG_REPORT.md"
@@ -179,4 +187,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    parser = argparse.ArgumentParser(description="Run reproducible engine scenarios without bypassing game rules")
+    parser.add_argument("--reports-dir", type=Path, help="Output directory; defaults to tests/reports")
+    sys.exit(main(parser.parse_args().reports_dir))

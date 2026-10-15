@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import random
 from typing import Any, Dict
+from unittest.mock import patch
 
 from PySide6 import QtWidgets
 
@@ -14,6 +16,13 @@ SEEDS = list(range(1, 6))
 
 
 def run(driver: GameDriver) -> Dict[str, Any]:
+    # The legacy controller uses module-level random for map seed and dice.
+    # Scope the seeded provider to this smoke test; never alter runtime RNG.
+    with patch.object(ui_v6, "random", random.Random(driver.seed)):
+        return _run(driver)
+
+
+def _run(driver: GameDriver) -> Dict[str, Any]:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 

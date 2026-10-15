@@ -35,6 +35,10 @@ def _recompute_largest_army(g) -> Tuple[Optional[int], int]:
     if max_k < 3:
         return None, 0
     leaders = [i for i, k in enumerate(sizes) if k == max_k]
+    # A qualified tied incumbent keeps the award; counts alone do not encode
+    # which player earned it first. A trailing holder is still invalid.
+    if g.largest_army_owner in leaders:
+        return g.largest_army_owner, max_k
     if len(leaders) != 1:
         return None, max_k
     return leaders[0], max_k

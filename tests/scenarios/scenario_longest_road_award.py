@@ -96,30 +96,38 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         driver.fail("could not find road path length 6", kind="assertion")
 
     driver.do({"type": "grant_resources", "pid": 1, "res": {"wood": 6, "brick": 6}})
-    for e in path2:
+    held_vp = [p.vp for p in g.players]
+    for count, e in enumerate(path2, start=1):
         res = driver.do({"type": "place_road", "pid": 1, "eid": e})
         if not res.get("ok"):
             driver.fail("place road failed for p1", kind="assertion", details=res)
+        if count == 5:
+            if g.longest_road_owner != 0 or g.longest_road_len != 5:
+                driver.fail("equal road length displaced the qualified holder", details={
+                    "owner": g.longest_road_owner, "len": g.longest_road_len})
+            if [p.vp for p in g.players] != held_vp:
+                driver.fail("equal road length changed achievement VP")
 
     if g.longest_road_owner != 1:
         driver.fail("longest road did not transfer", kind="assertion", details={"owner": g.longest_road_owner})
+    if [p.vp for p in g.players] != [held_vp[0] - 2, held_vp[1] + 2]:
+        driver.fail("strictly longer road did not transfer exactly two VP")
 
     # blocking settlement should reduce road length (recompute only)
     before_len = engine_rules.longest_road_length(g, 0)
+    # This isolated graph fixture blocks an interior vertex, not a terminal
+    # endpoint which cannot shorten the route. Preserve the exact split.
+    vertices = [start]
+    for a, b in path:
+        vertices.append(b if a == vertices[-1] else a)
     blocker = None
-    for e in path:
-        for vid in e:
-            if vid in g.occupied_v:
-                continue
-            ok = True
-            for nb in engine_rules.edge_neighbors_of_vertex(g.edges, vid):
-                if nb in g.occupied_v:
-                    ok = False
-                    break
-            if ok:
-                blocker = vid
-                break
-        if blocker is not None:
+    expected_len = None
+    for index, vid in enumerate(vertices[1:-1], start=1):
+        if vid in g.occupied_v:
+            continue
+        if all(nb not in g.occupied_v for nb in engine_rules.edge_neighbors_of_vertex(g.edges, vid)):
+            blocker = vid
+            expected_len = max(index, len(path) - index)
             break
     if blocker is None:
         driver.fail("no blocker vertex found", kind="assertion")
@@ -128,10 +136,11 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     g.players[1].vp += 1
     engine_rules.update_longest_road(g)
     after_len = engine_rules.longest_road_length(g, 0)
-    if after_len > before_len:
+    if after_len != expected_len or after_len >= before_len:
         driver.fail("blocking settlement did not reduce road", kind="assertion", details={
             "before": before_len,
             "after": after_len,
+            "expected": expected_len,
         })
 
     return {

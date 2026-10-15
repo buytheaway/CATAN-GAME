@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from app.engine.state import TERRAIN_TO_RES
+from app.engine.state import RESOURCES, TERRAIN_TO_RES
 from tests.harness.engine import GameDriver
 from tests.scenarios.utils import run_setup_snake
 
@@ -11,13 +11,19 @@ def run(driver: GameDriver) -> Dict[str, Any]:
     g = driver.game
     run_setup_snake(driver)
 
-    g.phase = "main"
-    g.turn = 0
-    g.rolled = False
-
-    # grant resources to force discard
-    driver.do({"type": "grant_resources", "pid": 0, "res": {"wood": 4, "brick": 4}})
-    driver.do({"type": "grant_resources", "pid": 1, "res": {"wheat": 4, "sheep": 4}})
+    # Build both discard-sized hands with recorded production and paid trades.
+    # Funding P1 can affect P0's cards during intervening ordinary turns, so
+    # check both hands before the controlled Seven rather than assuming them.
+    for _ in range(20):
+        driver.ensure_resources(0, {"wood": 4, "brick": 4})
+        driver.ensure_resources(1, {"wheat": 4, "sheep": 4})
+        if all(sum(p.res.values()) > 7 for p in g.players):
+            break
+    if not all(sum(p.res.values()) > 7 for p in g.players):
+        driver.fail("normal production did not prepare both discard-sized hands")
+    driver.finish_turn()  # P1 has rolled; P0 now has a fresh unrolled turn.
+    if g.turn != 0 or g.rolled:
+        driver.fail("Seven fixture did not reach P0's next ordinary turn")
 
     before_sizes = [sum(p.res.values()) for p in g.players]
     res = driver.do({"type": "roll", "pid": 0, "roll": 7})
@@ -58,7 +64,8 @@ def run(driver: GameDriver) -> Dict[str, Any]:
         if owner != 1:
             continue
         for ti in g.vertex_adj_hexes.get(vid, []):
-            if ti != g.robber_tile:
+            if (ti != g.robber_tile and g.tiles[ti].number is not None
+                    and TERRAIN_TO_RES.get(g.tiles[ti].terrain)):
                 target_tile = ti
                 break
         if target_tile is not None:
@@ -68,6 +75,7 @@ def run(driver: GameDriver) -> Dict[str, Any]:
 
     before_p0 = g.players[0].res.copy()
     before_p1 = g.players[1].res.copy()
+    before_bank = dict(g.bank)
     res = driver.do({"type": "move_robber", "pid": 0, "tile": target_tile, "victim": 1})
     if not res.get("ok"):
         driver.fail("move robber failed", kind="assertion", details=res)
@@ -81,30 +89,46 @@ def run(driver: GameDriver) -> Dict[str, Any]:
                 "delta_p0": delta_p0,
                 "delta_p1": delta_p1,
             })
+    if g.robber_tile != target_tile or g.pending_action is not None or g.bank != before_bank:
+        driver.fail("robber placement did not complete or theft changed the bank")
 
     # ensure robber blocks production on target tile
     roll = g.tiles[target_tile].number
     if roll is not None:
-        g.rolled = False
-        g.last_roll = None
+        driver.finish_turn()  # A second roll requires the next player's turn.
         before = [p.res.copy() for p in g.players]
-        res = driver.do({"type": "roll", "pid": 0, "roll": int(roll)})
+        bank_before = dict(g.bank)
+        demands = {resource: {} for resource in RESOURCES}
+        blocked = set(g.robbers or [g.robber_tile])
+        for vid, (owner, level) in g.occupied_v.items():
+            for ti in g.vertex_adj_hexes[vid]:
+                tile = g.tiles[ti]
+                resource = TERRAIN_TO_RES.get(tile.terrain)
+                if ti not in blocked and tile.number == roll and resource:
+                    demands[resource][owner] = demands[resource].get(owner, 0) + level
+        gains = [{resource: 0 for resource in RESOURCES} for _ in g.players]
+        for resource, recipients in demands.items():
+            available = bank_before[resource]
+            if len(recipients) > 1 and sum(recipients.values()) > available:
+                continue
+            for owner, quantity in recipients.items():
+                gains[owner][resource] = min(quantity, available)
+        res = driver.do({"type": "roll", "pid": g.turn, "roll": int(roll)})
         if not res.get("ok"):
             driver.fail("roll after robber failed", kind="assertion", details=res)
-        # any adjacent settlements on that tile should not gain
-        for vid, (owner, level) in g.occupied_v.items():
-            if target_tile not in g.vertex_adj_hexes.get(vid, []):
-                continue
-            res_name = TERRAIN_TO_RES.get(g.tiles[target_tile].terrain)
-            if not res_name:
-                continue
-            if g.players[owner].res[res_name] != before[owner][res_name]:
-                driver.fail("robber did not block production", kind="assertion", details={
-                    "pid": owner,
-                    "res": res_name,
-                    "before": before[owner][res_name],
-                    "after": g.players[owner].res[res_name],
-                })
+        # The blocked hex contributes zero, while other matching unblocked
+        # hexes still produce under the ordinary aggregate shortage rule.
+        for owner, player in enumerate(g.players):
+            for resource in RESOURCES:
+                expected = before[owner][resource] + gains[owner][resource]
+                if player.res[resource] != expected:
+                    driver.fail("robber production mismatch", details={"pid": owner, "res": resource,
+                                "expected": expected, "actual": player.res[resource], "roll": roll})
+        for resource in RESOURCES:
+            expected = bank_before[resource] - sum(gain[resource] for gain in gains)
+            if g.bank[resource] != expected:
+                driver.fail("robber production bank mismatch", details={"res": resource,
+                            "expected": expected, "actual": g.bank[resource]})
 
     return {
         "steps": driver.steps,

@@ -7,42 +7,36 @@ from tests.scenarios.utils import run_setup_snake
 
 
 def run(driver: GameDriver):
-    data = map_loader.get_preset_map("base_standard")
-    data = dict(data)
-    data["rules"] = {
-        "limits": {"roads": 2, "settlements": 2, "cities": 1},
-    }
+    data = dict(map_loader.get_preset_map("base_standard"))
+    data["rules"] = {"limits": {"roads": 2, "settlements": 2, "cities": 1}}
     g = engine_rules.build_game(seed=driver.seed, max_players=2, size=62.0, map_data=data)
     driver.replace_game(g)
-
     run_setup_snake(driver)
+    driver.begin_turn(0)
 
-    g.phase = "main"
-    g.turn = 0
-
-    # road limit should be reached after setup (2 roads)
-    driver.do({"type": "grant_resources", "pid": 0, "res": {"wood": 1, "brick": 1}})
+    # Reject a connected third road for its actual limit, not pre-Roll.
+    driver.ensure_resources(0, engine_rules.COST["road"])
     edges = driver.legal_road_edges(0)
     if not edges:
-        driver.fail("no legal road edge to test limit", kind="assertion")
-    action = {"type": "place_road", "pid": 0, "eid": edges[0]}
-    res = driver.apply_action(action)
-    driver.steps.append(dict(action))
-    if res.get("ok", True):
-        driver.fail("road limit not enforced", kind="assertion")
+        driver.fail("no connected unoccupied road edge to test limit")
+    driver.reject({"type": "place_road", "pid": 0, "eid": edges[0]},
+                  error="illegal", message="Road limit reached")
 
-    # city limit: allow first upgrade, block second
-    driver.do({"type": "grant_resources", "pid": 0, "res": {"wheat": 4, "ore": 6}})
-    settlements = [vid for vid, (owner, level) in g.occupied_v.items() if owner == 0 and level == 1]
-    if len(settlements) < 2:
-        driver.fail("not enough settlements for city limit test", kind="assertion")
-    res1 = driver.do({"type": "upgrade_city", "pid": 0, "vid": settlements[0]})
-    if not res1.get("ok", False):
-        driver.fail("first city upgrade failed", kind="assertion", details=res1)
-    action = {"type": "upgrade_city", "pid": 0, "vid": settlements[1]}
-    res2 = driver.apply_action(action)
-    driver.steps.append(dict(action))
-    if res2.get("ok", True):
-        driver.fail("city limit not enforced", kind="assertion")
+    # First city upgrade succeeds at normal cost; second rejects atomically.
+    settlements = sorted(vid for vid, (owner, level) in g.occupied_v.items() if owner == 0 and level == 1)
+    if len(settlements) != 2:
+        driver.fail("setup did not create two own settlements")
+    driver.ensure_resources(0, engine_rules.COST["city"])
+    before_bank = dict(g.bank)
+    before_res = dict(g.players[0].res)
+    driver.do({"type": "upgrade_city", "pid": 0, "vid": settlements[0]})
+    for resource, quantity in engine_rules.COST["city"].items():
+        if g.players[0].res[resource] != before_res[resource] - quantity or g.bank[resource] != before_bank[resource] + quantity:
+            driver.fail("first city upgrade cost mismatch", details={"resource": resource})
+    driver.ensure_resources(0, engine_rules.COST["city"])
+    driver.reject({"type": "upgrade_city", "pid": 0, "vid": settlements[1]},
+                  error="illegal", message="City limit reached")
+    if g.occupied_v[settlements[0]] != (0, 2) or g.occupied_v[settlements[1]] != (0, 1):
+        driver.fail("city limit changed existing pieces")
 
     return {"summary": driver.snapshot(), "steps": driver.steps}
