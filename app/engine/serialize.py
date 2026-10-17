@@ -145,9 +145,9 @@ def to_player_dict(g: GameState, pid: int) -> Dict:
 
 
 def project_fog_player_dict(g: GameState, pid: int) -> Dict:
-    """Trusted, pure projection for tests/future integration; no public gate opt-in.
+    """Trusted pure projection used by the scoped internal Fog transport.
 
-    to_dict/to_player_dict and server publication retain their Fog refusal.
+    Default serializers/public transport retain their Fog refusal.
     This helper is not a persistence format or an authorization mechanism.
     """
     if type(pid) is not int or not 0 <= pid < len(g.players):

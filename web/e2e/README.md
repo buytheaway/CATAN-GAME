@@ -282,3 +282,42 @@ refresh/Continue, results and finished-match recovery. This is not an all-click
 human playthrough. No fixture endpoint or synthetic match_state is installed;
 public Fog remains disabled. Latest executed results and limitations are in
 `docs/obsidian/Project State.md`.
+
+## Internal live Fog — S2B-2B.3B
+
+`fog-live.cjs` uses the existing production build and real HTTP/WebSocket/
+PostgreSQL transport, with two independent Chrome profiles for each prepared
+fixture. It clicks a last-setup SVG Road and a paid Board3D Ship, resolves
+personal Gold, checks public/private state and both renderers, refreshes during
+and after rewards, and restarts the actual backend while a choice is pending.
+Fixtures are explicitly funded/prepared; this is not a natural full Fog match.
+
+Build `web/dist`, provide an existing isolated loopback PostgreSQL `DATABASE_URL`
+whose database name ends in `_test`, and use the external Playwright/Chrome
+installation as for the natural runner. No new frontend dependency is needed.
+
+```powershell
+# DATABASE_URL must name a disposable browser test database, never user data.
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-fog-live-browser'
+node web/e2e/fog-live.cjs
+```
+
+The runner owns a loopback backend on port 18769 and starts it through
+`python -m tests.fog_live_support`. The launcher refuses non-test/non-loopback
+databases and enabled Test Tools. It binds immutable room/match UUID
+capabilities only inside that test application's private state. On restart it
+uses normal recovery, verifies the saved fixture IDs and explicitly rebinds
+them; snapshot decoding itself does not activate Fog. Normal production startup
+installs no capabilities, even for the same ruleset or database snapshot.
+Public selection/start/rematch/timers/debug remain disabled. No network flag,
+fixture endpoint or frontend mock bypasses these boundaries.
+
+The output folder contains `report.json`, public screenshots and a local
+`fixture-bindings.json` with **synthetic seat proofs**. Keep this manifest private,
+outside all served/tracked folders; never print, publish or commit it. It stores
+no trusted assignments, hidden map recipe or private-hand dump. Only the normal
+production frontend is served. The runner stops its own processes and never
+resets volumes. Wire counterfactual/authorization tests are separately in
+`tests/test_fog_live.py` and `tests/test_fog_live_privacy.py`; browser visibility
+alone is not the privacy guarantee. Current executed results and public-release
+limits are in `docs/obsidian/Project State.md`.

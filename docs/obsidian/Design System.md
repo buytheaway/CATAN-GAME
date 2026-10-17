@@ -17,6 +17,8 @@ Room Lifecycle Phase 1 uses the existing lobby heading action styles for a plain
 
 Reveal is a finite 420ms translucent veil after a new committed hidden→revealed snapshot, with no gameplay blocking or reward particles; refresh/reconnect/history do not replay it. Reduced motion skips the veil. Existing public Game Log describes discovery and server reward; personal Gold modal explains a current discovery choice without exposing the selected resource to others. No new HUD, fantasy setting, audio cue system or layout redesign. Details — [[React интерфейс#Public Fog presentation — S2B-2B.3A]], [[plans/seafarers-fog]].
 
+**Additional verification 2026-10-16, S2B-2B.3B:** unchanged SVG/Board3D/GLB/discovery/Gold presentation is also checked in real two-client Chrome against scoped live WS/PostgreSQL, including refresh and backend restart while pending. No visual/runtime React change or public Fog activation; prepared/funded fixtures are not full natural Fog games. Exact results — [[React интерфейс#Internal live Fog acceptance — S2B-2B.3B]], [[Project State]].
+
 Real Chrome fixture screenshots inspected at 1440×900 and 1024×768: partial revealed Forest/Gold/Sea/Desert, all-hidden neutral board, Gold overlay, 50-tile framing and SVG parity. These are synthetic **PUBLIC** presentation fixtures, not live Fog matches or official scenario assets. Artifacts are ignored test output, not design reference assets; reproduction — [fog-rendering.cjs](../../web/e2e/fog-rendering.cjs). Mobile/low-end/load and live security acceptance remain unverified.
 
 ## Product / UX / Visual Polish — Phase 4: Audio

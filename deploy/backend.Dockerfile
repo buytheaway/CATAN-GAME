@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements-server.txt \
     && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin catan
 
 COPY app/__init__.py app/server_mp.py app/net_protocol.py app/resource_path.py app/room_options.py ./app/
-COPY app/game_events.py app/test_tools.py app/match_rulesets.py ./app/
+COPY app/game_events.py app/test_tools.py app/match_rulesets.py app/fog_transport.py ./app/
 COPY app/room_admission.py ./app/
 COPY app/persistence/ ./app/persistence/
 COPY app/auth/ ./app/auth/

@@ -30,6 +30,7 @@ from app.auth.service import AuthService
 
 from app import net_protocol
 from app import game_events, test_tools
+from app.fog_transport import FogMatchAccess
 from app.match_rulesets import CURRENT_RULESET, OFFICIAL_RULESETS, COMPATIBILITY_MESSAGE, restricted
 from app.engine import (
     DEFAULT_PRESET_ID,
@@ -323,6 +324,8 @@ MULTIPLAYER_COMMANDS = frozenset({
 
 
 def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
+    if game is room.game and _fog_access(room) is not None:
+        return _project_fog_snapshot(room, pid)
     require_no_fog(game)
     _require_compatible(room)
     state = to_player_dict(game, pid)
@@ -330,7 +333,7 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
 
 
 def _project_fog_snapshot(room: Room, pid: int) -> Dict:
-    """Pure trusted fixture projection. Never called by public WS/HTTP paths."""
+    """Safe pure view, used live only with explicit in-process fixture access."""
     if room.ruleset_id != CURRENT_RULESET:
         raise RuleError("compatibility_required", "A verified current ruleset is required")
     game = room.game
@@ -379,7 +382,7 @@ async def _broadcast(room: Room, obj: Dict) -> None:
 
 
 async def _send_room_state(room: Room, request_id: Optional[str] = None) -> None:
-    message = net_protocol.room_state_message(room)
+    message = _room_state_message(room)
     if request_id is not None:
         message["request_id"] = request_id
     await _broadcast(room, message)
@@ -388,7 +391,7 @@ async def _send_room_state(room: Room, request_id: Optional[str] = None) -> None
 async def _send_match_state(room: Room) -> None:
     if not room.game:
         return
-    if restricted(room):
+    if restricted(room) and _fog_access(room) is None:
         await _send_room_state(room)
         return
     # Freeze all views before the first await so another command cannot make
@@ -411,8 +414,8 @@ async def _send_match_state_to(ws: WebSocket, room: Room) -> None:
             or not 0 <= conn.pid < len(room.players)):
         return
     pid = conn.pid
-    if restricted(room):
-        await _send(ws, net_protocol.room_state_message(room))
+    if restricted(room) and _fog_access(room) is None:
+        await _send(ws, _room_state_message(room))
         return
     message = net_protocol.match_state_message(room, _snapshot_state(room.game, room, pid))
     await _publish_match_state(conn, room, pid, room.players[pid].id, message)
@@ -423,7 +426,7 @@ async def _publish_match_state(conn: ClientConn, room: Room, pid: int, slot_id: 
     # rematch and durable guest revocation cannot interleave with this send.
     def current_recipient():
         return (manager.connections.get(conn.ws) is conn and manager.rooms.get(room.room_code) is room
-                and not restricted(room)
+                and (not restricted(room) or _fog_access(room) is not None)
                 and conn.room_code == room.room_code and conn.pid == pid
                 and room.match_id == message["match_id"] and 0 <= pid < len(room.players)
                 and room.players[pid].id == slot_id and room.players[pid].active_ws is conn.ws)
@@ -601,17 +604,33 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     room.status = "in_match"
 
 
-def _require_compatible(room: Room) -> None:
+def _fog_access(room: Room) -> Optional[FogMatchAccess]:
+    # No production initializer, env or network input populates this tuple.
+    # A test process can revoke it; publisher rechecks it after authorization.
+    access = getattr(app.state, "_fog_fixture_access", ())
+    if type(access) is not tuple:
+        return None
+    return next((scope for scope in access if type(scope) is FogMatchAccess and scope.permits(room)), None)
+
+
+def _room_state_message(room: Room) -> Dict:
+    return net_protocol.room_state_message(room, fog_access=_fog_access(room))
+
+
+def _require_compatible(room: Room, *, internal_gameplay=False) -> None:
     if has_fog(room.game):
+        if internal_gameplay and _fog_access(room) is not None:
+            return
         raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
     if restricted(room):
         raise RuleError("compatibility_required", COMPATIBILITY_MESSAGE)
 
 
 def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
-    if has_fog(room.game):
+    trusted_fog = _fog_access(room) is not None
+    if has_fog(room.game) and not trusted_fog:
         return net_protocol.error_message("feature_disabled", FOG_DISABLED_MESSAGE)
-    if restricted(room):
+    if restricted(room) and not trusted_fog:
         return net_protocol.error_message("compatibility_required", COMPATIBILITY_MESSAGE)
     g = room.game
     if not g:
@@ -621,6 +640,8 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     if not isinstance(ctype, str):
         return net_protocol.error_message("invalid", "cmd.type required")
     if ctype == "test_action":
+        if trusted_fog:
+            return net_protocol.error_message("feature_disabled", FOG_DISABLED_MESSAGE)
         if not TEST_TOOLS_ENABLED or not room.test_mode or pid != room.host_pid:
             return net_protocol.error_message("forbidden", "Test tools are unavailable for this room/player")
         before = game_events.resources_before(g)
@@ -656,7 +677,7 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     before = game_events.resources_before(g)
     old_robber, old_pirate = g.robber_tile, g.pirate_tile
     try:
-        _, events = apply_cmd(g, pid, cmd)
+        _, events = apply_cmd(g, pid, cmd, **({"trusted_fog": True} if trusted_fog else {}))
     except RuleError as exc:
         return net_protocol.error_message(exc.code, exc.message, exc.details)
     if dice is not None:
@@ -1066,7 +1087,7 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
                 manager.creation_admission.accepted(peer, time.monotonic())
             manager.rooms[room.room_code] = room
             manager.bind_player(conn, room, 0)
-            await _send(ws, net_protocol.room_state_message(room))
+            await _send(ws, _room_state_message(room))
             await _send_reconnect_token(ws, room, 0)
         return
     code = data.get("room_code", "").strip().upper() if kind in ("join_room", "reconnect", "account_continue") else conn.room_code
@@ -1099,7 +1120,7 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             candidate.last_activity_ts = time.time()
             await _commit(room, candidate)
             manager.bind_player(conn, room, pid)
-            await _send(ws, net_protocol.room_state_message(room))
+            await _send(ws, _room_state_message(room))
             await _send_reconnect_token(ws, room, pid)
             await _send_room_state(room)
             return
@@ -1128,7 +1149,7 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             if kind == "account_continue" and previous is not None and previous is not conn:
                 await _send(previous.ws, net_protocol.error_message("seat_taken_over", "This seat was opened in another browser"))
                 await previous.ws.close(code=4409)
-            await _send(ws, net_protocol.room_state_message(room))
+            await _send(ws, _room_state_message(room))
             await _send_reconnect_token(ws, room, pid)
             await _send_match_state_to(ws, room)
             await _send_room_state(room)
@@ -1139,7 +1160,7 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             await _close_lobby(room, conn, data)
             return
         if kind not in ("leave_room", "chat"):
-            _require_compatible(room)
+            _require_compatible(room, internal_gameplay=kind == "cmd")
         if kind == "leave_room":
             candidate = clone_room(room)
             candidate.last_activity_ts = time.time()
@@ -1185,7 +1206,8 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             receipt = {"match_player_id": player.match_player_id, "seq": seq, "cmd_id": cmd_id,
                        "payload_hash": digest, "outcome": "rejected" if error else "accepted",
                        "error_code": error["code"] if error else None}
-            await _commit(room, candidate, snapshot=not error, receipt=receipt)
+            await _commit(room, candidate, snapshot=not error, receipt=receipt,
+                          trusted_fog=_fog_access(room) is not None)
             if error:
                 await _send(ws, error)
             else:

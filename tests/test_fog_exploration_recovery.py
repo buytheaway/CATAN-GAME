@@ -28,13 +28,13 @@ from tests.test_match_rulesets import unchanged_match
 from tests.test_persistence_postgres import database_url, runtime, command
 
 
-async def internal_room(coord, *, setup=False, kind="place_road", free=False):
+async def internal_room(coord, *, setup=False, kind="place_road", free=False, game=None):
     clients = [await connection(), await connection()]
     await server._dispatch(clients[0], {"type": "create_room", "name": "Alice", "max_players": 2})
     await server._dispatch(clients[1], {"type": "join_room", "name": "Bob", "room_code": clients[0].room_code})
     room = server.manager.rooms[clients[0].room_code]
     candidate = clone_room(room)
-    candidate.game = exploration_game("gold", setup=setup)
+    candidate.game = deepcopy(game) if game is not None else exploration_game("gold", setup=setup)
     if setup:
         candidate.game.setup_idx, candidate.game.turn = 3, 0
     edge = route_edge(candidate.game, kind)
@@ -49,8 +49,11 @@ async def internal_room(coord, *, setup=False, kind="place_road", free=False):
         slot.match_player_id = uuid.uuid4()
     candidate.selected_map_id = candidate.game.map_id
     candidate.selected_map_data = fog_recipe()
-    candidate.selected_map_data["fog_pool"] = {"terrain": ["gold"] * 8, "numbers": [5] * 8}
-    candidate.selected_map_data["rules"]["target_vp"] = 24
+    hidden = candidate.game.scenario.rules.fog.initially_hidden
+    candidate.selected_map_data["fog_pool"] = {
+        "terrain": [candidate.game.tiles[i].terrain for i in hidden],
+        "numbers": [candidate.game.tiles[i].number for i in hidden if candidate.game.tiles[i].number is not None]}
+    candidate.selected_map_data["rules"]["target_vp"] = candidate.game.rules_config.target_vp
     candidate.selected_map_meta = {"id": candidate.game.map_id, "name": candidate.game.map_name, "description": ""}
     candidate.selected_rules_config = vars(candidate.game.rules_config).copy()
     candidate.seed = candidate.game.seed

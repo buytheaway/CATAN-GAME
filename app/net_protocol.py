@@ -200,7 +200,7 @@ def error_message(code: str, message: str, detail: Optional[Dict[str, Any]] = No
     return {"type": "error", "code": code, "message": message, "detail": detail or {}}
 
 
-def room_state_message(room) -> Dict[str, Any]:
+def room_state_message(room, *, fog_access=None) -> Dict[str, Any]:
     from app.match_rulesets import compatibility
     map_rules = public_rules_config(room.selected_rules_config)
     preset_target = map_rules.get("target_vp", room.game.rules_config.target_vp if room.game else 10)
@@ -231,6 +231,9 @@ def room_state_message(room) -> Dict[str, Any]:
         msg["map_rules"] = map_rules
     if room.game is not None:
         msg["ruleset_compatibility"] = compatibility(room.ruleset_id, room.game)
+        from app.fog_transport import FogMatchAccess
+        if type(fog_access) is FogMatchAccess and fog_access.permits(room):
+            msg["ruleset_compatibility"]["status"] = "compatible"
     return msg
 
 
