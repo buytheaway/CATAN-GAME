@@ -321,3 +321,53 @@ resets volumes. Wire counterfactual/authorization tests are separately in
 `tests/test_fog_live.py` and `tests/test_fog_live_privacy.py`; browser visibility
 alone is not the privacy guarantee. Current executed results and public-release
 limits are in `docs/obsidian/Project State.md`.
+
+## Natural whole Fog match — internal only
+
+`tests/test_fog_natural.py` starts at an empty normal engine opening and plays a
+two-player custom `shared-preassigned-v1` match to server victory using real
+owning WebSockets/PostgreSQL. It reuses `full_match_support`'s Backend/Match and
+cooperative player, with explicit Fog frontier planning based only on public
+known terrain/legal lists. No grants, prepared midgame, score/occupancy edits,
+teleports, Test Tools or alternate gameplay executor. Controlled private RNG is
+installed only in the guarded isolated test process. The supported-count claim
+is two tested players, not general competitive Fog certification.
+
+```powershell
+# CATAN_TEST_DATABASE_URL must already name an isolated localhost *_test DB.
+$env:CATAN_FULL_MATCH_OUTPUT = Join-Path $env:TEMP 'catan-fog-natural-traces'
+$fogScratch = Join-Path $env:TEMP ('catan-fog-natural-' + [guid]::NewGuid().ToString('N'))
+.venv/Scripts/python.exe -B -X utf8 -m pytest -q --basetemp=$fogScratch tests/test_fog_natural.py
+# DATABASE_URL must name a separate disposable browser *_test DB.
+$env:CATAN_NATURAL_TRACE = Join-Path $env:CATAN_FULL_MATCH_OUTPUT 'seafarers_fog_natural.json'
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP ('catan-fog-natural-browser-' + [guid]::NewGuid().ToString('N'))
+node web/e2e/fog-natural.cjs
+```
+
+Build `web/dist` and use the existing external Playwright/installed Chrome as
+above. `fog-natural.cjs` replays that exact accepted-command transcript, using
+actual SVG Road, Board3D Ship, Roll and Gold controls at representative points;
+bulk moves use the owning sockets. It observes raw personal frames, actual
+scene/DOM, finite reveals, resource-hand/VP HUD, refresh, process restart during
+Gold, victory/results and a new Fog rematch. This is a legally funded complete
+match, not an all-click competitive human playthrough.
+
+`tests.fog_natural_support serve --manifest <private-file>` is **test-only**.
+It binds loopback, requires disposable PostgreSQL/Test Tools off and prepares
+only a lobby recipe/configuration. ContextVars admit only that privately
+recorded native room's start/rematch through the original feature/Repository
+fences, retaining dispatcher/host/ownership/count/epoch/transaction/receipt/F1
+behavior. Recovery remains pure; only the launcher explicitly rebinds its
+recorded fixture capability afterward. No public map-selection flag, endpoint,
+environment activation or production initializer is added. Other rooms and
+normal production startup stay closed, including forged flags/valid cookies.
+
+Use a **fresh output folder** for a fresh replay: an existing manifest deliberately
+restores its recorded room rather than overwriting or resetting it. Local
+`private-bindings.json` contains synthetic seat proofs; Python pytest also
+retains `private-server.log` for diagnostics. Keep both private and outside any
+served/tracked directory; never print/publish/commit them. Reports/screenshots
+contain public test UI only. The runner stops its own backend/Chrome and never
+resets a volume or deletes a match. Public Fog remains **DISABLED**; do not deploy
+this launcher. Current results and the separate activation design are in
+`docs/obsidian/Project State.md` and `docs/obsidian/plans/seafarers-fog.md`.

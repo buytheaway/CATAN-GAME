@@ -238,7 +238,9 @@ def test_normal_client_cannot_select_fog_even_beside_an_authorized_fixture(datab
     asyncio.run(run())
 
 
-def test_normal_production_entry_recovers_fog_without_activating_transport(database_url,monkeypatch):
+@pytest.mark.parametrize("account_owner", [False, True])
+@pytest.mark.parametrize("forged_environment", [False, True])
+def test_normal_production_entry_recovers_fog_without_activating_transport(database_url,monkeypatch,account_owner,forged_environment):
     async def run():
         async with runtime(database_url,monkeypatch) as coord:
             room,proofs,route=await fixture_room(coord)
@@ -247,6 +249,9 @@ def test_normal_production_entry_recovers_fog_without_activating_transport(datab
             uri=f"ws://127.0.0.1:{port}/ws"
             env={**os.environ,"DATABASE_URL":database_url,"CATAN_PERSISTENCE_MODE":"durable",
                  "CATAN_AUTH_MODE":"development","CATAN_AUTH_ORIGINS":"http://test","CATAN_ENABLE_TEST_TOOLS":"0"}
+            if forged_environment:
+                env.update(CATAN_ENABLE_FOG="1", CATAN_FOG_ENABLED="true",
+                           CATAN_FOG_FIXTURE_ACCESS=json.dumps({"room_id":str(room.id),"match_uuid":str(room.match_uuid)}))
             args=[sys.executable,"-B","-m","uvicorn","app.server_mp:app","--host","127.0.0.1",
                   "--port",str(port),"--log-level","error","--no-access-log","--no-proxy-headers"]
             if os.name=="nt": args.extend(["--loop","app.persistence.db:selector_event_loop"])
@@ -267,6 +272,17 @@ def test_normal_production_entry_recovers_fog_without_activating_transport(datab
                 await peer.send({"type":"reconnect","room_code":room.room_code,"reconnect_token":proofs[0]})
                 await peer.wait(lambda:peer.room is not None and peer.token is not None)
                 assert peer.room["ruleset_compatibility"]["status"]=="compatibility_required"
+                if account_owner:
+                    from tests.test_auth import account
+                    cookie,_=await account(coord,"Normal Fog account")
+                    status,data=await http_json(uri,"/api/games/claim",{"room_code":room.room_code,
+                        "reconnect_token":proofs[0],"connection_nonce":peer.nonce},cookie=cookie)
+                    assert status==200 and data["claimed"]
+                    await peer.close()
+                    peer=await connect(uri,cookie=cookie)
+                    await peer.send({"type":"account_continue","room_code":room.room_code})
+                    await peer.wait(lambda:peer.room is not None)
+                    assert peer.room["ruleset_compatibility"]["status"]=="compatibility_required"
                 await peer.send({"type":"cmd","room_code":room.room_code,"match_id":room.match_id,
                     "cmd_id":"public-forged-fog-access","seq":1,"trusted_fog":True,
                     "fog_access":{"room_id":str(room.id),"match_uuid":str(room.match_uuid)},"cmd":route})

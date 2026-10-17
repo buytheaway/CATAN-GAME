@@ -4,6 +4,12 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Natural whole Fog match acceptance — 2026-10-17
+
+**Runtime React unchanged; public Fog DISABLED.** [fog-natural.cjs](../../web/e2e/fog-natural.cjs) starts two real Chrome profiles at the privately configured unstarted lobby, clicks host Start and replays a complete legally funded TCP transcript against the original server/production frontend. No prepared midgame or mocked state. Representative SVG Road, Board3D Ship, Roll and all Gold choices use actual UI; bulk setup/build/trade/card/end actions use each owning socket. Raw personalized frames are compared throughout; initial unknowns have uniform Fog/no GLB/number, revelations share only committed contents and finite feedback.
+
+Actual VP counters/resource-hand DOM are checked against each recipient's state after score changes/Gold, plus results for both participants. Refresh, process restart while Gold is pending, finished recovery and host Rematch exercise real App/WSClient/controller/Gold/results paths. No new state store, renderer, visual, client rule or production opt-in. The launcher alone admits its exact native fixture lifecycle; public presets/uploads and normal production stay closed. Executed final counts/browser version/screenshots/limits — [[Project State]], [reproduction](../../web/e2e/README.md), [[plans/seafarers-fog]]. This is one cooperative two-player custom shared-preassigned match, not official Fog Islands, arbitrary seed/player-count coverage or all-click competitive play.
+
 ## Internal live Fog acceptance — S2B-2B.3B
 
 **Tested 2026-10-16, public DISABLED; React/runtime unchanged.** [fog-live.cjs](../../web/e2e/fog-live.cjs) runs the production App/WSClient/GamePage/controller/SVG/Board3D against actual TCP WebSockets and disposable PostgreSQL. Only the guarded test backend grants an in-process capability to two explicitly prepared Fog fixtures; browsers receive normal guest/account ownership and safe personal snapshots, never a trusted map, assignment model or activation flag. Default HTTP summaries remain restricted; the scoped WS room metadata lets the existing App reach GamePage. Normal production launch still shows F2 restriction, not Fog gameplay.

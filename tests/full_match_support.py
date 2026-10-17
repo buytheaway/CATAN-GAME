@@ -109,8 +109,9 @@ def validate_database_url(value):
 
 
 class Backend:
-    def __init__(self, database_url, port=None):
+    def __init__(self, database_url, port=None, *, module="tests.full_match_support", serve_args=()):
         self.database_url, self.port = validate_database_url(database_url), port or free_port()
+        self.module, self.serve_args = module, tuple(serve_args)
         self.process = None
         self.log = tempfile.TemporaryFile(mode="w+b")
 
@@ -118,7 +119,7 @@ class Backend:
         env = {**os.environ, "DATABASE_URL": self.database_url, "CATAN_PERSISTENCE_MODE": "durable",
                "CATAN_ENABLE_TEST_TOOLS": "0", "CATAN_HOST": "127.0.0.1", "CATAN_PORT": str(self.port),
                "CATAN_AUTH_ORIGINS": f"http://127.0.0.1:{self.port}"}
-        self.process = subprocess.Popen([sys.executable, "-B", "-m", "tests.full_match_support", "serve"],
+        self.process = subprocess.Popen([sys.executable, "-B", "-m", self.module, "serve", *self.serve_args],
             cwd=ROOT, env=env, stdout=self.log, stderr=self.log,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         deadline = time.monotonic() + 30
