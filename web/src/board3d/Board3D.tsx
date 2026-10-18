@@ -4,7 +4,7 @@ import { DirectionalLight, PCFSoftShadowMap } from "three";
 import CameraRig from "./CameraRig";
 import HexTile3D from "./HexTile3D";
 import Port3D from "./Port3D";
-import { City3D, Pirate3D, Road3D, Robber3D, Settlement3D, Ship3D } from "./Pieces3D";
+import { City3D, Pirate3D, Road3D, Robber3D, Settlement3D } from "./Pieces3D";
 import { createRenderModel } from "./model";
 import type { BoardBounds, BoardRenderModel, BoardSnapshot } from "./types";
 import type { BoardInteraction } from "../board/interaction";
@@ -25,6 +25,9 @@ import { edgeId } from "../board/constants";
 import { FogPresentation } from "./FogVisual";
 import type { FogQuality } from "./fogPresentation";
 import { useReducedMotion } from "../game/motion";
+import { SceneMotion } from "./SceneMotion";
+import ShipFleet3D from "./ShipFleet3D";
+import type { ShipCue } from "../board/shipFeedback";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -52,10 +55,12 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
     shadow-camera-far={reach * 4} shadow-bias={-0.0005} shadow-normalBias={0.025} />;
 }
 
-export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true, reveals }: {
+export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true, reveals,
+  shipCues = new Map(), shipsAnimated = true, onShipsAnimated }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
   reveals?: ReadonlyMap<number, number>;
+  shipCues?: ReadonlyMap<string, ShipCue>; shipsAnimated?: boolean; onShipsAnimated?: (enabled: boolean) => void;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
@@ -67,6 +72,8 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   const [fogQuality, setFogQuality] = useState<FogQuality>("mist");
   const reduced = useReducedMotion();
   const hidden = model.tiles.some(tile => tile.visibility === "hidden");
+  const shipColors = useMemo(() => new Map(model.ships.map(ship => [ship.owner, colorForPlayer(ship.owner, state.players)])),
+    [model.ships, state.players]);
   const hover = useCallback((tileIndex: number | null) => setHoveredTile(tileIndex), []);
   const inspect = useCallback((tileIndex: number) => {
     interaction.onTileClick(tileIndex);
@@ -83,6 +90,13 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             <option value="mist">Mist{reduced ? " · still" : " · animated"}</option>
             <option value="still">Mist · still</option>
             <option value="simple">Simple</option>
+          </select>
+        </label>}
+        {!!model.ships.length && onShipsAnimated && <label className="board3d-ship-quality">Ships
+          <select aria-label="Ship effects" value={shipsAnimated ? "motion" : "static"}
+            onChange={e => onShipsAnimated(e.target.value === "motion")}>
+            <option value="motion">{reduced ? "Still · reduced motion" : "Motion"}</option>
+            <option value="static">Still</option>
           </select>
         </label>}
         <button type="button" className="game-button" aria-label="Reset Camera"
@@ -109,6 +123,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             <shadowMaterial transparent opacity={0.22} />
           </mesh>
           <VisualResources>
+          <SceneMotion reduced={reduced} connected={connected}>
           <FogPresentation quality={fogQuality} reduced={reduced} connected={connected} hidden={hidden}>
           <DecorativeOcean bounds={bounds} coast={model.coast} />
           {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={oceanClearance(model)} />}
@@ -119,7 +134,8 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           <Coastline coast={model.coast} />
           {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} color={colorForPlayer(road.owner, state.players)}
             appearance={feedback.get(`e:${edgeId(road.edge)}`)} />)}
-          {model.ships.map(ship => <Ship3D key={ship.edge.join(",")} ship={ship} color={colorForPlayer(ship.owner, state.players)} />)}
+          <ShipFleet3D ships={model.ships} cues={shipCues} vertices={state.vertices} edges={state.edges} size={state.size}
+            colors={shipColors} moving={shipsAnimated && connected && !reduced} />
           {model.buildings.map(building => building.level === 1
             ? <Settlement3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)}
                 appearance={feedback.get(`v:${building.vertexId}`)} visible={!replacesSettlement(preview, building)} />
@@ -130,6 +146,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           {model.pirate && <Pirate3D {...model.pirate} />}
           <InteractionOverlay3D state={state} interaction={interaction} hover={targetHover} onHover={setTargetHover} />
           </FogPresentation>
+          </SceneMotion>
           </VisualResources>
         </Canvas>
       </div>

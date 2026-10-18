@@ -124,6 +124,22 @@ async def fixture_room(coord, **kwargs):
     return room, proofs, route
 
 
+async def ship_movement_room(coord):
+    """Prepared visual acceptance fixture; the original executor validates the move."""
+    from copy import deepcopy
+    from app.engine import rules
+    from tests.test_fog_exploration import movement_fixture
+    game, source, target = movement_fixture("gold")
+    room, proofs, _ = await fixture_room(coord, game=game, kind="build_ship")
+    command = {"type": "move_ship", "from_eid": list(source), "to_eid": list(target)}
+    # Validate on a detached copy; never execute a move as recovery or preload.
+    candidate = deepcopy(room.game)
+    rules.apply_cmd(candidate, 0, command, trusted_fog=True)
+    assert source in room.game.occupied_ships and target not in room.game.occupied_ships
+    assert source not in candidate.occupied_ships and candidate.occupied_ships[target] == 0
+    return room, proofs, command
+
+
 async def http_json(uri, path, data=None, *, cookie=None, origin="http://test"):
     from app.auth.security import COOKIE
     def request():
@@ -142,6 +158,7 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port",type=int,default=18769)
     parser.add_argument("--manifest",type=Path,required=True)
+    parser.add_argument("--ship-motion",action="store_true",help="Include a validated prepared ship-movement visual fixture")
     args=parser.parse_args()
     validate_database_url(os.environ.get("DATABASE_URL",""))
     if args.port<1024 or os.environ.get("CATAN_ENABLE_TEST_TOOLS","0")!="0":
@@ -166,6 +183,10 @@ def main():
                     room,proofs,route=await fixture_room(server.persistence,setup=setup,kind=kind)
                     manifest.append({"room_code":room.room_code,"room_id":str(room.id),
                         "match_uuid":str(room.match_uuid),"proofs":proofs,"route":route,"setup":setup})
+                if args.ship_motion:
+                    room,proofs,route=await ship_movement_room(server.persistence)
+                    manifest.append({"room_code":room.room_code,"room_id":str(room.id),
+                        "match_uuid":str(room.match_uuid),"proofs":proofs,"route":route,"setup":False})
                 args.manifest.parent.mkdir(parents=True,exist_ok=True)
                 args.manifest.write_text(json.dumps(manifest),encoding="utf-8")
             access=[]

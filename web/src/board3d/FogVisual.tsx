@@ -4,7 +4,8 @@ import type { Group, Mesh } from "three";
 import { BOARD_RIM_TOP, TERRAIN_FALLBACK_OFFSET } from "./coordinates";
 import { ignoreTerrainRaycast } from "./terrainAssets";
 import { useVisualResources } from "./VisualResources";
-import { FOG_IDLE_HZ, fogDispersal, fogProgress, fogQuality, type FogQuality } from "./fogPresentation";
+import { fogDispersal, fogProgress, fogQuality, type FogQuality } from "./fogPresentation";
+import { useAmbientMotion } from "./SceneMotion";
 
 const Presentation = createContext<{ quality: FogQuality; reduced: boolean }>({ quality: "still", reduced: false });
 
@@ -13,27 +14,9 @@ export function FogPresentation({ quality, reduced, connected, hidden, children 
   quality: FogQuality; reduced: boolean; connected: boolean; hidden: boolean; children: ReactNode;
 }) {
   const pool = useVisualResources();
-  const invalidate = useThree(s => s.invalidate);
   const lowPrecision = useThree(s => s.gl.capabilities.precision !== "highp");
   const effective = fogQuality(quality, reduced, lowPrecision);
-  useEffect(() => {
-    if (!hidden || effective !== "mist" || !connected) return;
-    const fog = pool.fog();
-    let timer: number | undefined;
-    let previous = performance.now();
-    const schedule = () => {
-      window.clearInterval(timer); timer = undefined;
-      if (document.hidden) return;
-      previous = performance.now();
-      timer = window.setInterval(() => {
-        const now = performance.now();
-        fog.time.value += Math.min(.2, (now - previous) / 1000); previous = now;
-        invalidate();
-      }, 1000 / FOG_IDLE_HZ);
-    };
-    schedule(); document.addEventListener("visibilitychange", schedule);
-    return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", schedule); };
-  }, [pool, invalidate, effective, connected, hidden]);
+  useAmbientMotion((_, delta) => { pool.fog().time.value += delta; }, hidden && effective === "mist" && connected);
   const value = useMemo(() => ({ quality: effective, reduced }), [effective, reduced]);
   return <Presentation.Provider value={value}>{children}</Presentation.Provider>;
 }

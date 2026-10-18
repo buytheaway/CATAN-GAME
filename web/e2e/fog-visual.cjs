@@ -92,6 +92,8 @@ async function waitHidden(page, count) {
     await page.screenshot({ path: file }); report.screenshots.push(file); };
   try {
     await page.goto(demo.origin + '/?demo=1'); await ready(page);
+    // This runner isolates Fog; ship motion has its own normal/static benchmark.
+    if (await page.getByLabel('Ship effects').count()) await page.getByLabel('Ship effects').selectOption('static');
     report.measurements.partial = await measure(page); await shot('partial');
     const first = await sceneState(page); await sleep(1000);
     report.measurements.partial.framesPerIdleSecond = (await sceneState(page)).frames - first.frames;

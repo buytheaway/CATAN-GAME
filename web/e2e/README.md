@@ -1,5 +1,63 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 2 — ships preview and verification
+
+From the repository root (existing `web/node_modules` installed):
+
+```powershell
+node web/e2e/ships-visual-demo.cjs
+```
+
+Open **http://127.0.0.1:18773/?demo=1&ships=1**. Real GamePage/Board3D with
+synthetic PUBLIC snapshots, stationary/fleet/Sea/Fog-boundary ships, labelled
+Construct/Move/Reset/50 tiles controls. Reset before replaying an operation;
+its consumed target is a no-op until Reset. Reduced motion reloads a test-only
+forced preference; normal production uses the OS preference. Ordinary Ship
+effects → Still is available too. This is a visual simulator, not an engine,
+legal evaluator, backend endpoint or live Fog activation. No database,
+account, credentials, trusted assignment or server flag is needed. The loopback
+static server serves only its temporary bundle and public models/assets.
+Use `CATAN_SHIP_PREVIEW_PORT` for a different port; Ctrl+C stops it.
+
+With the existing external Playwright `NODE_PATH`:
+
+```powershell
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-ships-visual-phase2'
+node web/e2e/ships-visual.cjs
+node web/e2e/ships-compare.cjs
+```
+
+The first runner checks actual poses/raycasts/construction/movement/freshness,
+static/reduced/fleet/layout behavior, screenshots and a separate video context.
+`after.json` records completion/errors and the generated WebM path. Video needs
+the matching ffmpeg cache from external Playwright (`playwright install ffmpeg`);
+no project dependency is added. `--measure-only` writes a separate
+`after-performance.json`. Original pre-edit `before.json`/images are retained;
+`--baseline` refuses runtime changes or a HEAD other than `608f14e`.
+
+The second runner performs controlled same-Chrome before/after/after/before
+measurements using frontend blobs from that exact committed checkpoint through
+an esbuild onLoad plugin. It never checks out, resets, stages or changes source
+files. Only one page renders at a time with identical public fixtures, camera,
+assets/DPR/shadows and viewport. `paired-performance.json` retains all samples;
+12 warm renders, 60 GPU-synchronous and 30 CPU-submission samples per reading.
+CPU submission includes driver stalls; this is not sustained FPS/isolated CPU
+frame time. Run performance without other browser acceptance workloads.
+
+`ships-live.cjs` separately runs two real owning clients against production
+React/executor/COMMIT/receipts/F1 and isolated localhost PostgreSQL. It uses the
+existing guarded `tests.fog_live_support --ship-motion` launcher. The extra
+prepared move is validated on a detached engine copy; restoration never moves
+it. The private manifest binds exact room/match IDs and synthetic credentials,
+stays outside served/tracked paths and never contains trusted Fog assignments.
+Require a fresh localhost `DATABASE_URL` ending `_test`, production `web/dist`,
+an unused loopback `CATAN_E2E_ORIGIN` (e.g. `http://127.0.0.1:18774`) and a fresh
+output directory; do not share this DB concurrently with mutating pytest cases.
+The normal production Fog gate remains disabled. Existing `fog-live.cjs` default
+fixtures/acceptance stay available. Actual results/scope/limits are in
+[Project State](../../docs/obsidian/Project%20State.md) and the
+[ship plan](../../docs/obsidian/plans/board3d.md#ship-visual-verification-and-performance).
+
 ## Fog Visual Phase 1 — local public-only preview
 
 From the repository root, with the existing `web/node_modules` installed:

@@ -66,14 +66,22 @@ export function City3D({ building, ghost = false, color = playerColor(building.o
   </group>;
 }
 
-export function Ship3D({ ship, ghost = false, color = playerColor(ship.owner) }: { ship: RenderEdge; ghost?: boolean; color?: string }) {
+export function ShipBody3D({ length, color, ghost = false }: { length: number; color: string; ghost?: boolean }) {
+  return <>
+    <PieceMesh kind="hull" color={color} ghost={ghost} scale={[length * 0.88, 1, 1]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.dock} ghost={ghost} position={[0, .14, 0]} scale={[.47, .025, .15]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.trunk} ghost={ghost} position={[-0.1, 0.2, 0]} scale={[0.027, 0.35, 0.027]} raycast={ignoreRaycast} />
+    <PieceMesh kind="sail" color={VISUAL.ivory} ghost={ghost} position={[0.03, 0.14, 0.02]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={color} ghost={ghost} position={[0.03, 0.16, 0.05]} scale={[0.26, 0.045, 0.014]} raycast={ignoreRaycast} />
+  </>;
+}
+
+export function Ship3D({ ship, ghost = false, color = playerColor(ship.owner), visualRef }: {
+  ship: RenderEdge; ghost?: boolean; color?: string; visualRef?: (node: Group | null) => void;
+}) {
   return <group position={ship.position} rotation={[0, ship.rotation, 0]}
     userData={{ edge: ship.edge, owner: ship.owner, piece: "ship", preview: ghost }}>
-    <PieceMesh kind="hull" color={color} ghost={ghost} scale={[ship.length * 0.88, 1, 1]} />
-    <PieceMesh kind="box" color={VISUAL.dock} ghost={ghost} position={[0, .14, 0]} scale={[.47, .025, .15]} />
-    <PieceMesh kind="box" color={VISUAL.trunk} ghost={ghost} position={[-0.1, 0.2, 0]} scale={[0.027, 0.35, 0.027]} />
-    <PieceMesh kind="sail" color={VISUAL.ivory} ghost={ghost} position={[0.03, 0.14, 0.02]} />
-    <PieceMesh kind="box" color={color} ghost={ghost} position={[0.03, 0.16, 0.05]} scale={[0.26, 0.045, 0.014]} />
+    <group ref={visualRef} userData={{ shipVisual: true }}><ShipBody3D length={ship.length} color={color} ghost={ghost} /></group>
   </group>;
 }
 

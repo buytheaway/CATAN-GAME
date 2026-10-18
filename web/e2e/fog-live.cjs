@@ -17,13 +17,13 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const report = { scope: 'scoped internal live Fog only; public disabled', syntheticFundedFixtures: true, checks: [], cases: [] };
 function check(label) { report.checks.push(label); console.log('PASS ' + label); }
 
-async function start() {
+async function start(extraArgs = []) {
   assert.equal(new URL(origin).hostname, '127.0.0.1');
   assert(process.env.DATABASE_URL, 'Isolated PostgreSQL DATABASE_URL required');
   const python = process.env.CATAN_E2E_PYTHON || path.join(root,
     process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python');
   const child = spawn(python, ['-B', '-X', 'utf8', '-m', 'tests.fog_live_support',
-    '--port', new URL(origin).port, '--manifest', manifestPath], {
+    '--port', new URL(origin).port, '--manifest', manifestPath, ...extraArgs], {
     cwd: root, env: { ...process.env, CATAN_ENABLE_TEST_TOOLS: '0' }, windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -230,4 +230,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { privacy, refresh, renderer };
+module.exports = { privacy, refresh, renderer, start, stop, open, raw };

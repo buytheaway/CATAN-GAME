@@ -3,4 +3,5 @@
 .fog-preview div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 12px 0; }
 .fog-preview button { border: 1px solid #587c87; border-radius: 7px; padding: 7px; background: #203e48; color: #ecfafa; cursor: pointer; }
 .fog-preview button:hover { background: #315461; }
+.fog-preview a { display: grid; align-items: center; text-align: center; padding: 5px; color: #c1e9e7; border: 1px solid #587c87; border-radius: 7px; }
 @media (max-width: 1000px) { .fog-preview { top: 90px; width: 185px; padding: 9px; font-size: 11px; } }

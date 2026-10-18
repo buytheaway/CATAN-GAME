@@ -1,9 +1,50 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-12
+updated: 2026-10-18
 ---
 
 # Board3D
+
+## Visual Phase 2 — ships, implementation plan
+
+**Implemented/verified, 2026-10-18; READY FOR VISUAL PHASE 2 CHECKPOINT.** Visual Phase 1 was checkpointed/published first as `608f14ed349f237a1ae51873864246fff40f9d6f`, normal push/exact upstream hash verified, exactly 20 intended files; only the user graph remained outside the commit. This phase is graphics only and remains uncommitted/unpushed; no tag.
+
+Audit: committed `occupied_ships` becomes `createRenderModel().ships` and five procedural meshes in `Ship3D`; the existing eleven GLBs contain terrain/buildings/roads, no ship asset. Original edge endpoints, owner colors and orientation are reusable. `move_ship` public events carry actor/type/tick/id but **no route or from/to IDs**. Do not add protocol fields just for animation.
+
+Implemented: [shipFeedback.ts](../../../web/src/board/shipFeedback.ts) lives above the 2D/3D toggle. It observes public occupancy and closed event id/tick/type/actor fields, never tiles, resources, rules or commands. New adjacent live-tick additions receive **550 ms** emergence. A move requires adjacent ticks, one fresh public move event and exactly one removed/added edge of its actor. Ambiguous/coalesced changes snap safely without guessed identity. Movement uses a **350 ms** source echo and **900 ms** destination emergence (150 ms arrival lead-in), never a fabricated transit path. Echoes are presentation-only, absent from occupancy/targets/player counts. Refresh/reconnect/new match establish a baseline; cached reconnect data waits for a fresh occupancy object. Duplicates/stale/rejected frames do not animate. Static/SVG/reduced modes keep baselines current and clear cues. One expiry timer releases finite cues; no per-frame React state.
+
+Rendering: [ShipFleet3D.tsx](../../../web/src/board3d/ShipFleet3D.tsx) accepts public render edges/topology/colors and cues, not a GameState or terrain. Original edge anchors/owner colors/lengths/orientation remain fixed; only an inner visual group bobs (±.008), pitches (±.009 rad) and rocks (±.018 rad). The source echo respects the graph's original endpoint ordering, even for reversed public tuples. All ship-body meshes ignore raycasts; legal targets/controller own interactions. The five existing procedural meshes/material pool are reused, including ghost materials for departure; no GLB/texture/dependency is added. One fleet ref update handles all pieces. **SceneMotion** shares a single **12 Hz** demand clock with Fog; finite feedback uses useFrame until its deadline. Hidden document/disconnect/reduced motion stops the clock. **Ship effects → Still** cancels finite/ambient motion and restores identity transforms; Fog's still preference remains independent. Base decorative boats and SVG stay unchanged.
+
+### Ship visual verification and performance
+
+Checkpoint verification, 2026-10-18: corrected the live rejection assertion to use explicit property existence (owner `0` is valid) and compare **both complete personal snapshots** before/after the rejected command. Existing ACK/tick/privacy/no-animation assertions remain. Rerun: 323 frontend tests, six ship visual groups and seven real two-client ship/PostgreSQL groups pass, including duplicate receipts and refresh/restart. No production behavior changes in this correction.
+
+**323 frontend tests pass** (301 existing +22 new ship cases), TypeScript and production build pass; the existing large lazy Board3D warning remains (~977 kB). New cases cover accepted-only construction, event-backed movement, ties to owner/edge/tick, ambiguous/coalesced/duplicate/stale/reconnect/match fences, malformed input, no private-field access, finite/static transforms and public fixtures. **112 focused Python tests pass, exit 0, 27.93 s**: 111 existing raw WS/HTTP privacy/projection/beta-policy cases plus a new real-engine validated browser-movement fixture. Production Python/protocol/rules/codec/schema/gates/auth/deployment/assets/dependencies are unchanged; full Python/scenarios/Docker were not repeated.
+
+Chrome **155.0.8059.80**: six ship preview groups, 13 SVG/Fog renderer groups and six Fog visual groups pass. Construction and Fog reveal coexist; ship meshes never intercept targets; move source/destination orientation is exact, including reversed edge tuples; duplicate/error/static/reduced/reconnect/SVG/refresh paths do not replay; idle has no scene React commits/resource churn; multiple effects settle correctly and desktop resize is safe. **Seven real two-client ship WS/PostgreSQL groups** pass for paid build and move: invalid command atomicity, both-client effects, actual Gold discovery, durable duplicate receipts and pending refresh/reconnect/backend restart. The original **14 live Fog groups** also pass, including setup Road, paid Ship, account Continue and normal public gate refusal. These are prepared/funded fixtures, not new natural full matches or competitive/scenario certification. Four expected WS refusals per runner occur during intentional restarts; no unexpected JS/console errors.
+
+Performance uses the same PUBLIC 7-hex/one-ship and 50-hex/24-ship scenes, Chrome/ANGLE D3D11/RTX 5050 Laptop, viewport 1440×900/Canvas 1186×723. True pre-edit `before.json` is retained. Early standalone 50-hex timings ranged ~9.6→3.8 ms without any geometry change, so that difference is **not attributed to this code**. A controlled **before/after/after/before** comparison in one Chrome reads the `608f14e` frontend blobs with `git show` into a temporary bundle, without checkout/reset or changing the working tree. One page at a time, same assets/camera/DPR/shadows; 12 warm renders, 60 `gl.render + gl.finish()` samples and 30 CPU-submission samples per reading. Table shows the mean of two medians; p95 is the worse of the two runs. WebGL CPU submission includes driver/GPU stalls and is not isolated CPU frame time. These are diagnostic samples, not sustained FPS or an optimization claim.
+
+| Scene | GPU median before→after ms | GPU p95 before→after ms | CPU submit before→after ms | Calls /triangles, unchanged |
+| --- | --- | --- | --- | --- |
+| 7, normal | .70 → .80 | 1.60 → 1.30 | 1.05 → 1.00 | 218 /27646 |
+| 7, reduced | .75 → .75 | 1.60 → 1.30 | .95 → 1.15 | 218 /27646 |
+| 50, normal | 3.50 → 3.50 | 5.10 → 4.40 | 3.70 → 3.70 | 1383 /178646 |
+| 50, reduced | 3.55 → 3.80 | 5.00 → 5.80 | 5.30 → 3.95 | 1383 /178646 |
+
+Paired geometry/texture counts are identical (147/6 small, 146/17 fresh large Canvas). Ambient target is 12 Hz (roughly 12–13 frames per one-second sample), shared with animated Fog rather than doubled. With only ship motion enabled, previously idle boards now render periodically; **both effects static or reduced motion: 0 idle frames**. A moving echo temporarily adds five pooled meshes for ≤350 ms; steady geometry/triangles/calls stay unchanged. Mobile/low-end GPU/battery behavior remains unverified; static mode is available.
+
+Preview: `node web/e2e/ships-visual-demo.cjs` → `http://127.0.0.1:18773/?demo=1&ships=1`. Real Board3D, public synthetic land/sea/Fog boundary, stationary/multiple ships, Construct/Move/Reset/50 tiles/reduced-motion controls. It simulates public committed frames, not an engine/legality evaluator. Actual legality/rewards/receipts/recovery are checked separately through the owning live server. No trusted recipe/private assignment/credential endpoint or public admission is exposed. Instructions and reproducible A/B — [browser README](../../../web/e2e/README.md#visual-phase-2--ships-preview-and-verification).
+
+Evidence: `%TEMP%/catan-ships-visual-phase2/{before,after,after-performance,paired-performance}.json`, before/after PNGs and the WebM path in `after.json` (recorded in a separate context, excluded from performance measurements); `%TEMP%/catan-ships-phase2-live-final/report.json`, `catan-ships-phase2-fog-live/report.json`, `catan-ships-fog-regression/report.json`, `catan-ships-phase2-fog-visual/after.json`; `.venv/test-artifacts/ships-web-final.log`, `ships-python.log`. Private fixture bindings stay outside served/tracked files. Remaining limits: movement without unambiguous public evidence snaps; no transit route/ship ID is invented, original placeholder art is retained, one desktop GPU measured. No production admission change, natural full-match rerun, mobile claim or next phase.
+
+Diff scope: **31 intended files**, excluding the untouched pre-existing user graph; runtime **+257/−35 lines**.
+
+- Runtime (10): `web/src/board/shipFeedback.ts`, `web/src/board3d/{Board3D.tsx,FogVisual.tsx,Pieces3D.tsx,SceneMotion.tsx,ShipFleet3D.tsx,board3d.css,shipMotion.ts}`, `web/src/components/{BoardRenderer.tsx,GamePage.tsx}`.
+- Tests/preview (14): `tests/{fog_live_support.py,test_ship_visual_fixture.py}`, `web/e2e/{fog-fixture.tsx,fog-live.cjs,fog-preview.css,fog-rendering.cjs,fog-visual-demo.cjs,fog-visual.cjs,ships-compare.cjs,ships-live.cjs,ships-visual-demo.cjs,ships-visual.cjs}`, `web/tests/{shipVisual.test.mjs,fixtures/publicShips.ts}`.
+- Documentation (7): this plan, `plans/seafarers-fog.md`, `Project State.md`, `React интерфейс.md`, `Design System.md`, `Стили и визуальные границы.md`, `web/e2e/README.md`.
+
+No Phase 2 file is staged. Loopback public preview runs independently of PostgreSQL; task-started disposable PostgreSQL is stopped after verification without dropping its databases/volume. No user services/accounts/matches/graph are reset.
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[Карты и сценарии]]
 

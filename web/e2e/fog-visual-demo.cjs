@@ -3,13 +3,24 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const http = require('node:http');
+const { execFileSync } = require('node:child_process');
 const { build } = require('../node_modules/esbuild');
 
-async function startDemo(port = 0) {
+async function startDemo(port = 0, sourceRef = null) {
   const output = await fs.mkdtemp(path.join(os.tmpdir(), 'catan-fog-visual-'));
   const publicRoot = path.resolve(__dirname, '../public');
+  // Test-only controlled A/B: read committed frontend blobs without checkout/reset.
+  const repoRoot = path.resolve(__dirname, '../..'), sourceRoot = path.resolve(__dirname, '../src') + path.sep;
+  const plugins = sourceRef ? [{ name: 'committed-frontend', setup(builder) {
+    builder.onLoad({ filter: /\.(tsx?|jsx?|css)$/ }, args => {
+      if (!args.path.startsWith(sourceRoot)) return;
+      const relative = path.relative(repoRoot, args.path).split(path.sep).join('/');
+      return { contents: execFileSync('git', ['show', sourceRef + ':' + relative], { cwd: repoRoot, encoding: 'utf8' }),
+        loader: path.extname(args.path).slice(1), resolveDir: path.dirname(args.path) };
+    });
+  } }] : [];
   await build({ entryPoints: [path.join(__dirname, 'fog-fixture.tsx')], bundle: true,
-    outfile: path.join(output, 'fixture.js'), format: 'iife', jsx: 'automatic', sourcemap: false,
+    outfile: path.join(output, 'fixture.js'), format: 'iife', jsx: 'automatic', sourcemap: false, plugins,
     define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' } });
   const html = '<!doctype html><html><head><meta charset="utf-8"><title>CATAN public Fog visual preview</title>'
     + '<link rel="stylesheet" href="/fixture.css"><style>html,body,#root{height:100%;width:100%;overflow:hidden}</style>'

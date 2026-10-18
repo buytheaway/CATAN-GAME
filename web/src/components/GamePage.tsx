@@ -109,7 +109,7 @@ export default function GamePage({ client, match, room, status, log, error, onBa
       <ContextPrompt state={state} pid={youPid} interaction={interaction} />
       <div className="board-command-surface" style={{ height: "100%", pointerEvents: blocked ? "none" : undefined }}
         aria-busy={request.waiting}><BoardRenderer state={state} interaction={interaction} diceRoll={dice.roll}
-          matchKey={matchKey} tick={match.tick} connected={status === "connected"} /></div>
+          matchKey={matchKey} tick={match.tick} events={state.game_events} connected={status === "connected"} /></div>
       {error && <div className="game-error error" role="alert">{error.message}</div>}
       {status !== "connected" && <div className="connection-notice" role="status">Connection: {status}</div>}
     </section>

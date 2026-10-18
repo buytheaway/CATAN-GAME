@@ -7,6 +7,14 @@ updated: 2026-10-18
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 2 — ship motion
+
+**Implemented/visually verified 2026-10-18.** Retain the existing clean five-mesh ship, owner color, sail and edge-aligned silhouette. Normal play adds slight local bobbing/rocking; it does not sail around the map. A confirmed new ship rises/scales into place for 550ms. An unambiguous accepted move briefly submerges/shrinks a translucent source echo (350ms) and raises the ship at its real destination (900ms); no invented route across land/unknown tiles. Echoes are presentation-only and never count as another ship or intercept targets.
+
+Motion stays subordinate to terrain, pieces and legal markers. Existing Fog cover/reveal, building/terrain GLBs, camera and SVG style are retained. Compact **Ship effects: Motion/Still** sits beside existing Fog/Reset controls; Still/reduced motion uses exact static poses and immediate state changes. The 12 Hz ambient clock is shared with Fog, paused for hidden/disconnected/reduced paths. No new art asset/library, trail, particle system, HUD redesign or gameplay feedback before acceptance.
+
+Real Board3D public-only preview: `http://127.0.0.1:18773/?demo=1&ships=1`, [launch instructions](../../web/e2e/README.md#visual-phase-2--ships-preview-and-verification). Construct/Move/Multiple ships/Reset/50 tiles and reduced-motion preview are labelled simulations of public snapshots. Before/after images and an actual WebM recording are in ignored `%TEMP%/catan-ships-visual-phase2/` (`after.json` records the video path). Screenshot/video inspection supplements tests; original placeholder art is intentionally retained. Actual two-client discovery/movement/Gold/restart checks are separate from this synthetic demo. Performance/limits — [[plans/board3d#Ship visual verification and performance]], current status — [[Project State]]. No low-end/mobile/subjective universal-quality claim.
+
 ## Lobby lifecycle controls
 
 Room Lifecycle Phase 1 uses the existing lobby heading action styles for a plainly labelled **Close Lobby**, host-only before the first match. A native confirmation explains that all participants return to Home and this lobby is no longer reconnectable. Cancel is harmless; pending closure disables edits until the authoritative response. Home shows a compact status notice and the ordinary Host/Join paths. Back to home is separately described as disconnecting, with reconnect retained. No custom modal framework, new visual assets, CSS redesign or in-match abandonment controls. Implemented/focused-tested **2026-10-12**; [[React интерфейс#Lobby closure — Room Lifecycle Phase 1]], [[Project State]].

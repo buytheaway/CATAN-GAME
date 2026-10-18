@@ -147,6 +147,7 @@ async function layout(page) {
     assert.ok(during.revealing.length === 1 && during.revealing[0].opacity > 0);
     await sleep(1100); assert.equal((await sceneInfo(page)).revealing.length, 0);
     await page.getByLabel('Fog effects').selectOption('still');
+    await page.getByLabel('Ship effects').selectOption('static');
     await page.mouse.move(1, 1); await sleep(200);
     const idle = (await sceneInfo(page)).frame; await sleep(300); assert.equal((await sceneInfo(page)).frame, idle);
     check('hidden hover/click emits no command; committed 3D reveal is immediate/finite and still mist returns to idle');

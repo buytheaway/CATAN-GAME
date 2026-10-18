@@ -13,7 +13,7 @@ Public Beta Phase 1 is checkpointed and published as `ee56e23c2327914f364a8c9393
 
 ### Fog Visual Phase 1 — implementation plan, 2026-10-18
 
-**Completed/verified in the requested desktop graphics scope; READY FOR VISUAL PHASE 1 CHECKPOINT. Visual work is not committed/pushed.** Graphics only: the uniform three-stripe hidden hex is replaced by procedural cloud cover and finite dispersal over newly authorized terrain. The neutral foundation, original IDs/hit meshes, server-only visibility, ordinary GLBs and shared controller are retained. No terrain-dependent hidden geometry, asset lookup, animation input or prediction. No backend/protocol/rules/schema/gate changes.
+**Completed/verified in the requested desktop graphics scope; published as `608f14ed349f237a1ae51873864246fff40f9d6f` before Visual Phase 2.** Exactly 20 intended files, staged check and normal push/exact upstream hash verified; graph excluded, no tag. Graphics only: the uniform three-stripe hidden hex is replaced by procedural cloud cover and finite dispersal over newly authorized terrain. The neutral foundation, original IDs/hit meshes, server-only visibility, ordinary GLBs and shared controller are retained. No terrain-dependent hidden geometry, asset lookup, animation input or prediction. No backend/protocol/rules/schema/gate changes. The following measurements/results record Phase 1; current shared ship/Fog clock — [[plans/board3d#Visual Phase 2 — ships, implementation plan]].
 
 Implemented scene-owned shared geometry/materials, one **12 Hz** ambient clock, no per-frame React state, reduced-motion support and an explicit still/simple fallback. Existing Three MarchingCubes builds a compact static smooth surface **once**, with a procedural translucent shader and a low haze layer; no volumetric pass, new GLB/texture/library or per-frame geometry. Each active reveal owns disposable fading clones, sharing geometry/time. Ambient motion stops for a hidden document, disconnection, no unknowns, still/simple modes or reduced motion. Low fragment precision selects Simple. Clock/resource behavior is tested. The committed-frame classifier remains unchanged: refresh/reconnect/match changes baseline, not discover. SVG stays **420 ms**; Three disperses for **1000 ms**, preserving timestamps across toggles. The terrain/token and logical hit targets update immediately underneath non-raycasting effects.
 
@@ -40,7 +40,7 @@ Visual diff scope (20 intended files, excluding the pre-existing user graph):
 - Tests/preview (6): `web/e2e/{fog-fixture.tsx,fog-preview.css,fog-rendering.cjs,fog-visual-demo.cjs,fog-visual.cjs}`, `web/tests/fogVisual.test.mjs`.
 - Documentation (6): this plan, `Project State.md`, `React интерфейс.md`, `Design System.md`, `Стили и визуальные границы.md`, `web/e2e/README.md`.
 
-No files are staged for the visual phase; the background public-only preview can remain running independently of PostgreSQL. The task-started disposable PostgreSQL is stopped after verification, retaining its data; no user stack or volume is reset.
+At the Phase 1 verification boundary no files were staged; the later explicitly authorized checkpoint is recorded above. The background public-only preview can remain running independently of PostgreSQL. The task-started disposable PostgreSQL was stopped after verification, retaining its data; no user stack or volume was reset.
 
 ### Natural full-match validation — completed, 2026-10-17
 
