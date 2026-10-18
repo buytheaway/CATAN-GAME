@@ -4,8 +4,8 @@
 .board3d { width: 100%; min-width: 0; overflow: hidden; border-radius: 12px; background: #0d2333; color: #dae6ec; }
 .board3d-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12px; }
 .board3d-toolbar .btn { background: #f0f6f8; color: #304b58; }
-.board3d-fog-quality, .board3d-ship-quality { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #bed1d9; }
-.board3d-fog-quality select, .board3d-ship-quality select { max-width: 138px; min-height: 30px; border: 1px solid #4b6875; border-radius: 7px; padding: 3px 5px; background: #193643; color: #e1edf0; font: inherit; }
+.board3d-fog-quality, .board3d-ship-quality, .board3d-construction-quality { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #bed1d9; }
+.board3d-fog-quality select, .board3d-ship-quality select, .board3d-construction-quality select { max-width: 138px; min-height: 30px; border: 1px solid #4b6875; border-radius: 7px; padding: 3px 5px; background: #193643; color: #e1edf0; font: inherit; }
 .board3d-canvas { position: relative; width: 100%; height: clamp(360px, 64vh, 680px); overflow: hidden; }
 .board3d-canvas canvas { display: block; touch-action: none; }
 .board3d[data-selectable="true"] canvas { cursor: pointer; }

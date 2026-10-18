@@ -15,7 +15,7 @@ const compiled = await build({
   bundle: true, write: false, platform: "node", format: "esm",
 });
 const { PIECE_ASSET_URLS, PIECE_CONTACT_Y, pieceOffset, createPieceAssetCache, createPieceMaterials,
-  clonePieceScene, ignorePieceRaycast, appearanceScale, PIECE_APPEARANCE_MS, pieceSignatures, confirmedPlacements,
+  clonePieceScene, ignorePieceRaycast, piecePose, pieceDuration, advancePieceFeedback,
   buildPreview, replacesSettlement, edgePlacement, toScenePosition, coastVisualPosition, TILE_TOP, TERRAIN_FALLBACK_OFFSET, ROOM_COLORS, colorForPlayer,
   Group, Mesh, MeshStandardMaterial, Box3, Vector3, Raycaster, GLTFLoader, createVisualResources } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
@@ -179,32 +179,41 @@ test("City preview replaces only the same owned settlement on an actual server t
 });
 
 test("feedback follows confirmed placement/upgrade only; intent, rejection, rerender and color changes add none", () => {
-  const base = { roads: [{ edge: [7, 9], owner: 0 }], buildings: [{ vertexId: 7, owner: 0, level: 1 }] };
-  const previous = { key: "ROOM:1", connected: true, pieces: pieceSignatures(base) };
+  const base = { key: "ROOM:1", tick: 1, connected: true, roads: { "7,9": 0 }, vertices: { 7: [0, 1] } };
+  const previous = advancePieceFeedback(null, base).baseline;
   for (const data of [base, { ...base, players: [{ pid: 0, color: "blue" }], pendingIntent: "city", ack: { applied: false } }])
-    assert.deepEqual(confirmedPlacements(previous, pieceSignatures(data), "ROOM:1", true), []);
-  const next = { roads: [...base.roads, { edge: [11, 9], owner: 1 }], buildings: [{ vertexId: 7, owner: 0, level: 2 }, { vertexId: 11, owner: 1, level: 1 }] };
-  assert.deepEqual(confirmedPlacements(previous, pieceSignatures(next), "ROOM:1", true).sort(), ["e:9,11", "v:11", "v:7"]);
-  assert.deepEqual(confirmedPlacements(previous, pieceSignatures({ roads: [], buildings: [] }), "ROOM:1", true), []);
+    assert.deepEqual(advancePieceFeedback(previous, data).changes, []);
+  const next = { ...base, tick: 2, roads: { ...base.roads, "9,11": 1 }, vertices: { 7: [0, 2], 11: [1, 1] } };
+  assert.deepEqual(advancePieceFeedback(previous, next).changes.map(c => c.id).sort(), ["e:9,11", "v:11", "v:7"]);
+  assert.deepEqual(advancePieceFeedback(previous, { ...base, tick: 2, roads: {}, vertices: {} }).changes, []);
 });
 
 test("initial view, reconnect, rematch and renderer remount establish a baseline without historical motion", () => {
-  const current = new Map([["v:7", "0:1"]]), previous = { key: "ROOM:1", connected: true, pieces: new Map() };
-  assert.equal(confirmedPlacements(null, current, "ROOM:1", true), null);
-  assert.equal(confirmedPlacements(previous, current, "ROOM:2", true), null);
-  assert.equal(confirmedPlacements(previous, current, "OTHER:1", true), null);
-  assert.equal(confirmedPlacements(previous, current, "ROOM:1", false), null);
-  assert.equal(confirmedPlacements({ ...previous, connected: false }, current, "ROOM:1", true), null);
+  const current = { key: "ROOM:1", tick: 2, connected: true, roads: {}, vertices: { 7: [0, 1] } };
+  const previous = advancePieceFeedback(null, { ...current, tick: 1, vertices: {} }).baseline;
+  assert.deepEqual(advancePieceFeedback(null, current).changes, []);
+  for (const key of ["ROOM:2", "OTHER:1"]) assert.deepEqual(advancePieceFeedback(previous, { ...current, key }).changes, []);
+  const offline = advancePieceFeedback(previous, { ...current, connected: false }).baseline;
+  assert.deepEqual(advancePieceFeedback(offline, current).changes, []);
 });
 
-test("short appearance feedback keeps contact/logical axes fixed and finishes at exact identity scale", () => {
-  assert.ok(PIECE_APPEARANCE_MS <= 300);
-  for (const kind of Object.keys(PIECE_ASSET_URLS)) {
-    for (const t of [-1, 0, .1, .5, 1, 2]) {
-      const scale = appearanceScale(kind, t); assert.ok(scale.every(value => value > 0 && value <= 1));
-      if (kind === "road") assert.equal(scale[0], 1, "road endpoints do not slide during appearance");
+test("construction uses the original GLB geometry and restores exact contact, axes and identity", () => {
+  for (const [kind, source] of Object.entries(assets)) {
+    const cue = { kind: kind === "city" ? "upgrade" : kind, owner: 0, started: 100 };
+    const root = new Group(), offset = new Group(), visual = new Group();
+    root.position.set(3, TILE_TOP + (kind === "road" ? .06 : 0), -2); root.rotation.y = .7;
+    offset.position.set(...pieceOffset(kind)); root.add(offset); offset.add(visual); visual.add(source.clone(true));
+    for (const elapsed of [0, pieceDuration(cue.kind) / 2, pieceDuration(cue.kind)]) {
+      const pose = piecePose(cue, 100 + elapsed);
+      visual.scale.set(...pose.scale); visual.position.y = pose.y; root.updateMatrixWorld(true);
+      assert.deepEqual(root.position.toArray(), [3, TILE_TOP + (kind === "road" ? .06 : 0), -2]);
+      assert.equal(root.rotation.y, .7);
+      meshes(visual).forEach((mesh, i) => assert.equal(mesh.geometry, meshes(source)[i].geometry));
+      if (elapsed === pieceDuration(cue.kind)) {
+        close(new Box3().setFromObject(root).min.y, PIECE_CONTACT_Y, `${kind} final contact`);
+        assert.deepEqual(visual.scale.toArray(), [1, 1, 1]); assert.equal(visual.position.y, 0);
+      }
     }
-    assert.deepEqual(appearanceScale(kind, 1), [1, 1, 1]); assert.deepEqual(appearanceScale(kind, 2), [1, 1, 1]);
   }
 });
 

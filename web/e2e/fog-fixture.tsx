@@ -5,6 +5,7 @@ import GamePage from "../src/components/GamePage";
 import { WSClient, type MatchState, type RoomState, type ServerError } from "../src/wsClient";
 import { goldDiscoveryFixture, publicFogFixture } from "../tests/fixtures/publicFog";
 import { publicShipFixture, shipPreviewChange } from "../tests/fixtures/publicShips";
+import { publicBuildingFixture, buildingPreviewChange, type BuildingPreviewKind } from "../tests/fixtures/publicBuildings";
 import "../src/styles.css";
 import "../src/shell/shell.css";
 import "./fog-preview.css";
@@ -28,7 +29,8 @@ const client = new WSClient();
 let matchId = 0;
 const preview = new URLSearchParams(location.search).get("demo") === "1";
 const shipPreview = new URLSearchParams(location.search).get("ships") === "1";
-const reducedPreview = shipPreview && new URLSearchParams(location.search).get("reduce") === "1";
+const buildingPreview = new URLSearchParams(location.search).get("buildings") === "1";
+const reducedPreview = (shipPreview || buildingPreview) && new URLSearchParams(location.search).get("reduce") === "1";
 if (reducedPreview) {
   const native = window.matchMedia.bind(window);
   window.matchMedia = query => {
@@ -47,9 +49,9 @@ function Fixture() {
     client.onMatchState = setMatch; client.onRoomState = setRoom; client.onStatus = setStatus; client.onError = setError;
     client.connect("ws://public-fixture.invalid/ws", "Explorer"); FixtureSocket.latest.onopen?.();
     const load = (mode: Parameters<typeof publicFogFixture>[0] | "gold" = "partial") => {
-      const state = shipPreview ? publicShipFixture(mode === "large")
+      const state = buildingPreview ? publicBuildingFixture(mode === "large") : shipPreview ? publicShipFixture(mode === "large")
         : mode === "gold" ? goldDiscoveryFixture() : publicFogFixture(mode);
-      if (preview && !shipPreview && mode === "partial") {
+      if (preview && !shipPreview && !buildingPreview && mode === "partial") {
         // Public fixture geometry only: put the existing real ship on the sea/fog boundary.
         const boundary = state.edges!.find(edge => {
           const adjacent = state.edge_adj_hexes![edge.join(",")];
@@ -65,8 +67,25 @@ function Fixture() {
       FixtureSocket.latest.receive({ type: "match_state", room_code: "FIXTURE", match_id: matchId,
         tick: mode === "gold" ? 2 : 1, state });
     };
+    const building = (kind: BuildingPreviewKind, batch = false) => {
+      const next = structuredClone(client.matchState)!;
+      let changed = buildingPreviewChange(next.state, kind);
+      if (batch) changed = buildingPreviewChange(next.state, "settlement") || changed;
+      if (!changed) return;
+      next.tick++;
+      FixtureSocket.latest.receive(next);
+    };
     (window as any).__fogFixture = {
       load,
+      building,
+      sequence: async () => {
+        const epoch = client.matchState?.match_id;
+        for (const kind of ["road", "settlement", "upgrade"] as const) {
+          if (client.matchState?.match_id !== epoch) return;
+          building(kind);
+          await new Promise(resolve => window.setTimeout(resolve, 250));
+        }
+      },
       snapshot: () => structuredClone(client.matchState),
       publish: (message: MatchState) => FixtureSocket.latest.receive(message),
       status: (value: string) => client.onStatus?.(value),
@@ -115,9 +134,17 @@ function Fixture() {
     <GamePage client={client} match={match} room={room} status={status} log={[]}
       error={error} onBackToLobby={() => {}} />
     {preview && <aside className="fog-preview" aria-label="Synthetic public Fog preview">
-      <strong>{shipPreview ? "Ship animation preview" : "Fog visual preview"}</strong><small>Synthetic public snapshots · no server</small>
+      <strong>{buildingPreview ? "Construction preview" : shipPreview ? "Ship animation preview" : "Fog visual preview"}</strong><small>Synthetic public snapshots · no server</small>
       <div>
-        {shipPreview ? <>
+        {buildingPreview ? <>
+          <button onClick={() => (window as any).__fogFixture.building("road")}>Construct road</button>
+          <button onClick={() => (window as any).__fogFixture.building("settlement")}>Construct settlement</button>
+          <button onClick={() => (window as any).__fogFixture.building("upgrade")}>Upgrade city</button>
+          <button onClick={() => (window as any).__fogFixture.sequence()}>Build sequence</button>
+          <button onClick={() => (window as any).__fogFixture.building("road", true)}>Build together</button>
+          <button onClick={() => (window as any).__fogFixture.ship(false)}>Construct ship</button>
+          <a href={reducedPreview ? "?demo=1&buildings=1" : "?demo=1&buildings=1&reduce=1"}>{reducedPreview ? "Normal motion" : "Reduced motion"}</a>
+        </> : shipPreview ? <>
           <button onClick={() => (window as any).__fogFixture.ship(false)}>Construct ship</button>
           <button onClick={() => (window as any).__fogFixture.ship(true)}>Move ship</button>
           <button onClick={() => (window as any).__fogFixture.fleet()}>Multiple ships</button>
@@ -129,7 +156,7 @@ function Fixture() {
         <button onClick={() => (window as any).__fogFixture.load("partial")}>Reset preview</button>
         <button onClick={() => (window as any).__fogFixture.load("large")}>50 tiles</button>
       </div>
-      <small>Drag to orbit · scroll to zoom. {shipPreview ? "Reset before replaying each operation. Motion is presentation only." : "Reveal buttons deliver a new public fixture frame."}</small>
+      <small>Drag to orbit · scroll to zoom. {shipPreview || buildingPreview ? "Reset before replaying each operation. Motion is presentation only." : "Reveal buttons deliver a new public fixture frame."}</small>
     </aside>}
   </> : <p>Loading public fixture…</p>;
 }

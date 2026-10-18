@@ -8,6 +8,7 @@ import { playerColor, VISUAL } from "./materials";
 import { useVisualResources } from "./VisualResources";
 import type { Point3D, RenderBuilding, RenderEdge } from "./types";
 import PieceVisual from "./PieceVisual";
+import type { PieceCue } from "./pieceFeedback";
 
 const ignoreRaycast = () => undefined;
 type PieceMeshProps = ThreeElements["mesh"] & {
@@ -21,12 +22,12 @@ function PieceMesh({ kind, color, ghost = false, ...props }: PieceMeshProps) {
     castShadow={!ghost} receiveShadow={!ghost} {...(ghost ? { raycast: ignoreRaycast } : {})} />;
 }
 
-export function Road3D({ road, ghost = false, color = playerColor(road.owner), appearance }: { road: RenderEdge; ghost?: boolean; color?: string; appearance?: number }) {
+export function Road3D({ road, ghost = false, color = playerColor(road.owner), cue }: { road: RenderEdge; ghost?: boolean; color?: string; cue?: PieceCue }) {
   const pool = useVisualResources();
   return <group position={road.position} rotation={[0, road.rotation, 0]}
     userData={{ edge: road.edge, owner: road.owner, piece: "road", preview: ghost }}>
     <group scale={[road.length, 1, 1]}>
-      <PieceVisual kind="road" color={color} ghost={ghost} appearance={appearance}>
+      <PieceVisual kind="road" color={color} ghost={ghost} cue={cue?.owner === road.owner && cue.kind === "road" ? cue : undefined}>
         <mesh geometry={pool.geometry("road")} material={pool.standard(color, ghost)}
           castShadow={!ghost} receiveShadow={!ghost} raycast={ignoreRaycast} />
         <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[0, -.005, 0]}
@@ -36,9 +37,8 @@ export function Road3D({ road, ghost = false, color = playerColor(road.owner), a
   </group>;
 }
 
-export function Settlement3D({ building, ghost = false, color = playerColor(building.owner), appearance, visible = true }: { building: RenderBuilding; ghost?: boolean; color?: string; appearance?: number; visible?: boolean }) {
-  return <group position={building.position} visible={visible} userData={{ vertexId: building.vertexId, owner: building.owner, level: 1, preview: ghost }}>
-    <PieceVisual kind="settlement" color={color} ghost={ghost} appearance={appearance}>
+function SettlementFallback({ color, ghost }: { color: string; ghost: boolean }) {
+  return <>
     <PieceMesh kind="house" color={color} ghost={ghost} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[0, .014, 0]} scale={[.33, .028, .3]} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={VISUAL.trunk} ghost={ghost} position={[-.08, .28, 0]}
@@ -47,13 +47,21 @@ export function Settlement3D({ building, ghost = false, color = playerColor(buil
       rotation={[0, 0, -.72]} scale={[.24, .024, .31]} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[0, 0.1, 0.15]} scale={[0.06, 0.1, 0.012]} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0, 0.13, -0.15]} scale={[0.07, 0.07, 0.012]} raycast={ignoreRaycast} />
+  </>;
+}
+
+export function Settlement3D({ building, ghost = false, color = playerColor(building.owner), cue, visible = true }: { building: RenderBuilding; ghost?: boolean; color?: string; cue?: PieceCue; visible?: boolean }) {
+  return <group position={building.position} visible={visible} userData={{ vertexId: building.vertexId, owner: building.owner, level: 1, preview: ghost }}>
+    <PieceVisual kind="settlement" color={color} ghost={ghost} cue={cue?.owner === building.owner && cue.kind === "settlement" ? cue : undefined}>
+      <SettlementFallback color={color} ghost={ghost} />
     </PieceVisual>
   </group>;
 }
 
-export function City3D({ building, ghost = false, color = playerColor(building.owner), appearance }: { building: RenderBuilding; ghost?: boolean; color?: string; appearance?: number }) {
+export function City3D({ building, ghost = false, color = playerColor(building.owner), cue }: { building: RenderBuilding; ghost?: boolean; color?: string; cue?: PieceCue }) {
+  const upgrade = cue?.owner === building.owner && cue.kind === "upgrade" ? cue : undefined;
   return <group position={building.position} userData={{ vertexId: building.vertexId, owner: building.owner, level: 2, preview: ghost }}>
-    <PieceVisual kind="city" color={color} ghost={ghost} appearance={appearance}>
+    <PieceVisual kind="city" color={color} ghost={ghost} cue={upgrade}>
     <PieceMesh kind="house" color={color} ghost={ghost} position={[-0.1, 0, 0.08]} scale={[1.45, 0.92, 1]} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={color} ghost={ghost} position={[0.14, 0.22, -0.13]} scale={[0.26, 0.44, 0.25]} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={color} ghost={ghost} position={[0.14, 0.45, -0.13]} scale={[0.31, 0.06, 0.3]} raycast={ignoreRaycast} />
@@ -63,6 +71,9 @@ export function City3D({ building, ghost = false, color = playerColor(building.o
     <PieceMesh kind="box" color={VISUAL.ink} ghost={ghost} position={[-0.1, 0.1, 0.23]} scale={[0.075, 0.11, 0.012]} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0.14, 0.3, -0.261]} scale={[0.12, 0.09, 0.012]} raycast={ignoreRaycast} />
     </PieceVisual>
+    {!ghost && upgrade && <PieceVisual kind="settlement" color={color} ghost cue={upgrade} upgradeEcho>
+      <SettlementFallback color={color} ghost />
+    </PieceVisual>}
   </group>;
 }
 

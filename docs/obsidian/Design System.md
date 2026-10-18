@@ -7,6 +7,14 @@ updated: 2026-10-18
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 3 — construction motion
+
+**Implemented/visually verified, 2026-10-18.** Extend the existing clean tabletop art; retain original road/settlement/city GLBs, player colors, terrain, anchor IDs and contact floor. Confirmed roads grow along their actual edge for450 ms; settlements rise/scale subtly for550 ms. A same-owner settlement→city upgrade has a300 ms shrinking ghost of the old settlement and700 ms city emergence, finishing at the unchanged city pose. The ghost is presentation only and never an occupancy/target. No particles, textures, replacement assets or dramatic camera effects.
+
+**Construction effects → Motion/Still** is independent of Ship/Fog controls and survives the view toggle within the page. Reduced motion or Still displays final geometry immediately and cancels active feedback. Server-confirmed adjacent public occupancy is the trigger; rejected/duplicate/stale/ambiguous/history/reconnect frames do not recreate events. Existing finite R3F invalidation is reused; no extra ambient clock or React frame updates. Ships can rock next to a new building while finite Fog dispersal and construction coexist.
+
+Actual before/after images and WebM: `%TEMP%/catan-buildings-visual-phase3/`; reproducible **real Board3D public-only preview** at `http://127.0.0.1:18775/?demo=1&buildings=1` via `node web/e2e/buildings-visual-demo.cjs`. These are synthetic display states, not a map recipe, engine or competitive full match. Seven construction visual groups,12 owning-client PostgreSQL groups,13 SVG/Fog renderer and six ship visual groups pass;343 frontend tests/TS/build pass. Controlled performance and limits — [[plans/board3d#Visual Phase 3 — construction feedback plan]], [preview instructions](../../web/e2e/README.md#visual-phase-3--construction-preview-and-verification). Low-end/mobile/battery certification remains future work; the existing large lazy chunk warning remains.
+
 ## Visual Phase 2 — ship motion
 
 **Implemented/visually verified 2026-10-18.** Retain the existing clean five-mesh ship, owner color, sail and edge-aligned silhouette. Normal play adds slight local bobbing/rocking; it does not sail around the map. A confirmed new ship rises/scales into place for 550ms. An unambiguous accepted move briefly submerges/shrinks a translucent source echo (350ms) and raises the ship at its real destination (900ms); no invented route across land/unknown tiles. Echoes are presentation-only and never count as another ship or intercept targets.
@@ -62,7 +70,7 @@ Buildings and roads rest on the terrain's common rim Y=.218333, with no per-terr
 
 Legal hover previews use the actual final piece geometry and owner color. City preview visually replaces its owned settlement, rather than stacking both. Pointer exit/Cancel/Escape restore it without changing GameState. Mandatory setup, pending choices, dialogs and Chat input are protected from accidental cancellation. The dock uses existing cost glyphs and concise snapshot-derived reasons for disabled builds. No new rules, targets or cost model are introduced.
 
-Confirmed new construction/upgrades have a restrained 260ms scale appearance from their unchanged contact floor. It follows authoritative occupancy, never command intent or a rejected ACK. Reduced motion gives the final visual immediately; reconnect, refresh, rematch and renderer remount establish a baseline. Animation ends and adds no permanent frame loop or per-frame React state.
+**Historical building integration feedback (2026-10-08), superseded by [[Design System#Visual Phase 3 — construction motion]]:** confirmed construction/upgrades had a restrained260 ms scale appearance from their unchanged contact floor. It followed authoritative occupancy rather than command intent. Current distinct road/settlement/upgrade timing and stronger tick/reconnect fencing are described above; original model/contact/material decisions remain valid.
 
 Actual Chrome evidence, production dist with the unchanged isolated HTTP/WS fixture server, is kept outside the repository at `%TEMP%/catan-building-pieces-phase3b/`: inspected `city-preview.png`, `base-buildings-1280.png`, `gold-buildings-1280.png` and `missing-terrain-piece-contact.png`; additional setup/results/missing-piece and 1920/1440 captures are there. These are browser captures, not concept mockups. Runner — [building-pieces.cjs](../../web/e2e/building-pieces.cjs). Natural Base/Gold setup plus prepared paid/dev/results cases cover all 20 requested acceptance conditions, including an existing coastal road beside a new ship. No full natural-match/account-backend/mobile acceptance claim.
 

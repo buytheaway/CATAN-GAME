@@ -1,5 +1,57 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 3 — construction preview and verification
+
+From the repository root, with existing `web/node_modules`:
+
+```powershell
+node web/e2e/buildings-visual-demo.cjs
+```
+
+Open **http://127.0.0.1:18775/?demo=1&buildings=1**. Actual GamePage/Board3D,
+existing GLBs, synthetic PUBLIC 7/50-tile scenes, roads/settlements/cities/ships
+and Fog. Controls: Construct road/settlement, Upgrade city, Build sequence,
+Build together, Construct ship, Reset, 50 tiles, Reduced motion. Reset before
+replaying consumed targets. Sequence delivers three rapid public frames;
+together demonstrates simultaneous additions. This preview does not calculate
+legality, send real commands or expose a trusted recipe, secret assignment or
+credentials. Real legality is checked separately against the owning backend.
+`CATAN_BUILDING_PREVIEW_PORT` changes the loopback-only port; Ctrl+C stops it.
+
+Use the existing external Playwright via `NODE_PATH` and installed Chrome:
+
+```powershell
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-buildings-visual-phase3'
+node web/e2e/buildings-visual.cjs --baseline
+node web/e2e/buildings-visual.cjs
+node web/e2e/buildings-compare.cjs
+```
+
+Baseline always reads exact `f315519f0d06cf5bf131f9bc2247e82c1c3abc64` UI blobs
+through the existing esbuild sourceRef plugin, never checkout/reset or today's
+renderer labelled old. Baseline/after PNGs and `before.json`/`after.json` remain
+outside Git; after records the short WebM path (matching external Playwright
+ffmpeg cache required). The paired runner uses one Chrome/page at a time and
+matching fixture/camera/DPR/shadows/GPU with before/after/after/before sampling;
+normal/reduced/all-still 7/50 scenes, steady draw/resource equality and idle
+are checked. CPU submission includes driver stalls; no sustained FPS claim.
+Run benchmarks after other browser workloads finish.
+
+`buildings-live.cjs` uses the normal production frontend/executor/receipts/F1
+and a guarded test-only `tests.building_visual_support` launcher. Require built
+`web/dist`, fresh private output, a localhost disposable `DATABASE_URL` ending
+`_test`, and unused `CATAN_E2E_ORIGIN` such as `http://127.0.0.1:18776` (distinct
+from the standalone preview). Both-client rejection equality, explicit owner-0
+occupancy, accepted effects, duplicates, refresh/native reconnect and PostgreSQL
+restart are checked. Prepared/funded rooms include a real engine-built ship;
+the road discovers Fog/Gold. The private manifest contains synthetic seat proofs
+and stays outside served/tracked paths. Recovery restores committed state;
+fixture preparation and copied-command validation never run again on recovery.
+No public Fog activation, production test capability, destructive DB operation,
+new rule or live internal Fog rematch is introduced. The runner stops its own
+backend/Chrome; retain volumes/accounts/matches. Current results and limitations:
+[construction plan](../../docs/obsidian/plans/board3d.md#visual-phase-3--construction-feedback-plan).
+
 ## Visual Phase 2 — ships preview and verification
 
 From the repository root (existing `web/node_modules` installed):

@@ -7,6 +7,7 @@ import type { DiceRollVisual } from "../game/dice";
 import { FOG_REVEAL_MS, useFogReveal } from "../board/fogReveal";
 import { FOG_3D_REVEAL_MS } from "../board3d/fogPresentation";
 import { useShipFeedback, type ShipEvent } from "../board/shipFeedback";
+import { usePieceFeedback } from "../board3d/pieceFeedback";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
 
@@ -23,10 +24,13 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
 export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean; tick?: number; events?: readonly ShipEvent[] }) {
   const [mode, setMode] = useState<"2d" | "3d">("3d");
   const [shipsAnimated, setShipsAnimated] = useState(true);
+  const [constructionAnimated, setConstructionAnimated] = useState(true);
   const events = useMemo(() => (props.events ?? []).filter(e => e.type === "build_ship" || e.type === "move_ship")
     .map(({ id, tick, type, actor_pid }) => ({ id, tick, type, actor_pid })), [props.events]);
   const shipCues = useShipFeedback({ key: props.matchKey ?? "", tick: props.tick ?? 0,
     ships: props.state.occupied_ships, events, connected: props.connected ?? true }, mode === "3d" && shipsAnimated);
+  const pieceCues = usePieceFeedback({ key: props.matchKey ?? "", tick: props.tick ?? 0,
+    roads: props.state.occupied_e, vertices: props.state.occupied_v, connected: props.connected ?? true }, mode === "3d" && constructionAnimated);
   const reveals = useFogReveal({ key: props.matchKey ?? "", tick: props.tick ?? 0,
     tiles: props.state.tiles, connected: props.connected ?? true }, mode === "3d" ? FOG_3D_REVEAL_MS : FOG_REVEAL_MS);
   return (
@@ -41,7 +45,8 @@ export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceR
           <Suspense fallback={<div className="board3d-fallback" role="status">Loading 3D board…</div>}>
             <Board3D state={props.state} interaction={props.interaction} diceRoll={props.diceRoll}
               matchKey={props.matchKey} connected={props.connected} reveals={reveals}
-              shipCues={shipCues} shipsAnimated={shipsAnimated} onShipsAnimated={setShipsAnimated} />
+              shipCues={shipCues} shipsAnimated={shipsAnimated} onShipsAnimated={setShipsAnimated}
+              pieceCues={pieceCues} constructionAnimated={constructionAnimated} onConstructionAnimated={setConstructionAnimated} />
           </Suspense>
         </Board3DErrorBoundary>
       )}

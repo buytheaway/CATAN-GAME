@@ -20,7 +20,7 @@ import DecorativeOcean from "./DecorativeOcean";
 import AmbientShips from "./AmbientShips";
 import { decorativeShipsEnabled, oceanClearance } from "./environment";
 import { buildPreview, replacesSettlement } from "./preview";
-import { usePieceFeedback } from "./pieceFeedback";
+import type { PieceCue } from "./pieceFeedback";
 import { edgeId } from "../board/constants";
 import { FogPresentation } from "./FogVisual";
 import type { FogQuality } from "./fogPresentation";
@@ -56,21 +56,23 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
 }
 
 export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true, reveals,
-  shipCues = new Map(), shipsAnimated = true, onShipsAnimated }: {
+  shipCues = new Map(), shipsAnimated = true, onShipsAnimated,
+  pieceCues = new Map(), constructionAnimated = true, onConstructionAnimated }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
   reveals?: ReadonlyMap<number, number>;
   shipCues?: ReadonlyMap<string, ShipCue>; shipsAnimated?: boolean; onShipsAnimated?: (enabled: boolean) => void;
+  pieceCues?: ReadonlyMap<string, PieceCue>; constructionAnimated?: boolean; onConstructionAnimated?: (enabled: boolean) => void;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
   const [targetHover, setTargetHover] = useState<string | null>(null);
   const preview = buildPreview(state, interaction, targetHover);
-  const feedback = usePieceFeedback(model, matchKey, connected);
   useEffect(() => { setTargetHover(null); }, [interaction.action, interaction.selection.waiting, connected, matchKey]);
   const [resetVersion, setResetVersion] = useState(0);
   const [fogQuality, setFogQuality] = useState<FogQuality>("mist");
   const reduced = useReducedMotion();
+  const construction = constructionAnimated && connected && !reduced ? pieceCues : new Map<string, PieceCue>();
   const hidden = model.tiles.some(tile => tile.visibility === "hidden");
   const shipColors = useMemo(() => new Map(model.ships.map(ship => [ship.owner, colorForPlayer(ship.owner, state.players)])),
     [model.ships, state.players]);
@@ -95,6 +97,13 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
         {!!model.ships.length && onShipsAnimated && <label className="board3d-ship-quality">Ships
           <select aria-label="Ship effects" value={shipsAnimated ? "motion" : "static"}
             onChange={e => onShipsAnimated(e.target.value === "motion")}>
+            <option value="motion">{reduced ? "Still · reduced motion" : "Motion"}</option>
+            <option value="static">Still</option>
+          </select>
+        </label>}
+        {onConstructionAnimated && <label className="board3d-construction-quality">Construction
+          <select aria-label="Construction effects" value={constructionAnimated ? "motion" : "static"}
+            onChange={e => onConstructionAnimated(e.target.value === "motion")}>
             <option value="motion">{reduced ? "Still · reduced motion" : "Motion"}</option>
             <option value="static">Still</option>
           </select>
@@ -133,14 +142,14 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             reveal={reveals?.get(t.tileIndex)} onHover={hover} onInspect={inspect} />)}
           <Coastline coast={model.coast} />
           {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} color={colorForPlayer(road.owner, state.players)}
-            appearance={feedback.get(`e:${edgeId(road.edge)}`)} />)}
+            cue={construction.get(`e:${edgeId(road.edge)}`)} />)}
           <ShipFleet3D ships={model.ships} cues={shipCues} vertices={state.vertices} edges={state.edges} size={state.size}
             colors={shipColors} moving={shipsAnimated && connected && !reduced} />
           {model.buildings.map(building => building.level === 1
             ? <Settlement3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)}
-                appearance={feedback.get(`v:${building.vertexId}`)} visible={!replacesSettlement(preview, building)} />
+                cue={construction.get(`v:${building.vertexId}`)} visible={!replacesSettlement(preview, building)} />
             : <City3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)}
-                appearance={feedback.get(`v:${building.vertexId}`)} />)}
+                cue={construction.get(`v:${building.vertexId}`)} />)}
           {model.ports.map(port => <Port3D key={port.edge.join(",")} port={port} />)}
           {model.robbers.map((robber, i) => <Robber3D key={i} {...robber} />)}
           {model.pirate && <Pirate3D {...model.pirate} />}

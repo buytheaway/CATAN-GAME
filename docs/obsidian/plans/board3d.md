@@ -5,9 +5,52 @@ updated: 2026-10-18
 
 # Board3D
 
+## Visual Phase 3 — construction feedback plan
+
+**Implemented/verified; READY FOR CHECKPOINT, 2026-10-18.** Phase 2 checkpoint `f315519f0d06cf5bf131f9bc2247e82c1c3abc64` is published; exact upstream hash verified. The ship rejection assertion now compares both full personal snapshots and uses explicit property existence. Rerun: 323 frontend tests, six ship visual groups and seven real two-client ship/PostgreSQL groups passed. Phase 3 remains uncommitted/unpushed.
+
+Affected path: existing authoritative Python executor/COMMIT/public snapshot → React GamePage → BoardRenderer → Board3D → Road3D/Settlement3D/City3D → PieceVisual → existing GLB/procedural fallback. Gameplay/controller/targets and server remain unchanged. Pre-change audit: `usePieceFeedback` ran inside the 3D mount with generic 260 ms scale feedback, without tick/fresh-object recovery fencing or a distinct city-upgrade transition. The implementation below extends this mechanism rather than adding another animation scheduler.
+
+Implemented: existing `pieceFeedback.ts` now observes public `occupied_e`/`occupied_v` plus match key/tick/connection above the renderer toggle. Adjacent additions identify roads/settlements; same-owner1→2 identifies a city upgrade. Hydration, stale/duplicate/coalesced/ambiguous changes and first fresh reconnect frame establish quiet baselines. `PieceVisual` reuses the existing loader/material pool/fallback and finite R3F invalidation: road-axis growth450 ms, settlement emergence550 ms, city emergence700 ms plus a300 ms shrinking ghost settlement. The echo has no vertex/level/target identity and ignores raycasts. Original anchors/rotation/owner colors remain fixed. No per-frame React updates, new continuous interval, particles, model replacement or private terrain inputs. Reduced motion and **Construction effects → Motion/Still** clear feedback, consume baselines and restore final transforms without replay. Ship/Fog controls remain independent. Settled refs skip frame work, async GLB loading never restarts cue timestamps, and echo clones use pooled ghost materials/dispose=null.
+
+The planned public-only preview extension, screenshots/video, matching committed/current A/B, lifecycle/pose tests and owning two-client construction/recovery checks are complete within the limits below. Full Python/scenarios were not required because production backend did not change. Preserve graph, accounts/data and gates; do not commit/push Phase 3.
+
+### Construction verification and measured limits
+
+Verified2026-10-18: **343/343 frontend tests** (323 baseline+20 building cases), TypeScript and production build pass. Three old feedback/pose assertions were migrated to the superseding public API while retaining asset/contact/material checks. Twenty new cases cover authoritative additions/upgrade, ambiguity/removal/owner change, duplicate/stale/gap, first-fresh reconnect/new match, closed public inputs and finite/static/echo transforms. Lazy Board3D is977.16 kB; existing chunk warning remains. **Three focused PostgreSQL fixture tests** pass, checking legal targets/accepted copied command/conservation/baseline ship without running gameplay during recovery. No production Python/protocol/rules/codec/schema/gates/auth/assets/dependencies changed; full Python/scenarios/Docker not rerun.
+
+Chrome155.0.8059.80: seven real construction visual groups pass (exact/reversed edge anchor, settlement/city echo, duplicate/stale/error, simultaneous/rapid sequence, static/reduced, fresh reconnect/SVG/new epoch, ships/Fog/resources/raycast/idle/desktop). **12 final-production two-client WS/PostgreSQL groups** pass across actual Road/Settlement/City UI: both complete personal states unchanged after invalid commands with explicit property checks; accepted effects appear on both clients; receipts do not replay; refresh/native reconnect/backend restart restore exact state and no effects. Real road discovers Fog/Gold; real baseline ships remain. Six expected refusal warnings occur during deliberate restarts; no unexpected JS/console errors. Original13 SVG/Fog renderer groups and six ship visual groups pass again. These are prepared/funded fixtures, not competitive/natural full matches; live internal Fog rematch is not supported by this test capability, while presentation new-match/rematch fencing is tested with a new public epoch.
+
+Performance primary report compares exact published `f315519f0d06cf5bf131f9bc2247e82c1c3abc64` UI blobs to current source using `git show`, never checkout/reset. One Chrome/GPU, matching public occupancy/tiles/camera/DPR/shadows/viewport; strict scene fingerprint and steady counts equal. Same1440×900 window/1186×723 Canvas/DPR1/ANGLE D3D11/RTX5050 Laptop. Before/after/after/before,12 warm renders,60 GPU-synchronous `render+finish` and30 CPU submission samples per reading. Medians below are the mean of the two medians; p95 is the worse reading. CPU submission contains driver/GPU stalls and is not isolated CPU frame time or sustained FPS.
+
+| Scene | GPU median before→after ms | GPU p95 before→after ms | CPU submit before→after ms |
+| --- | --- | --- | --- |
+| 7 normal | .85→1.30 | 1.50→2.80 | 1.15→1.20 |
+| 7 reduced | .90→.80 | 2.00→1.80 | 1.20→1.15 |
+| 7 static | .80→.90 | 1.40→2.60 | 1.15→1.15 |
+| 50 normal | 3.75→3.60 | 5.10→4.40 | 4.35→3.90 |
+| 50 reduced | 3.60→3.70 | 4.20→4.60 | 3.85→3.95 |
+| 50 static | 3.75→3.70 | 8.10→6.90 | 6.15→4.40 |
+
+Counts unchanged:7 tiles/one ship =222 calls,29,310 triangles,151 geometries,6 textures;50 tiles/24 ships =1387 calls,180,310 triangles,150 geometries,17 textures. Ambient12–13 frames/s remains shared Fog/ships; reduced/all-still0. Ship-only12fps before and after finite settlement; no idle scene React commits/resource churn. A transient upgrade adds a pooled settlement clone for≤300 ms visible, unmounted when700 ms cue expires; no permanent geometry is added. **Primary small-scene normal GPU increase+.45 ms is recorded, not hidden or called an optimization.** Repeat measurement and low-end/mobile/battery limitations must be considered; 50-static CPU variance alone precludes an isolated CPU improvement claim.
+
+One bounded full repeat used the unchanged script/source and a separate output folder, preserving the primary result. All configuration/resource/idle assertions pass again. Repeat GPU medians:7 normal **.75→.80 ms**, reduced1.15→.80, static.80→.75;50 normal **3.65→3.65 ms**, reduced3.65→3.70, static4.05→3.65. Thus the primary+.45 ms small-scene increase did not reproduce (+.05 ms repeat). Both current and baseline timings vary (including baseline7 reduced and50 CPU submission); report both runs without cherry-picking, optimization or mobile/FPS claims. Repeat evidence: `%TEMP%/catan-buildings-visual-phase3-repeat/paired-performance.json`.
+
+Preview: `node web/e2e/buildings-visual-demo.cjs` → `http://127.0.0.1:18775/?demo=1&buildings=1`. Synthetic PUBLIC7/50 scenes with original GLBs, road/settlement/city/sequence/together/ship/Fog/reduced controls. Reset consumed targets before replay; display fixtures do not execute rules or authorize real gameplay. Existing loopback static server serves temp bundle and public assets only. [Reproduction](../../../web/e2e/README.md#visual-phase-3--construction-preview-and-verification).
+
+Evidence outside Git: `%TEMP%/catan-buildings-visual-phase3/{before,after,paired-performance}.json`, before/after PNGs and WebM path in `after.json`; `%TEMP%/catan-buildings-phase3-live-final/report.json` (three cases/12 groups), `catan-buildings-phase3-fog-rendering/report.json`, `catan-buildings-phase3-ships/after.json`. Recording is in a separate context, excluded from timings. No trusted assignments/recipes/private manifest/seat proofs are served or committed. User graph edits, accounts, matches and database volumes remain preserved. Phase3 remains uncommitted/unpushed; no tag, Robber/Pirate animation, backend feature or next phase.
+
+Final source was frozen before final production/live acceptance; the seven-group public visual runner also passed again after the settled-ref/userData refinements. Preview stays running independently; task-started disposable PostgreSQL is stopped afterward without removing databases or volumes. Graph remains outside the index; unrelated scale changes observed during the task are retained, with no graph edit/reset by this task.
+
+Intended Phase 3 diff: **22 files**, excluding user graph. Runtime **+166/−75 lines**.
+
+- Runtime (6): `web/src/board3d/{Board3D.tsx,PieceVisual.tsx,Pieces3D.tsx,pieceFeedback.ts,board3d.css}`, `web/src/components/BoardRenderer.tsx`.
+- Tests/preview (10): `tests/{building_visual_support.py,test_building_visual_fixture.py}`, `web/e2e/{fog-fixture.tsx,buildings-compare.cjs,buildings-live.cjs,buildings-visual-demo.cjs,buildings-visual.cjs}`, `web/tests/{piece-assets.test.mjs,buildingVisual.test.mjs,fixtures/publicBuildings.ts}`.
+- Documentation (6): this plan, `Project State.md`, `React интерфейс.md`, `Design System.md`, `Стили и визуальные границы.md`, `web/e2e/README.md`.
+
 ## Visual Phase 2 — ships, implementation plan
 
-**Implemented/verified, 2026-10-18; READY FOR VISUAL PHASE 2 CHECKPOINT.** Visual Phase 1 was checkpointed/published first as `608f14ed349f237a1ae51873864246fff40f9d6f`, normal push/exact upstream hash verified, exactly 20 intended files; only the user graph remained outside the commit. This phase is graphics only and remains uncommitted/unpushed; no tag.
+**Historical completed verification, 2026-10-18; published as `f315519f0d06cf5bf131f9bc2247e82c1c3abc64`.** Visual Phase 1 was checkpointed/published first as `608f14ed349f237a1ae51873864246fff40f9d6f`, normal push/exact upstream hash verified, exactly 20 intended files; only the user graph remained outside the commit. Phase 2 graphics and assertion correction were committed/pushed separately before Phase 3; no tag.
 
 Audit: committed `occupied_ships` becomes `createRenderModel().ships` and five procedural meshes in `Ship3D`; the existing eleven GLBs contain terrain/buildings/roads, no ship asset. Original edge endpoints, owner colors and orientation are reusable. `move_ship` public events carry actor/type/tick/id but **no route or from/to IDs**. Do not add protocol fields just for animation.
 
@@ -44,7 +87,7 @@ Diff scope: **31 intended files**, excluding the untouched pre-existing user gra
 - Tests/preview (14): `tests/{fog_live_support.py,test_ship_visual_fixture.py}`, `web/e2e/{fog-fixture.tsx,fog-live.cjs,fog-preview.css,fog-rendering.cjs,fog-visual-demo.cjs,fog-visual.cjs,ships-compare.cjs,ships-live.cjs,ships-visual-demo.cjs,ships-visual.cjs}`, `web/tests/{shipVisual.test.mjs,fixtures/publicShips.ts}`.
 - Documentation (7): this plan, `plans/seafarers-fog.md`, `Project State.md`, `React интерфейс.md`, `Design System.md`, `Стили и визуальные границы.md`, `web/e2e/README.md`.
 
-No Phase 2 file is staged. Loopback public preview runs independently of PostgreSQL; task-started disposable PostgreSQL is stopped after verification without dropping its databases/volume. No user services/accounts/matches/graph are reset.
+Historical Phase 2 task-end note: its preview ran independently of PostgreSQL and the task-started disposable PostgreSQL was stopped without dropping databases/volume. No user services/accounts/matches/graph were reset. Phase 2 is now committed; Phase 3 above is the uncommitted task.
 
 [[Project State]] · [[Design System]] · [[React интерфейс]] · [[Карты и сценарии]]
 
