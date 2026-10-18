@@ -1,6 +1,6 @@
 ---
 tags: [catan, deployment, docker]
-updated: 2026-10-12
+updated: 2026-10-18
 ---
 
 # Deployment
@@ -12,6 +12,23 @@ Production Infrastructure Phase 1 добавила Docker Compose; Persistence 1
 ## Frontend public assets
 
 `deploy/web.Dockerfile` copies `web/public/` into the build stage before Vite build. This includes the finalized eight `models/terrain/*.glb` files in Nginx's production static output; Blender sources under docs are not deployment inputs. Verified **2026-10-07** with the normal Compose stack: backend/PostgreSQL healthy, HTTP/auth bootstrap/WS hello passed in Chrome, all eight GLB responses have valid headers and match source SHA-256. No service/port/proxy architecture changes.
+
+## Fog beta deployment controls
+
+**Implemented 2026-10-18; Docker/acceptance verified; results and limits in [[Project State]].** Normal `compose.yaml` forwards two independent server settings. Both accept only the literal strings `0` and `1`; invalid values fail startup without exposing their contents. No browser/WS field can supply them and the internal test launcher is not a deployment option.
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `CATAN_FOG_BETA_ADMISSION` | `0` | `0`: hide/reject new beta selection/start/rematch. `1`: admit only canonical `seafarers_fog_beta_2`, exactly two players, provided emergency stop is off. Existing verified beta gameplay is independent of this flag. |
+| `CATAN_FOG_BETA_EMERGENCY_STOP` | `0` | `1`: reject new admissions and pause existing beta gameplay/private publication. Preserve data/credentials/history and return safe `fog_beta_paused` compatibility metadata. `0`: verified beta matches can continue. |
+
+The approved custom profile has target 12/discard 7, shared exploration, no ports/island VP, timers off, no Test Mode or Qt support. Backend image explicitly copies `app/fog_beta.py`; the existing assets COPY includes its canonical recipe. Neither guarded test support nor private fixture manifests belong in production images or web roots. Database schema, Nginx topology, trusted-proxy policy and existing ports are unchanged.
+
+**Deliberate enable procedure:** retain the existing deployment/auth/secrets configuration; set `CATAN_FOG_BETA_ADMISSION=1` and `CATAN_FOG_BETA_EMERGENCY_STOP=0`, then recreate only the single backend (`docker compose up -d --no-deps --force-recreate backend`) so it reads the settings. Build/deploy the compatible beta backend/frontend beforehand. Verify `/health`, normal lobby descriptor and a two-player start in the intended environment. Do not turn on admission merely because internal fixture or old checkpoint tests passed; use the final acceptance status in [[Project State]].
+
+**Routine rollback:** set admission `0` and recreate the backend. New beta starts/rematches reject while already saved compatible beta matches continue. **Emergency halt:** also set emergency stop `1` and recreate the backend; pure recovery preserves heads and seats, private publication/commands remain paused, and players can return Home to create a non-Fog game. Resume the compatible build with emergency stop `0`. Settings are deployment-scoped, not a hot-toggle administration API.
+
+Never remove volumes, recreate databases, rewrite snapshots/markers, replay rewards or downgrade to pre-v4 readers. A v4-capable pre-beta build treats `catan-fog-beta-1` as unknown/F2-restricted rather than converting the game; keep a compatible build available to resume. Existing internal CURRENT-marker Fog remains closed regardless of these flags. [[Architecture Decisions#ADR-025 — Explicit custom Fog beta admission and emergency stop]], [[Состояние игры#Public Fog beta provenance and recovery]], [[Карты и сценарии#Custom Fog beta — exact two-player profile]].
 
 ## Account cookies and HTTPS — Auth Phase 1
 
@@ -310,9 +327,9 @@ CREATE DATABASE нужен один раз для свежего test volume. [t
 ## Known limitations
 
 - Local memory mode всё ещё теряет rooms при restart; durable Compose восстанавливает committed state. Older RAM-only running games не появляются в DB автоматически.
-- Нет горизонтального масштабирования, TLS, accounts/auth или публичного production security review. Inspection имеет собственный bounded single-worker rate limit; остальные endpoints не получили общий rate-limiting framework.
-- Один backend worker/replica; нет accounts, automatic retention scheduler или backup system. Hash-only guest tokens не восстанавливаются по имени при потере browser proof.
-- Проверен Linux/amd64 Docker Desktop и локальные browser contexts/Windows backend process. Полная естественная партия, нагрузка, ARM и отдельные LAN-устройства не проверялись.
-- npm audit сообщал 18 advisories в dev/build dependency tree; npm audit --omit=dev показал 0. Они не устранялись обновлением tooling в рамках контейнеризации; Node build dependencies не входят в Nginx runtime image.
+- Нет горизонтального масштабирования, собственного TLS termination или общего endpoint rate-limiting framework. Accounts/auth реализованы; SEC-01–04 и room lifecycle имеют отдельные проверки, но не являются бессрочной сертификацией public production security. Inspection имеет bounded single-worker rate limit.
+- Один backend worker/replica; automatic retention scheduler и backup system остаются planned. Hash-only guest tokens не восстанавливаются по имени при потере browser proof.
+- Проверены Linux/amd64 Docker Desktop и локальные browser contexts/Windows backend process. Controlled-RNG natural matches и их границы описаны в [[Project State]]; нагрузка, ARM, отдельные LAN-устройства и конкурентный баланс не сертифицированы.
+- Исторический infrastructure-checkpoint сообщал 18 dev/build advisories и 0 при `--omit=dev`; позднее SEC-02 обновил Vite. Это не текущий аудит зависимостей. Node build dependencies не входят в Nginx runtime image; актуальная датированная проверка — [[Project State]].
 
 Официальные основания конфигурации: [Nginx WebSocket proxy](https://nginx.org/en/docs/http/websocket.html), [Compose startup/readiness](https://docs.docker.com/compose/how-tos/startup-order/).

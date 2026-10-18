@@ -6,15 +6,16 @@ export function MatchSettings({ client, room, connected }: { client: WSClient; r
     target_vp: room.map_rules?.target_vp ?? 10, discard_threshold: 7, ...room.settings, ...client.pendingSettings };
   const disabled = !connected || room.status !== "lobby" || client.youPid !== room.host_pid;
   const officialScenario = Boolean(room.map_meta?.official_scenario);
+  const fogBeta = room.map_meta?.custom_scenario === "shared_preassigned_fog_beta";
   return <fieldset className="room-settings" disabled={disabled}>
     <legend>Match settings {disabled ? "· read only" : "· host"}</legend>
     <div className="room-settings-grid">
       <section className="settings-group"><h4>Victory & discard</h4>
-      <label className="field"><span>Target VP</span><select aria-label="Target VP" value={settings.target_vp} disabled={officialScenario}
+      <label className="field"><span>Target VP</span><select aria-label="Target VP" value={settings.target_vp} disabled={officialScenario || fogBeta}
         onChange={e => client.setSettings({ target_vp: Number(e.target.value) })}>
         {(settings.target_vp < 3 || settings.target_vp > 30) && <option value={settings.target_vp}>{settings.target_vp} VP (preset)</option>}
         {Array.from({ length: 28 }, (_, i) => i + 3).map(vp => <option key={vp} value={vp}>{vp} VP</option>)}</select></label>
-      <label className="field"><span>Discard threshold</span><select aria-label="Discard threshold" value={settings.discard_threshold} disabled={officialScenario}
+      <label className="field"><span>Discard threshold</span><select aria-label="Discard threshold" value={settings.discard_threshold} disabled={officialScenario || fogBeta}
         onChange={e => client.setSettings({ discard_threshold: Number(e.target.value) })}>
         {Array.from({ length: 50 }, (_, i) => i + 1).map(value => <option key={value} value={value}>{value} cards</option>)}</select></label>
       </section>
@@ -22,7 +23,7 @@ export function MatchSettings({ client, room, connected }: { client: WSClient; r
       <label className="field"><span>Dice mode</span><select aria-label="Dice mode" value={settings.dice_mode}
         onChange={e => client.setSettings({ dice_mode: e.target.value as "random" | "balanced" })}>
         <option value="random">Random</option><option value="balanced">Balanced</option></select></label>
-      <label className="field"><span>Turn timer</span><select aria-label="Turn timer" value={settings.turn_timer}
+      <label className="field"><span>Turn timer</span><select aria-label="Turn timer" value={settings.turn_timer} disabled={fogBeta}
         onChange={e => client.setSettings({ turn_timer: Number(e.target.value) as 0 | 30 | 60 | 90 | 120 })}>
         <option value={0}>Off</option>{[30, 60, 90, 120].map(seconds => <option key={seconds} value={seconds}>{seconds} sec</option>)}</select></label>
       </section>
@@ -38,6 +39,7 @@ export function MatchSettings({ client, room, connected }: { client: WSClient; r
       </section>
     </div>
     {officialScenario && <p className="settings-hint">The official scenario fixes the victory target and discard threshold.</p>}
+    {fogBeta && <p className="settings-hint">The experimental Fog profile fixes the target at 12 VP and the discard threshold at 7. Turn timers are off; mandatory Gold choices wait for the owning player.</p>}
     {settings.dice_mode === "balanced" && <p className="settings-hint">Balanced: shuffled 2d6 outcomes, refreshed after 24 rolls. No guaranteed number.</p>}
   </fieldset>;
 }

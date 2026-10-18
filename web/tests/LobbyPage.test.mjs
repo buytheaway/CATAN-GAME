@@ -111,6 +111,50 @@ test("Four Islands explains personal home islands and fixes the correct 13 VP va
   }
 });
 
+const fogBeta = { id: "seafarers_fog_beta_2", name: "Custom Fog of War — Experimental, 2 players",
+  description: "Shared exploration across eight unexplored tiles.", required_players: 2,
+  target_vp: 12, custom_scenario: "shared_preassigned_fog_beta" };
+
+test("Fog beta is selectable only from the server's advertised presets", () => {
+  assert.doesNotMatch(render().html, /seafarers_fog_beta_2|Custom Fog of War/);
+  const view = render(null, "base_standard", { room: { map_presets: [fogBeta] } });
+  assert.match(view.html, /<option value="seafarers_fog_beta_2">Custom Fog of War/);
+  view.select.onChange({ target: { value: fogBeta.id } });
+  assert.deepEqual(view.sent, [fogBeta.id]);
+  assert.doesNotMatch(view.html, /Shared exploration reveals/);
+});
+
+test("confirmed Fog beta explains its custom rules and exact two-player scope", () => {
+  for (const online of [1, 2, 3, 4]) {
+    const view = render(null, fogBeta.id, { room: { max_players: 4,
+      players: Array.from({ length: online }, (_, pid) => ({ pid, name: `Player ${pid}`, connected: true })),
+      map_meta: fogBeta, map_rules: { target_vp: 12 }, map_presets: [fogBeta] },
+      client: { testToolsAvailable: true } });
+    assert.equal(view.start.disabled, online !== 2);
+    assert.match(view.html, /scenario requires exactly 2 connected players/);
+    assert.match(view.html, /Custom Fog of War — Experimental, 2 players/);
+    assert.match(view.html, /Goal: 12 VP/);
+    assert.match(view.html, /Shared exploration reveals unexplored terrain to both players/);
+    assert.match(view.html, /ordinary land awards one available matching resource/);
+    assert.match(view.html, /Gold gives its explorer a private resource choice/);
+    assert.match(view.html, /sea and desert give no reward/);
+    assert.match(view.html, /No island VP bonus/);
+    assert.doesNotMatch(view.html, /official layout|Official Seafarers|Fog Islands|Enable Test Room/);
+  }
+  const room = { map_meta: fogBeta, map_presets: [fogBeta], map_rules: { target_vp: 12 } };
+  assert.equal(render(fogBeta.id, fogBeta.id, { room }).start.disabled, true);
+  assert.equal(render(null, fogBeta.id, { room, client: { youPid: 1 } }).start.disabled, true);
+});
+
+test("a recovered Fog lobby cannot start when the server withdraws beta admission", () => {
+  const meta = { id: "seafarers_fog_beta_2", name: "Fog beta", custom_scenario: "shared_preassigned_fog_beta",
+    required_players: 2, target_vp: 12 };
+  const view = render(null, meta.id, { room: { map_meta: meta, map_presets: [] } });
+  assert.equal(view.start.disabled, true);
+  assert.match(view.html, /New Fog beta matches are disabled/);
+  assert.match(view.html, /Choose another map/);
+});
+
 test("Close Lobby is host-only, disabled offline/pending, and requires explicit confirmation", () => {
   const previousWindow = globalThis.window;
   try {

@@ -1,0 +1,262 @@
+{
+  "version": 2,
+  "name": "Custom Fog of War - Experimental, 2 players",
+  "tiles": [
+    {
+      "q": 0,
+      "r": -3,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": 1,
+      "r": -3,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": 2,
+      "r": -3,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": 3,
+      "r": -3,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": -1,
+      "r": -2,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": 0,
+      "r": -2,
+      "terrain": "forest",
+      "number": 8
+    },
+    {
+      "q": 1,
+      "r": -2,
+      "terrain": "pasture",
+      "number": 4
+    },
+    {
+      "q": 2,
+      "r": -2,
+      "terrain": "hills",
+      "number": 6
+    },
+    {
+      "q": 3,
+      "r": -2,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": -1,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": -1,
+      "r": -1,
+      "terrain": "mountains",
+      "number": 9
+    },
+    {
+      "q": 0,
+      "r": -1,
+      "terrain": "fields",
+      "number": 9
+    },
+    {
+      "q": 1,
+      "r": -1,
+      "terrain": "mountains",
+      "number": 12
+    },
+    {
+      "q": 2,
+      "r": -1,
+      "terrain": "desert",
+      "number": null
+    },
+    {
+      "q": 3,
+      "r": -1,
+      "terrain": "fog",
+      "number": null
+    },
+    {
+      "q": -3,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": 0,
+      "terrain": "forest",
+      "number": 5
+    },
+    {
+      "q": -1,
+      "r": 0,
+      "terrain": "pasture",
+      "number": 8
+    },
+    {
+      "q": 0,
+      "r": 0,
+      "terrain": "mountains",
+      "number": 6
+    },
+    {
+      "q": 1,
+      "r": 0,
+      "terrain": "hills",
+      "number": 11
+    },
+    {
+      "q": 2,
+      "r": 0,
+      "terrain": "forest",
+      "number": 3
+    },
+    {
+      "q": 3,
+      "r": 0,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -3,
+      "r": 1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": 1,
+      "terrain": "pasture",
+      "number": 2
+    },
+    {
+      "q": -1,
+      "r": 1,
+      "terrain": "fields",
+      "number": 4
+    },
+    {
+      "q": 0,
+      "r": 1,
+      "terrain": "forest",
+      "number": 11
+    },
+    {
+      "q": 1,
+      "r": 1,
+      "terrain": "hills",
+      "number": 3
+    },
+    {
+      "q": 2,
+      "r": 1,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -3,
+      "r": 2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": 2,
+      "terrain": "pasture",
+      "number": 10
+    },
+    {
+      "q": -1,
+      "r": 2,
+      "terrain": "fields",
+      "number": 10
+    },
+    {
+      "q": 0,
+      "r": 2,
+      "terrain": "fields",
+      "number": 5
+    },
+    {
+      "q": 1,
+      "r": 2,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -3,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -2,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": -1,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    },
+    {
+      "q": 0,
+      "r": 3,
+      "terrain": "sea",
+      "number": null
+    }
+  ],
+  "ports": [],
+  "fog_pool": {
+    "terrain": [
+      "forest",
+      "hills",
+      "pasture",
+      "fields",
+      "mountains",
+      "gold",
+      "sea",
+      "desert"
+    ],
+    "numbers": [
+      3,
+      4,
+      5,
+      6,
+      8,
+      9
+    ]
+  },
+  "rules": {
+    "enable_seafarers": true,
+    "enable_gold": true,
+    "enable_pirate": true,
+    "enable_move_ship": true,
+    "target_vp": 12,
+    "scenario": {
+      "fog": {
+        "profile": "shared-preassigned-v1"
+      }
+    }
+  },
+  "description": "Custom shared-preassigned exploration for exactly 2 players; 12 VP. Unexplored terrain is shared when discovered. Ordinary land grants one available matching resource, Gold grants a resource choice; Sea/Desert grant none. No island VP bonus. Not official Fog Islands."
+}

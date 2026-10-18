@@ -42,8 +42,10 @@ export type RoomState = {
   status: "lobby" | "in_match";
   ruleset_compatibility?: RulesetCompatibility;
   map_id?: string;
-  map_meta?: { id?: string; name?: string; description?: string; official_scenario?: string; required_players?: number };
-  map_presets?: { id: string; name: string; description?: string; official_scenario?: string; required_players?: number }[];
+  map_meta?: { id?: string; name?: string; description?: string; official_scenario?: string; required_players?: number;
+    custom_scenario?: "shared_preassigned_fog_beta"; target_vp?: number };
+  map_presets?: { id: string; name: string; description?: string; official_scenario?: string; required_players?: number;
+    custom_scenario?: "shared_preassigned_fog_beta"; target_vp?: number }[];
   map_rules?: {
     target_vp?: number;
     robber_count?: number;

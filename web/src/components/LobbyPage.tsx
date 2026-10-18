@@ -78,6 +78,8 @@ export default function LobbyPage({
   const confirmationPending = pendingMapId !== null || client.configPending;
   const onlinePlayers = room?.players.filter(p => p.name && p.connected).length ?? 0;
   const requiredPlayers = room?.map_meta?.required_players;
+  const fogBeta = room?.map_meta?.custom_scenario === "shared_preassigned_fog_beta";
+  const fogAdmissionAvailable = !fogBeta || room?.map_presets?.some(p => p.id === room.map_id) === true;
   const playerCountReady = requiredPlayers !== undefined ? onlinePlayers === requiredPlayers : onlinePlayers >= 2;
   const mapName = room?.map_meta?.name ?? room?.map_id ?? "Base Standard";
 
@@ -160,10 +162,11 @@ export default function LobbyPage({
             {p.pid === room.host_pid && p.name && <StatusBadge tone="warm">Host</StatusBadge>}
           </li>)}</ul>
           <PlayerColors client={client} room={room} connected={connected} />
-          <div className="room-start"><button onClick={() => client.startMatch()} className="btn primary" disabled={confirmationPending || !connected || room.status !== "lobby" || !isHost || !playerCountReady}>Start Match</button>
+          <div className="room-start"><button onClick={() => client.startMatch()} className="btn primary" disabled={confirmationPending || !connected || room.status !== "lobby" || !isHost || !playerCountReady || !fogAdmissionAvailable}>Start Match</button>
             <p className="shell-help" role="status">{confirmationPending ? "Confirming room configuration…" : !connected ? "Waiting for the connection to return."
               : room.status !== "lobby" ? "This room already has a match." : !isHost ? "Your host will start the match."
-              : requiredPlayers !== undefined ? `This official layout requires exactly ${requiredPlayers} connected players (${onlinePlayers} currently online).${playerCountReady ? " You can start." : ""}`
+              : !fogAdmissionAvailable ? "New Fog beta matches are disabled. Choose another map to start."
+              : requiredPlayers !== undefined ? `This ${room.map_meta?.official_scenario ? "official layout" : "scenario"} requires exactly ${requiredPlayers} connected players (${onlinePlayers} currently online).${playerCountReady ? " You can start." : ""}`
               : onlinePlayers < 2 ? "Invite at least one more player to start." : "At least two players are connected. You can start."}</p></div>
         </Panel>
         <Panel className="room-conversation"><SectionHeader title="Room chat" eyebrow="Before the first roll" />
@@ -176,6 +179,9 @@ export default function LobbyPage({
           {mapId !== "base_standard" && !mapPresets.some(p => p.id === mapId) && <option value={mapId}>{mapId}</option>}
         </select></label>
         {room.map_meta?.description && <p className="shell-help">{room.map_meta.description}</p>}
+        {fogBeta && <p className="shell-help">Custom Fog of War — Experimental, {requiredPlayers} players. Goal: {room.map_meta?.target_vp ?? room.map_rules?.target_vp} VP.
+          {" "}Shared exploration reveals unexplored terrain to both players. Discovering ordinary land awards one available matching resource;
+          Gold gives its explorer a private resource choice; sea and desert give no reward. No island VP bonus. Turn timers are off.</p>}
         {room.map_meta?.official_scenario && <p className="shell-help">Official Seafarers · Fifth Edition (2021) · {requiredPlayers} players. {room.map_meta.official_scenario === "the_four_islands"
           ? "Start on one or two islands of your choice; each player's first settlement on each foreign island earns 2 special VP."
           : "Initial settlements belong on the main island; each player's first settlement on each small island earns 2 special VP."} Goal: {room.map_rules?.target_vp} VP.</p>}
@@ -198,7 +204,7 @@ export default function LobbyPage({
         </div>
         <MatchSettings client={client} room={room} connected={connected} />
         {room.test_mode ? <p className="test-room-warning">Development test room · debug actions enabled for host</p>
-          : client.testToolsAvailable && isHost && room.status === "lobby" && <button className="btn subtle"
+          : client.testToolsAvailable && !fogBeta && isHost && room.status === "lobby" && <button className="btn subtle"
             disabled={!connected} onClick={() => client.enableTestMode()}>Enable Test Room</button>}
       </Panel></div>
     </>}

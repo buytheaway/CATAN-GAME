@@ -4,6 +4,16 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Public Fog beta lobby and pause UX
+
+**Implemented 2026-10-18; browser/frontend verification complete; results and limits in [[Project State]].** The normal server adds a safe Fog beta descriptor to `room_state.map_presets` only when admission is deliberately enabled. [LobbyPage.tsx](../../web/src/components/LobbyPage.tsx) displays **Custom Fog of War — Experimental, 2 players**, target 12, shared unexplored terrain/discovery and ordinary resource/Gold rewards; Sea/Desert give none and island VP is disabled. Start uses the existing server-confirmed selection/count checks. UI visibility is not backend authorization.
+
+[RoomSettings.tsx](../../web/src/components/RoomSettings.tsx) locks target/discard/timer for `custom_scenario:"shared_preassigned_fog_beta"`; Test Mode activation is hidden and rejected by the server. No client recipe/hidden assignments or new gameplay model are introduced. `WSClient` only extends descriptor/compatibility types; existing command envelopes, shared interaction controller, GamePage, SVG/Board3D Fog/reveal, resource hand, log and entitled Gold choice remain the gameplay path.
+
+Verified existing matches continue after **new admission** is disabled. If emergency stop reports `reason:"fog_beta_paused"`, [LegacyMatchPage.tsx](../../web/src/components/LegacyMatchPage.tsx) explains the temporary pause/data preservation and offers Home/new Base or Seafarers play; misleading match controls are replaced by the existing compatibility flow. Active Games cards distinguish a Fog pause from an older ruleset. Guest/account ownership, Continue and controlling-socket takeover retain the existing server checks. No Blender/GLB/audio/redesign changes.
+
+The dated internal fixture/browser results below remain historical evidence, not final production beta acceptance. [[Сервер и протокол#Public Fog beta admission and lifecycle]], [[plans/seafarers-fog#Public Beta Phase 1 — authorized implementation, 2026-10-18]].
+
 ## Natural whole Fog match acceptance — 2026-10-17
 
 **Runtime React unchanged; public Fog DISABLED.** [fog-natural.cjs](../../web/e2e/fog-natural.cjs) starts two real Chrome profiles at the privately configured unstarted lobby, clicks host Start and replays a complete legally funded TCP transcript against the original server/production frontend. No prepared midgame or mocked state. Representative SVG Road, Board3D Ship, Roll and all Gold choices use actual UI; bulk setup/build/trade/card/end actions use each owning socket. Raw personalized frames are compared throughout; initial unknowns have uniform Fog/no GLB/number, revelations share only committed contents and finite feedback.

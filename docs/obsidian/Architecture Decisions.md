@@ -1,9 +1,23 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-16
+updated: 2026-10-18
 ---
 
 # Architecture Decisions
+
+## ADR-025 — Explicit custom Fog beta admission and emergency stop
+
+Status: **Authorized and implemented, 2026-10-18; acceptance verified; results and limits in [[Project State]].** Supersedes ADR-018's blanket production availability restriction only for the new, explicitly admitted beta provenance. Historical internal CURRENT-marker fixtures retain their closed production behavior; their test capability is not a production authorization mechanism.
+
+Decision: [fog_beta.py](../../app/fog_beta.py) owns the detached canonical recipe/closed descriptor and strict deployment policy for **`seafarers_fog_beta_2`**: exactly two players, shared-preassigned exploration, target 12, discard 7, no ports/island VP, no turn timer, Test Mode or Qt support. Selection accepts the server ID only, never client-uploaded Fog configuration. The ordinary host/seat/session/controller checks, room lock, detached candidate, shared engine, durable receipt/COMMIT and F1 per-recipient publication remain authoritative. Fog-specific rematch requires a finished result and fresh admission.
+
+**New admission and existing gameplay are separate controls.** `CATAN_FOG_BETA_ADMISSION=0` is the default; it hides/refuses new selection/start/rematch while allowing already verified beta matches to continue. `CATAN_FOG_BETA_EMERGENCY_STOP=1` pauses existing gameplay/private publication as well as new admission; default `0`. Only literal `0`/`1` are valid deployment values. These are server settings, not client identity, network flags or ownership credentials.
+
+New matches receive immutable **`catan-fog-beta-1`**, independently of snapshot format. Compatibility validates the saved canonical profile/count/visible board/hidden unordered pools and recorded Fog history without running gameplay; emergency stop adds `reason:"fog_beta_paused"`. Admission-off alone does not change compatibility. Unknown/legacy/internal markers cannot inherit beta authority. Existing metadata-only reconnect/Continue/claim may preserve paused matches without rewriting their head/results; commands, rematch and timers cannot mutate them.
+
+Writer **v4 / engine compatibility 3** and historical readers are unchanged; no SQL migration, backfill, historical VP/achievement reconciliation or conversion. Recovery restores committed assignment/ledger/Gold state exactly. Normal rematch is the only operation generating a fresh assignment/opening. A v4-capable older build must F2-restrict the unknown marker; a pre-v4 build is not a supported rollback target. Stop admission first for a routine rollout reversal, use emergency stop for a gameplay halt, retain all database data, and resume with the compatible build rather than rewriting old heads.
+
+Consequences: one deliberately limited **custom** beta, not official Fog Islands or broader competitive/player-count certification. SVG/Board3D/controller/Gold UX are reused. F1/F2, COMMIT-before-ACK, idempotency, room quotas/closure and non-Fog scenarios remain constraints. Exact configuration/rollback — [[Deployment#Fog beta deployment controls]]; scope/testing — [[plans/seafarers-fog#Public Beta Phase 1 — authorized implementation, 2026-10-18]]. Dated ADR-018 descriptions below preserve the older checkpoint and are superseded only as stated here.
 
 ## ADR-024 — Canonical Four Islands using the existing personal island ledger
 
@@ -78,6 +92,8 @@ Rollback: these snapshots have no new format requirements, but restoring an olde
 Основание: архитектурные ограничения из предоставленной пользователем инструкции и спецификации правил. Accepted обозначает принятое направление, а не утверждение, что реализация полностью соответствует ему.
 
 ## ADR-018 — Trusted fog foundation with public feature disabled
+
+**Historical foundation/internal-integration decision; production availability partially superseded by [[#ADR-025 — Explicit custom Fog beta admission and emergency stop]] on 2026-10-18.** The dated statements below retain their checkpoint context. Their privacy, single-engine, immutable assignment, pure recovery and private test-capability constraints remain accepted. Only the new canonical beta marker has a separate production admission policy; old internal matches stay closed. The natural follow-up is now published as `93439ef`; its activation proposal was design-only then, rather than an unimplemented current decision.
 
 **Natural-match follow-up, 2026-10-17; test-only, public DISABLED:** published .3B is `d6f94a1`. Whole two-player Fog play now starts at the original builder's empty opening and uses the actual dispatcher/engine/COMMIT/receipt/F1 publisher through victory and fresh rematch. Only the guarded test launcher admits its privately bound native room through lifecycle feature/Repository fences; ContextVars confine admission to that original transaction. It never authorizes another room/unknown provenance, supplies gameplay resources/scores/occupancy, or changes recovery. Normal startup installs no admission/capability, including with a valid account cookie or forged Fog environment/client fields. This does not approve a production policy, a new ruleset or public activation. Actual final counts/browser evidence and limits — [[Project State]], [[plans/seafarers-fog]]. The plan's proposed public-release marker and rollout phases are **design proposals, not implemented decisions**.
 

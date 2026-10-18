@@ -371,3 +371,47 @@ contain public test UI only. The runner stops its own backend/Chrome and never
 resets a volume or deletes a match. Public Fog remains **DISABLED**; do not deploy
 this launcher. Current results and the separate activation design are in
 `docs/obsidian/Project State.md` and `docs/obsidian/plans/seafarers-fog.md`.
+
+## Public Fog beta admission and natural Chrome acceptance
+
+The preceding internal launchers remain historical test-only admission seams.
+Production now has a separate canonical two-player custom beta; admission is
+**disabled by default**. Never deploy a test launcher or use its RNG controls.
+The beta is not official Fog Islands. Server-owned policy and rollback details
+are in `docs/obsidian/plans/seafarers-fog.md` and `Deployment.md`.
+
+`tests.fog_beta_support` starts the normal production application/lifespan and
+public endpoints on isolated loopback PostgreSQL `*_test` data. Only its test
+process controls randomness. It installs no fixture capability, prepared match,
+admission patch or private endpoint. `tests/test_fog_beta.py` exercises normal
+Host/Join/select/start, ownership, enabled/disabled admission, emergency stop,
+private frames, receipts and pure recovery. Its natural test generates a trace:
+
+```powershell
+$env:CATAN_FULL_MATCH_OUTPUT = Join-Path $env:TEMP 'catan-fogbeta-traces'
+.venv\Scripts\python.exe -B -u -X utf8 -m pytest -q -o addopts= tests/test_fog_beta.py
+$env:DATABASE_URL = $env:CATAN_TEST_DATABASE_URL
+$env:CATAN_NATURAL_TRACE = Join-Path $env:CATAN_FULL_MATCH_OUTPUT 'seafarers_fog_beta_2.json'
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-fogbeta-browser-fresh'
+node web/e2e/fog-beta.cjs
+```
+
+Use the existing external Playwright installation/Chrome and build `web/dist`
+first, as described above. Supply only a disposable localhost test database.
+The new runner reuses the full internal replay's renderer/HUD/Gold assertions
+through optional test hooks. Its default internal runner retains its original
+private-manifest/public-gate checks. Beta creates seats through the actual Home
+UI, checks the absent-variable default before deliberate enablement, plays the
+complete trace through normal owning WebSockets with representative UI actions,
+and checks SVG/3D, pending Gold restart, results/rematch and policy transitions.
+Reports/screenshots are public test UI; credentials remain in browser storage,
+not reports. This is not an all-click human competitive or mobile certification.
+
+Actual production Docker acceptance uses `compose.yaml` plus
+`tests/fog_beta.compose.yaml` under an explicit `*-test` project. Its separate
+disposable volume/loopback ports and exact proxy peer do not touch user data.
+`CATAN_FOG_BETA_TEST_PROJECT` opts `tests/test_fog_beta_docker.py` into that stack;
+it tests the image's actual configuration through Nginx, with no test RNG or
+fixture code installed. Run once at default admission `0`, deliberately enable
+admission for the isolated stack and rerun for real two-player setup, then
+restore `0`. Do not toggle a stack while another acceptance test uses it.

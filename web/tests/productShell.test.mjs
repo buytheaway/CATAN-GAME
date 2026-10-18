@@ -126,3 +126,14 @@ test("shell uses the exact product identity and accessible connection/account af
   for (const pattern of [/Danik Inc\. Entertainment/, /CATAN.КОЛОНИЗАТОРЫ/, /Reconnecting…/, /<main/, /role="status"/]) assert.match(view.html, pattern);
   assert.doesNotMatch(view.html, /<canvas/);
 });
+
+test("native Fog emergency pause is distinguished from an older saved ruleset", () => {
+  const game = { room_code: "ROOM01", map_name: "Fog beta", own_name: "Captain", player_count: 2,
+    max_players: 2, connected_count: 0, status: "active", can_continue: true,
+    ruleset_compatibility: { status: "compatibility_required", ruleset_id: "catan-fog-beta-1", reason: "fog_beta_paused" } };
+  const view = render(GameCard, { code: game.room_code, game, loading: false, onContinue() {} });
+  assert.match(view.html, /Fog beta paused/);
+  assert.match(view.html, /saved match preserved/);
+  assert.doesNotMatch(view.html, /Older ruleset/);
+  assert.equal(view.elements.find(e => e.type === "button").disabled, false);
+});

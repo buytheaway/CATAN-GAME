@@ -1,0 +1,36 @@
+# Disposable public beta acceptance. Use only an explicit *-test project.
+# Kept separate from existing user and security-test volumes and rate budgets.
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: catan_fogbeta_proxy_test
+      POSTGRES_USER: catan
+      POSTGRES_PASSWORD: public-fogbeta-disposable-password
+    ports: !override
+      - "127.0.0.1:55443:5432"
+  backend:
+    networks:
+      proxy:
+        ipv4_address: 172.30.246.3
+    environment:
+      FORWARDED_ALLOW_IPS: 172.30.246.2
+      CATAN_AUTH_MODE: development
+      CATAN_AUTH_ORIGINS: http://sec04.test,http://127.0.0.1:18098
+      DATABASE_URL: ""
+      POSTGRES_DB: catan_fogbeta_proxy_test
+      POSTGRES_USER: catan
+      POSTGRES_PASSWORD: public-fogbeta-disposable-password
+  web:
+    networks:
+      proxy:
+        ipv4_address: 172.30.246.2
+    ports: !override
+      - "127.0.0.1:18098:8080"
+
+networks:
+  proxy:
+    enable_ipv6: true
+    ipam:
+      config: !override
+        - subnet: 172.30.246.0/29
+        - subnet: fd42:c47a:0:46::/64

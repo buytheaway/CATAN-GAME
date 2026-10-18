@@ -4,6 +4,7 @@ Only creation assigns a ruleset. Decoding a snapshot is never evidence that
 its derived scores were produced by the current gameplay rules.
 """
 from app.engine.exploration import has_fog, validate_fog_transition
+from app.fog_beta import BETA_RULESET, BETA_PAUSED_MESSAGE, emergency_stopped, is_beta_game
 
 LEGACY_S1_RULESET = "catan-seafarers-s1"
 LEGACY_S2B1_RULESET = "catan-seafarers-s2b-1"
@@ -20,6 +21,14 @@ COMPATIBILITY_MESSAGE = (
 
 def compatibility(ruleset_id, game=None):
     frame = game is not None and game.rules.get("sea_frame") is True
+    if ruleset_id == BETA_RULESET:
+        canonical = is_beta_game(game)
+        paused = canonical and emergency_stopped()
+        result = {"status": "compatible" if canonical and not paused else "compatibility_required",
+                  "ruleset_id": ruleset_id, "current_ruleset_id": BETA_RULESET}
+        if paused:
+            result.update(reason="fog_beta_paused", message=BETA_PAUSED_MESSAGE)
+        return result
     if ruleset_id in (OFFICIAL_S3A_RULESET, OFFICIAL_S3B_RULESET):
         if ruleset_id == OFFICIAL_S3A_RULESET:
             prefix, scenario_id, target, starts = "seafarers_official_new_shores", "heading_for_new_shores", 14, (0,)
@@ -65,11 +74,15 @@ def validate_transition(before, candidate, *, snapshot=False, receipt=None, oper
             and compatibility(candidate.ruleset_id, candidate.game)["status"] != "compatible"
             and not restricted(before)):
         raise RulesetCompatibilityError("Official sea-frame rules require verified scenario provenance")
-    if candidate.game and has_fog(candidate.game) and candidate.ruleset_id != CURRENT_RULESET:
+    if candidate.game and has_fog(candidate.game) and candidate.ruleset_id not in (CURRENT_RULESET, BETA_RULESET):
         # Existing restricted legacy data may retain metadata-only ownership writes.
         if not (before and restricted(before) and before.game == candidate.game
                 and before.match_uuid == candidate.match_uuid):
             raise RulesetCompatibilityError("Fog state requires the current ruleset marker")
+    if (candidate.game and candidate.ruleset_id == BETA_RULESET and restricted(candidate)
+            and not (before and restricted(before) and before.game == candidate.game
+                     and before.match_uuid == candidate.match_uuid)):
+        raise RulesetCompatibilityError(COMPATIBILITY_MESSAGE)
     if before and before.game and candidate.game and before.match_uuid == candidate.match_uuid:
         try:
             validate_fog_transition(before.game, candidate.game)

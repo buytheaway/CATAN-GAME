@@ -74,6 +74,30 @@ test("legacy notice explains preserved data and offers Home without gameplay con
   assert.match(html,/host a new game/);assert.match(html,/Gold Haven/);
   assert.doesNotMatch(html,/Roll|End Turn|Start Match|<canvas|Dev Card/);
 });
+
+test("emergency Fog stop explains preserved state without labeling a native match as legacy",()=>{
+  const paused = { ...room, ruleset_compatibility: { ...compatibility, reason: "fog_beta_paused" } };
+  const html=renderToStaticMarkup(React.createElement(LegacyMatchPage,{room:paused,onHome(){}}));
+  assert.match(html,/Fog beta gameplay is paused/);
+  assert.match(html,/saved match, discoveries and place are preserved/);
+  assert.match(html,/new Base or Seafarers game/);
+  assert.match(html,/Back to Home/);
+  assert.doesNotMatch(html,/older ruleset|unverified version|converted|Roll|End Turn|Start Match|<canvas/);
+});
+
+test("emergency Fog restriction preserves the existing ownership and command suppression flow",()=>{
+  const {client,socket}=continued();
+  socket.receive({...room,ruleset_compatibility:{...compatibility,status:"compatible"}});
+  socket.receive({type:"match_state",room_code:"ABCDEF",match_id:1,tick:0,state:{you_pid:0}});
+  client.sendCmd({type:"roll"});
+  assert.equal(client.pendingCmds.size,1);
+  socket.receive({...room,ruleset_compatibility:{...compatibility,reason:"fog_beta_paused"}});
+  assert.equal(client.matchState,null);assert.equal(client.pendingCmds.size,0);
+  const sent=socket.sent.length;
+  client.sendCmd({type:"roll"});client.rematch();
+  assert.equal(socket.sent.length,sent);assert.equal(client.youPid,0);
+  assert(sessionStorage.getItem("catan_current_game"));
+});
 test("restricted Continue card remains navigable and is not labeled corrupted or unavailable",()=>{
   const html=renderToStaticMarkup(React.createElement(GameCard,{code:"ABCDEF",loading:false,onContinue(){},
     game:{map_name:"Gold Haven",own_name:"Alice",own_color:"red",status:"active",can_continue:true,ruleset_compatibility:compatibility}}));

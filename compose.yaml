@@ -19,6 +19,9 @@ services:
       # Trust only the Nginx peer reserved below, never the entire Docker subnet.
       FORWARDED_ALLOW_IPS: "${CATAN_PROXY_IP:-172.30.250.2}"
       CATAN_ENABLE_TEST_TOOLS: "${CATAN_ENABLE_TEST_TOOLS:-0}"
+      # New admissions are opt-in; emergency stop also pauses existing beta games.
+      CATAN_FOG_BETA_ADMISSION: "${CATAN_FOG_BETA_ADMISSION:-0}"
+      CATAN_FOG_BETA_EMERGENCY_STOP: "${CATAN_FOG_BETA_EMERGENCY_STOP:-0}"
       CATAN_ROOM_CREATE_LIMIT: "${CATAN_ROOM_CREATE_LIMIT:-20}"
       CATAN_ROOM_CREATE_WINDOW_SECONDS: "${CATAN_ROOM_CREATE_WINDOW_SECONDS:-600}"
       CATAN_ROOM_CREATE_LOBBIES_PER_IP: "${CATAN_ROOM_CREATE_LOBBIES_PER_IP:-20}"

@@ -420,8 +420,8 @@ class FogMatch(Match):
         self.recovery_evidence.append({"kind": "fresh_fog_assignment_no_rewards_or_history", "epoch": 2})
 
 
-async def play_fog(backend, *, max_rolls=450):
-    match = FogMatch(backend)
+async def play_fog(backend, *, max_rolls=450, match_factory=FogMatch):
+    match = match_factory(backend)
     agents = [FogAgent(pid) for pid in range(2)]
     await match.create()
     pending_restart = reconnected = takeover = lost_ack = invalid_gold = invalid_road = False

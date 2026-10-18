@@ -31,6 +31,7 @@ from app.auth.service import AuthService
 from app import net_protocol
 from app import game_events, test_tools
 from app.fog_transport import FogMatchAccess
+from app import fog_beta
 from app.match_rulesets import CURRENT_RULESET, OFFICIAL_RULESETS, COMPATIBILITY_MESSAGE, restricted
 from app.engine import (
     DEFAULT_PRESET_ID,
@@ -231,6 +232,7 @@ class RoomManager:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global persistence
+    fog_beta.validate_configuration()
     persistence = Coordinator(configured_database())
     try:
         await persistence.initialize(manager)
@@ -324,7 +326,7 @@ MULTIPLAYER_COMMANDS = frozenset({
 
 
 def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
-    if game is room.game and _fog_access(room) is not None:
+    if game is room.game and _fog_gameplay_allowed(room):
         return _project_fog_snapshot(room, pid)
     require_no_fog(game)
     _require_compatible(room)
@@ -333,8 +335,9 @@ def _snapshot_state(game: GameState, room: Room, pid: int) -> Dict:
 
 
 def _project_fog_snapshot(room: Room, pid: int) -> Dict:
-    """Safe pure view, used live only with explicit in-process fixture access."""
-    if room.ruleset_id != CURRENT_RULESET:
+    """Safe pure view after independent production or internal admission."""
+    if not (room.ruleset_id == CURRENT_RULESET or room.ruleset_id == fog_beta.BETA_RULESET
+            and fog_beta.is_beta_game(room.game)):
         raise RuleError("compatibility_required", "A verified current ruleset is required")
     game = room.game
     state = project_fog_player_dict(game, pid)
@@ -391,7 +394,7 @@ async def _send_room_state(room: Room, request_id: Optional[str] = None) -> None
 async def _send_match_state(room: Room) -> None:
     if not room.game:
         return
-    if restricted(room) and _fog_access(room) is None:
+    if (restricted(room) or has_fog(room.game)) and not _fog_gameplay_allowed(room):
         await _send_room_state(room)
         return
     # Freeze all views before the first await so another command cannot make
@@ -414,7 +417,7 @@ async def _send_match_state_to(ws: WebSocket, room: Room) -> None:
             or not 0 <= conn.pid < len(room.players)):
         return
     pid = conn.pid
-    if restricted(room) and _fog_access(room) is None:
+    if (restricted(room) or has_fog(room.game)) and not _fog_gameplay_allowed(room):
         await _send(ws, _room_state_message(room))
         return
     message = net_protocol.match_state_message(room, _snapshot_state(room.game, room, pid))
@@ -426,7 +429,7 @@ async def _publish_match_state(conn: ClientConn, room: Room, pid: int, slot_id: 
     # rematch and durable guest revocation cannot interleave with this send.
     def current_recipient():
         return (manager.connections.get(conn.ws) is conn and manager.rooms.get(room.room_code) is room
-                and (not restricted(room) or _fog_access(room) is not None)
+                and (not restricted(room) and not has_fog(room.game) or _fog_gameplay_allowed(room))
                 and conn.room_code == room.room_code and conn.pid == pid
                 and room.match_id == message["match_id"] and 0 <= pid < len(room.players)
                 and room.players[pid].id == slot_id and room.players[pid].active_ws is conn.ws)
@@ -527,13 +530,23 @@ def _rematch_host_pid(room: Room) -> Optional[int]:
 
 def _start_match(room: Room, *, rebind: bool = True) -> None:
     _require_compatible(room)
+    beta = room.selected_map_id == fog_beta.BETA_MAP_ID
+    if beta:
+        if not fog_beta.admission_enabled():
+            raise RuleError("feature_disabled", "New Fog beta matches are disabled")
+        if not fog_beta.is_beta_source(room.selected_map_data, room.selected_map_id):
+            raise RuleError("invalid", "Fog beta requires the canonical server profile")
+        if room.game is not None and not room.game.game_over:
+            raise RuleError("invalid", "Finish the current Fog match before rematch")
+        _validate_beta_settings(room)
     try:
         source = room.selected_map_data if room.selected_map_data is not None else get_preset_map(room.selected_map_id)
         official = map_loader.official_preset_meta(source, room.selected_map_id)
         if official is not None and (room.settings.target_vp not in (None, source["rules"]["target_vp"])
                                      or room.settings.discard_threshold != 7):
             raise RuleError("invalid", f"{official['name']} requires {source['rules']['target_vp']} VP and discard threshold 7")
-        require_non_fog_data(source)
+        if not beta:
+            require_non_fog_data(source)
     except map_loader.MapValidationError as exc:
         raise RuleError("invalid", str(exc)) from None
     except FogUnavailableError as exc:
@@ -542,6 +555,8 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     host_pid = _rematch_host_pid(room)
     if len(participants) < 2 or host_pid not in [p.pid for p in participants]:
         raise RuleError("invalid", "Need the host and at least 2 connected players")
+    if beta and len(participants) != 2:
+        raise RuleError("invalid", "Custom Fog beta requires exactly 2 connected players")
     if official is not None and len(participants) != official["required_players"]:
         raise RuleError("invalid", f"This official board requires exactly {official['required_players']} connected players")
     seed = secrets.randbits(64)
@@ -565,7 +580,8 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
         game.rules_config.target_vp = room.settings.target_vp
         game.rules["target_vp"] = room.settings.target_vp
     try:
-        require_no_fog(game)
+        if not beta:
+            require_no_fog(game)
     except FogUnavailableError as exc:
         raise RuleError("feature_disabled", str(exc)) from None
     game.rules_config.discard_threshold = room.settings.discard_threshold
@@ -584,7 +600,8 @@ def _start_match(room: Room, *, rebind: bool = True) -> None:
     room.seed = seed
     room.match_id += 1
     room.match_uuid = uuid.uuid4()
-    room.ruleset_id = OFFICIAL_RULESETS[official["official_scenario"]] if official is not None else CURRENT_RULESET
+    room.ruleset_id = (fog_beta.BETA_RULESET if beta else
+                       OFFICIAL_RULESETS[official["official_scenario"]] if official is not None else CURRENT_RULESET)
     room.tick = 0
     room.dice = None
     room.roll_count = 0
@@ -613,21 +630,51 @@ def _fog_access(room: Room) -> Optional[FogMatchAccess]:
     return next((scope for scope in access if type(scope) is FogMatchAccess and scope.permits(room)), None)
 
 
+def _validate_beta_settings(room: Room) -> None:
+    if (room.test_mode or room.settings.turn_timer != 0
+            or room.settings.target_vp not in (None, 12) or room.settings.discard_threshold != 7):
+        raise RuleError("invalid", "Fog beta requires 12 VP, discard 7, timers off and Test Mode off")
+
+
+def _fog_gameplay_allowed(room: Room) -> bool:
+    # Production admission is durable provenance + operational policy, never the
+    # test capability. Disabling new admissions does not revoke existing games.
+    if (room.ruleset_id == fog_beta.BETA_RULESET and not fog_beta.emergency_stopped()
+            and not room.test_mode and room.settings.turn_timer == 0
+            and room.settings.target_vp in (None, 12) and room.settings.discard_threshold == 7
+            and fog_beta.is_beta_game(room.game)):
+        return True
+    return _fog_access(room) is not None
+
+
 def _room_state_message(room: Room) -> Dict:
-    return net_protocol.room_state_message(room, fog_access=_fog_access(room))
+    message = net_protocol.room_state_message(room, fog_access=_fog_access(room))
+    # Evaluate on publication, including recovered lobbies; do not cache a gate
+    # decision or expose the trusted recipe through the public preset registry.
+    presets = [meta for meta in message.get("map_presets", []) if meta.get("id") != fog_beta.BETA_MAP_ID]
+    if fog_beta.admission_enabled():
+        presets.append(fog_beta.beta_descriptor())
+    message["map_presets"] = presets
+    if has_fog(room.game) and not _fog_gameplay_allowed(room):
+        message["ruleset_compatibility"]["status"] = "compatibility_required"
+    return message
 
 
 def _require_compatible(room: Room, *, internal_gameplay=False) -> None:
     if has_fog(room.game):
+        if room.ruleset_id == fog_beta.BETA_RULESET and _fog_gameplay_allowed(room):
+            return
         if internal_gameplay and _fog_access(room) is not None:
             return
+        if room.ruleset_id == fog_beta.BETA_RULESET:
+            raise RuleError("compatibility_required", "Fog beta is paused or incompatible; the saved match is preserved")
         raise RuleError("feature_disabled", FOG_DISABLED_MESSAGE)
     if restricted(room):
         raise RuleError("compatibility_required", COMPATIBILITY_MESSAGE)
 
 
 def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
-    trusted_fog = _fog_access(room) is not None
+    trusted_fog = _fog_gameplay_allowed(room)
     if has_fog(room.game) and not trusted_fog:
         return net_protocol.error_message("feature_disabled", FOG_DISABLED_MESSAGE)
     if restricted(room) and not trusted_fog:
@@ -714,6 +761,8 @@ async def _notify_start(room: Room) -> None:
 
 
 def _sync_timer(room: Room) -> None:
+    if has_fog(room.game):
+        return  # Fog beta has no automatic actions, including pending Gold.
     if restricted(room) or room.timer_paused:
         return
     g = room.game
@@ -731,7 +780,7 @@ async def _process_room_timer(room: Room) -> None:
 async def _process_room_timer_locked(room: Room) -> None:
     if manager.rooms.get(room.room_code) is not room:
         return
-    if restricted(room) or not persistence.ready or room.persistence_blocked or room.timer_paused:
+    if has_fog(room.game) or restricted(room) or not persistence.ready or room.persistence_blocked or room.timer_paused:
         return
     if room.timer is None and (not room.game or not room.settings.turn_timer
                               or room.game.game_over or room.game.phase != "main"):
@@ -916,6 +965,10 @@ def _set_room_settings(room: Room, pid: int, patch: Dict[str, Any]) -> None:
     except ValueError as exc:
         raise RuleError("invalid", str(exc)) from exc
     meta = get_preset_meta(room.selected_map_id)
+    if room.selected_map_id == fog_beta.BETA_MAP_ID:
+        if (updated.target_vp not in (None, 12) or updated.discard_threshold != 7
+                or updated.turn_timer != 0):
+            raise RuleError("invalid", "Fog beta requires 12 VP, discard 7 and timers off")
     if meta and meta.get("official_scenario"):
         target = get_preset_map(meta["id"])["rules"]["target_vp"]
         if updated.target_vp not in (None, target) or updated.discard_threshold != 7:
@@ -968,8 +1021,16 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
     if room.status != "lobby":
         raise RuleError("invalid", "Cannot change map after start")
     source, map_id = data.get("map_data"), data.get("map_id") or data.get("id")
+    beta = map_id == fog_beta.BETA_MAP_ID
+    if beta:
+        if not fog_beta.admission_enabled():
+            raise RuleError("feature_disabled", "New Fog beta matches are disabled")
+        if source is not None or room.test_mode:
+            raise RuleError("invalid", "Select the server Fog profile by ID, without custom data or Test Mode")
+        source = fog_beta.beta_recipe()
     try:
-        require_non_fog_data(source)
+        if not beta:
+            require_non_fog_data(source)
     except FogUnavailableError as exc:
         raise RuleError("feature_disabled", str(exc)) from None
     if isinstance(source, dict):
@@ -981,6 +1042,8 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
         map_id = map_id if isinstance(map_id, str) and map_id else name
         meta = {"id": map_id, "name": name, "description": str(source.get("description", ""))}
         selected_map_data = source
+        if beta:
+            meta = fog_beta.beta_descriptor()
     else:
         meta = get_preset_meta(map_id) if isinstance(map_id, str) else None
         if not meta:
@@ -1001,6 +1064,8 @@ def _set_map(room: Room, pid: int, data: Dict) -> None:
     if official is not None:
         map_id, meta = official["id"], official
         settings = RoomSettings(**{**vars(settings), "target_vp": None, "discard_threshold": 7})
+    if beta:
+        settings = RoomSettings(**{**vars(settings), "target_vp": None, "discard_threshold": 7, "turn_timer": 0})
     room.selected_map_data = selected_map_data
     room.selected_rules_config = selected_rules_config
     room.selected_map_id, room.selected_map_meta = map_id, dict(meta)
@@ -1248,6 +1313,8 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
         elif kind == "chat":
             _append_chat(candidate, conn.pid, data["text"])
         elif kind == "enable_test_mode":
+            if room.selected_map_id == fog_beta.BETA_MAP_ID:
+                raise RuleError("feature_disabled", "Test Mode is unavailable for Fog beta")
             if not TEST_TOOLS_ENABLED or conn.pid != room.host_pid or room.status != "lobby":
                 raise RuleError("forbidden", "Only host on a test-enabled server may enable a lobby test room")
             candidate.test_mode = True

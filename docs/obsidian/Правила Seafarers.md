@@ -4,6 +4,10 @@ tags: [catan, правила, спецификация]
 
 # Правила Seafarers
 
+## Custom Fog beta availability
+
+**2026-10-18: limited production admission implemented; disabled by default, acceptance verified; results and limits in [[Project State]].** The previously approved `shared-preassigned-v1` discovery/reward rules below are unchanged. Only canonical `seafarers_fog_beta_2` is proposed for this beta: exactly two players, target 12/discard 7, no ports/island VP, timers/Test Mode/Qt unsupported. This is a custom preassigned/shared-discovery profile, **not official Fog Islands**. Exact recipe — [[Карты и сценарии#Custom Fog beta — exact two-player profile]]; admission versus emergency stop — [[Deployment#Fog beta deployment controls]]; actual tests/limits — [[Project State]]. Earlier dated internal-only availability descriptions are historical, not a claim that the new beta policy is missing.
+
 ## Official Scenario 2 — The Four Islands
 
 **Implemented; official source/diagrams verified 2026-10-16.** [Fifth Edition (2021) rulebook](https://www.catan.com/sites/default/files/2021-06/catan-seafarers_2021_rule_book_201201.pdf), printed pp.11–13. Dedicated canonical `seafarers_official_four_islands_3` / `_4` require exactly 3/4 players; fixed layouts differ. This profile does not change Base, the four custom Seafarers maps or New Shores.

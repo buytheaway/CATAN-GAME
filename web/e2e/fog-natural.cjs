@@ -51,7 +51,7 @@ async function verifyHud(clients) {
       resources: Object.entries(h.own(c).res).map(([r, n]) => `Give ${r} (${n} owned)`) });
   }
 }
-async function open(browser, binding, pid) {
+async function observedClient(browser, pid) {
   const c = await h.newClient(browser, 'Fog Natural ' + (pid + 1));
   await c.page.addInitScript(() => {
     window.__seenFogSvg = [];
@@ -69,6 +69,10 @@ async function open(browser, binding, pid) {
       assert.equal(c.console.at(-1), m.text()); c.expectedWarnings.push(c.console.pop());
     }
   });
+  return c;
+}
+async function open(browser, binding, pid) {
+  const c = await observedClient(browser, pid);
   await c.page.evaluate(({ code, proof, server, name }) => {
     const entry = { room_code: code, reconnect_token: proof, server_url: server, last_known_name: name, last_seen_at: Date.now() };
     localStorage.setItem('catan_recent_games', JSON.stringify({ version: 1, entries: [entry] }));
@@ -84,7 +88,7 @@ async function restart(clients, ref, label) {
   for (const c of clients) c.expectedOutage = true;
   await stop(ref.current);
   for (const c of clients) c.match = null;
-  ref.current = await start();
+  ref.current = await (ref.start || start)();
   await h.wait(() => clients.every(c => c.match), label);
   for (let i = 0; i < clients.length; i++) {
     clients[i].expectedOutage = false;
@@ -127,21 +131,25 @@ async function uiCommand(clients, entry, label) {
   synchronized(clients);
 }
 
-async function run(browser, trace, ref) {
-  const binding = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+async function run(browser, trace, ref, options = {}) {
+  const binding = options.open ? null : JSON.parse(await fs.readFile(manifestPath, 'utf8'));
   const clients = [];
   try {
-    for (const pid of [0, 1]) clients.push(await open(browser, binding, pid));
+    for (const pid of [0, 1]) clients.push(await (options.open
+      ? options.open(browser, pid, clients) : open(browser, binding, pid)));
     const host = clients[0];
-    assert(host.room.map_presets.every(p => !/fog/i.test(p.id)));
-    assert.equal(host.room.map_id, trace.map_id);
+    if (options.verifyLobby) await options.verifyLobby(clients);
+    else {
+      assert(host.room.map_presets.every(p => !/fog/i.test(p.id)));
+      assert.equal(host.room.map_id, trace.map_id);
+    }
     await host.page.getByRole('button', { name: 'Start Match', exact: true }).click();
     await h.wait(() => clients.every(c => c.match), 'real host Start Match through original dispatcher');
     assert.equal(Object.keys(host.match.state.occupied_v).length, 0);
     assert(host.match.state.tiles.some(t => t.visibility === 'hidden'));
     synchronized(clients);
     await verifyHud(clients);
-    check('two owning browsers start from a fresh opening; public Fog preset is absent');
+    check(options.initialLabel || 'two owning browsers start from a fresh opening; public Fog preset is absent');
     await fog.renderer(host, 'natural-initial');
     report.checks.push('initial actual SVG/Board3D Fog geometry, GLBs, tokens and privacy');
     await h.open3d(clients[1]);
@@ -210,6 +218,7 @@ async function run(browser, trace, ref) {
     check('actual VP HUD and resource-hand DOM match each recipient after score changes and Gold choices');
     await restart(clients, ref, 'finished Fog result survives actual PostgreSQL recovery');
     await fog.refresh(clients);
+    if (options.beforeRematch) await options.beforeRematch(clients, ref);
     const oldEpoch = host.match.match_id;
     await host.page.getByRole('dialog', { name: 'Match results', exact: true }).getByRole('button', { name: 'Rematch', exact: true }).click();
     await h.wait(() => clients.every(c => c.match.match_id === oldEpoch + 1 && c.match.tick === 0), 'real host rematch');
@@ -224,6 +233,7 @@ async function run(browser, trace, ref) {
       assert.deepEqual(c.jsErrors, []); assert.deepEqual(c.console, []);
     }
     check('real rematch starts fresh Fog visibility, empty pieces, zero VP and no old Gold choices');
+    if (options.afterRematch) await options.afterRematch(clients, ref);
     report.match = { players: 2, rolls: trace.actual_turns, actions: trace.player_actions,
       final_vp: trace.result.final_vp, discovery: trace.discovery,
       js_errors: [], unexpected_warnings: [], expected_restart_refusals: clients.flatMap(c => c.expectedWarnings).length };
@@ -243,3 +253,4 @@ async function main() {
   }
 }
 if (require.main === module) main().catch(e => { console.error(e); process.exitCode = 1; });
+module.exports = { run, report, restart, observedClient };

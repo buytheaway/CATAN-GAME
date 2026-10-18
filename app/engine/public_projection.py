@@ -26,6 +26,9 @@ def public_map_metadata(source) -> dict:
     if (count is not None and source.get("official_scenario") == scenario
             and type(source.get("required_players")) is int and source["required_players"] == count):
         result.update(official_scenario=scenario, required_players=count)
+    if (result.get("id") == "seafarers_fog_beta_2"
+            and source.get("custom_scenario") == "shared_preassigned_fog_beta"):
+        result.update(custom_scenario="shared_preassigned_fog_beta", required_players=2, target_vp=12)
     return result
 
 
