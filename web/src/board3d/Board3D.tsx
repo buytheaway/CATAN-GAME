@@ -22,6 +22,9 @@ import { decorativeShipsEnabled, oceanClearance } from "./environment";
 import { buildPreview, replacesSettlement } from "./preview";
 import { usePieceFeedback } from "./pieceFeedback";
 import { edgeId } from "../board/constants";
+import { FogPresentation } from "./FogVisual";
+import type { FogQuality } from "./fogPresentation";
+import { useReducedMotion } from "../game/motion";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -61,6 +64,9 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   const feedback = usePieceFeedback(model, matchKey, connected);
   useEffect(() => { setTargetHover(null); }, [interaction.action, interaction.selection.waiting, connected, matchKey]);
   const [resetVersion, setResetVersion] = useState(0);
+  const [fogQuality, setFogQuality] = useState<FogQuality>("mist");
+  const reduced = useReducedMotion();
+  const hidden = model.tiles.some(tile => tile.visibility === "hidden");
   const hover = useCallback((tileIndex: number | null) => setHoveredTile(tileIndex), []);
   const inspect = useCallback((tileIndex: number) => {
     interaction.onTileClick(tileIndex);
@@ -72,6 +78,13 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
     <div className="board3d" data-renderer="3d" data-tile-count={model.tiles.length}
       data-selectable={hoveredTile != null && model.tiles[hoveredTile]?.visibility === "revealed" && interaction.targets.tiles.includes(hoveredTile)}>
       <div className="board3d-toolbar">
+        {hidden && <label className="board3d-fog-quality">Fog
+          <select aria-label="Fog effects" value={fogQuality} onChange={e => setFogQuality(e.target.value as FogQuality)}>
+            <option value="mist">Mist{reduced ? " · still" : " · animated"}</option>
+            <option value="still">Mist · still</option>
+            <option value="simple">Simple</option>
+          </select>
+        </label>}
         <button type="button" className="game-button" aria-label="Reset Camera"
           title="Reset camera · Drag the board to orbit; scroll to zoom" onClick={() => setResetVersion(v => v + 1)}>
           <GameIcon name="reset" /> Reset
@@ -96,6 +109,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             <shadowMaterial transparent opacity={0.22} />
           </mesh>
           <VisualResources>
+          <FogPresentation quality={fogQuality} reduced={reduced} connected={connected} hidden={hidden}>
           <DecorativeOcean bounds={bounds} coast={model.coast} />
           {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={oceanClearance(model)} />}
           {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
@@ -115,6 +129,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           {model.robbers.map((robber, i) => <Robber3D key={i} {...robber} />)}
           {model.pirate && <Pirate3D {...model.pirate} />}
           <InteractionOverlay3D state={state} interaction={interaction} hover={targetHover} onHover={setTargetHover} />
+          </FogPresentation>
           </VisualResources>
         </Canvas>
       </div>

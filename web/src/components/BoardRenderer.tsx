@@ -4,7 +4,8 @@ import BoardView from "./BoardView";
 import type { BoardViewProps } from "./BoardView.types";
 import "../board3d/board3d.css";
 import type { DiceRollVisual } from "../game/dice";
-import { useFogReveal } from "../board/fogReveal";
+import { FOG_REVEAL_MS, useFogReveal } from "../board/fogReveal";
+import { FOG_3D_REVEAL_MS } from "../board3d/fogPresentation";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
 
@@ -21,7 +22,7 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
 export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean; tick?: number }) {
   const [mode, setMode] = useState<"2d" | "3d">("3d");
   const reveals = useFogReveal({ key: props.matchKey ?? "", tick: props.tick ?? 0,
-    tiles: props.state.tiles, connected: props.connected ?? true });
+    tiles: props.state.tiles, connected: props.connected ?? true }, mode === "3d" ? FOG_3D_REVEAL_MS : FOG_REVEAL_MS);
   return (
     <div className="board-renderer">
       <div className="board-renderer-selector" role="group" aria-label="Board renderer">

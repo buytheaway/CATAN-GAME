@@ -6,6 +6,7 @@ import { WSClient, type MatchState, type RoomState, type ServerError } from "../
 import { goldDiscoveryFixture, publicFogFixture } from "../tests/fixtures/publicFog";
 import "../src/styles.css";
 import "../src/shell/shell.css";
+import "./fog-preview.css";
 
 class FixtureSocket {
   static OPEN = 1;
@@ -24,6 +25,7 @@ class FixtureSocket {
 window.WebSocket = FixtureSocket as unknown as typeof WebSocket;
 const client = new WSClient();
 let matchId = 0;
+const preview = new URLSearchParams(location.search).get("demo") === "1";
 
 function Fixture() {
   const [match, setMatch] = useState<MatchState | null>(null);
@@ -35,6 +37,14 @@ function Fixture() {
     client.connect("ws://public-fixture.invalid/ws", "Explorer"); FixtureSocket.latest.onopen?.();
     const load = (mode: Parameters<typeof publicFogFixture>[0] | "gold" = "partial") => {
       const state = mode === "gold" ? goldDiscoveryFixture() : publicFogFixture(mode);
+      if (preview && mode === "partial") {
+        // Public fixture geometry only: put the existing real ship on the sea/fog boundary.
+        const boundary = state.edges!.find(edge => {
+          const adjacent = state.edge_adj_hexes![edge.join(",")];
+          return adjacent.includes(1) && adjacent.some(i => state.tiles[i].visibility === "hidden");
+        });
+        if (boundary) state.occupied_ships = { [boundary.join(",")]: 0 };
+      }
       setStatus("connected"); setError(null); matchId++;
       const room: RoomState = { type: "room_state", room_code: "FIXTURE", map_revision: 0, host_pid: 0,
         status: "in_match", max_players: 2,
@@ -48,6 +58,16 @@ function Fixture() {
       snapshot: () => structuredClone(client.matchState),
       publish: (message: MatchState) => FixtureSocket.latest.receive(message),
       status: (value: string) => client.onStatus?.(value),
+      reveal: (count = 1) => {
+        // Simulates a NEW authorized PUBLIC snapshot, never a trusted hidden assignment.
+        const next = structuredClone(client.matchState)!;
+        const samples = [["forest", 6], ["sea", null], ["gold", 8]] as const;
+        next.state.tiles.filter(tile => tile.visibility === "hidden").slice(0, count).forEach((tile, i) => {
+          tile.visibility = "revealed"; [tile.terrain, tile.number] = samples[i % samples.length];
+        });
+        next.tick++;
+        FixtureSocket.latest.receive(next);
+      },
       reject: () => FixtureSocket.latest.receive({ type: "error", code: "invalid", message: "Fixture rejected command" }),
       commands: () => FixtureSocket.latest.sent.filter(m => m.type === "cmd"),
       settle: (applied = false) => {
@@ -59,7 +79,19 @@ function Fixture() {
     load(new URLSearchParams(location.search).get("fixture") as Parameters<typeof load>[0] || "partial");
     return () => { delete (window as any).__fogFixture; };
   }, []);
-  return match ? <GamePage client={client} match={match} room={room} status={status} log={[]}
-    error={error} onBackToLobby={() => {}} /> : <p>Loading public fixture…</p>;
+  return match ? <>
+    <GamePage client={client} match={match} room={room} status={status} log={[]}
+      error={error} onBackToLobby={() => {}} />
+    {preview && <aside className="fog-preview" aria-label="Synthetic public Fog preview">
+      <strong>Fog visual preview</strong><small>Synthetic public snapshots · no server</small>
+      <div>
+        <button onClick={() => (window as any).__fogFixture.reveal(1)}>Reveal one</button>
+        <button onClick={() => (window as any).__fogFixture.reveal(2)}>Reveal two</button>
+        <button onClick={() => (window as any).__fogFixture.load("partial")}>Reset preview</button>
+        <button onClick={() => (window as any).__fogFixture.load("large")}>50 tiles</button>
+      </div>
+      <small>Drag to orbit · scroll to zoom. Reveal buttons deliver a new public fixture frame.</small>
+    </aside>}
+  </> : <p>Loading public fixture…</p>;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);

@@ -1,0 +1,6 @@
+.fog-preview { position: fixed; z-index: 25; top: 100px; left: 18px; width: 228px; padding: 14px; border: 1px solid #507782; border-radius: 12px; background: #10242bef; color: #e3f4f4; box-shadow: 0 10px 32px #0004; font: 13px/1.45 system-ui, sans-serif; }
+.fog-preview small { display: block; color: #a6c3cc; margin-top: 6px; }
+.fog-preview div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 12px 0; }
+.fog-preview button { border: 1px solid #587c87; border-radius: 7px; padding: 7px; background: #203e48; color: #ecfafa; cursor: pointer; }
+.fog-preview button:hover { background: #315461; }
+@media (max-width: 1000px) { .fog-preview { top: 90px; width: 185px; padding: 9px; font-size: 11px; } }

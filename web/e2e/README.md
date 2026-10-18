@@ -1,5 +1,49 @@
 # Game UI / Game Room UX browser checks
 
+## Fog Visual Phase 1 — local public-only preview
+
+From the repository root, with the existing `web/node_modules` installed:
+
+```powershell
+node web/e2e/fog-visual-demo.cjs
+```
+
+Open **http://127.0.0.1:18772/?demo=1**. This standalone loopback-only static
+server builds the existing public fixture entry into a unique OS temporary
+directory. It uses real GamePage/BoardRenderer/Board3D, normal terrain/building
+GLBs and a real ship at a Sea/Fog boundary. **Reveal one/two** supplies a new
+synthetic public frame; Reset/50 tiles and the ordinary Fog effects/2D/3D/camera
+controls are available. It is a visual simulator, not a multiplayer game or a
+legality generator. No PostgreSQL, backend, account, live WebSocket or Fog
+admission switch is needed. Only the bundle and `web/public` assets/models are
+served; no trusted map recipe, assignment, private manifest or project files.
+It is never imported by the production App/build. Stop with Ctrl+C; to change
+the port, set `CATAN_FOG_PREVIEW_PORT` before launching.
+
+Automated Chrome checks/measurements need the existing external Playwright
+installation through `NODE_PATH` (no new project dependency):
+
+```powershell
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-fog-visual-phase1'
+node web/e2e/fog-visual.cjs
+```
+
+`after.json` records completion, errors, diagnostics and screenshots. The
+original `before.json`/`before-*.png` were captured before runtime changes on
+the `ee56e23` renderer with this same public scene and viewport. `--baseline`
+is reserved for that unchanged pre-visual renderer and refuses later/modified
+source; it must never be used to label the new rendering as old. After 12 warm-up
+renders, 60 GPU-synchronous samples measure render latency, not sustained FPS. Current
+before/after values and hardware/limits are in the [Fog plan](../../docs/obsidian/plans/seafarers-fog.md#fog-visual-phase-1--implementation-plan-2026-10-18).
+
+Retain `fog-rendering.cjs` for full shared SVG/3D/Gold/ship interaction checks.
+`fog-live.cjs` separately exercises two owning TCP clients and isolated
+PostgreSQL discovery/reconnect/backend restart/raw public projection. Its
+synthetic credentials/private manifest must remain outside served/tracked
+files; the standalone public preview above needs none. These scoped live
+fixtures do not enable normal public Fog. All screenshots/diagnostics belong
+in ignored temporary output, not the production asset tree.
+
 ## Official The Four Islands — S3B, natural full matches
 
 The existing `node web/e2e/natural-full-matches.cjs` runner also accepts both

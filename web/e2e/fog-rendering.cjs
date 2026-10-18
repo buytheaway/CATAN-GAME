@@ -145,10 +145,11 @@ async function layout(page) {
     assert.equal(during.tiles.find(t => t.tileIndex === 3).terrain, 'forest');
     assert.equal(during.tiles.find(t => t.tileIndex === 3).number, 6);
     assert.ok(during.revealing.length === 1 && during.revealing[0].opacity > 0);
-    await sleep(500); assert.equal((await sceneInfo(page)).revealing.length, 0);
+    await sleep(1100); assert.equal((await sceneInfo(page)).revealing.length, 0);
+    await page.getByLabel('Fog effects').selectOption('still');
     await page.mouse.move(1, 1); await sleep(200);
     const idle = (await sceneInfo(page)).frame; await sleep(300); assert.equal((await sceneInfo(page)).frame, idle);
-    check('hidden hover/click emits no command; committed 3D reveal is immediate, finite and returns to idle');
+    check('hidden hover/click emits no command; committed 3D reveal is immediate/finite and still mist returns to idle');
 
     await publish(page, () => window.__fogFixture.status('disconnected'));
     await publish(page, () => window.__fogFixture.status('connected'));
@@ -195,6 +196,14 @@ async function layout(page) {
     await page.getByRole('button', { name: 'Road', exact: true }).click();
     const road = await page.evaluate(() => window.__fogFixture.snapshot().state.legal.roads[0]);
     const point = await targetPoint(page, 'edge', road.join(','));
+    await publish(page, () => {
+      const next = window.__fogFixture.snapshot(); next.tick++;
+      for (const tile of next.state.tiles) if (tile.visibility === 'hidden') {
+        tile.visibility = 'revealed'; tile.terrain = 'forest'; tile.number = 6;
+      }
+      window.__fogFixture.publish(next);
+    });
+    assert.equal((await sceneInfo(page)).revealing.length, 3);
     await page.mouse.move(point.x, point.y); await sleep(100); await page.mouse.click(point.x, point.y);
     await page.waitForFunction(() => window.__fogFixture.commands().some(m => m.cmd.type === 'place_road'));
     const cmd = await page.evaluate(() => window.__fogFixture.commands().at(-1).cmd);
@@ -202,7 +211,7 @@ async function layout(page) {
     await publish(page, () => { window.__fogFixture.settle(false); window.__fogFixture.reject(); });
     assert.equal((await sceneInfo(page)).pieces.length, 4);
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    check('real 3D legal marker/ghost click delegates original road ID; rejection keeps occupancy and Cancel works');
+    check('real 3D legal marker/ghost remains clickable during three reveals; original road ID/rejection/Cancel stay correct');
 
     for (const view of ['3D', '2D']) {
       for (const mode of ['setup', 'free']) {

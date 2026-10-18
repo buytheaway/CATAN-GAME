@@ -9,7 +9,38 @@ updated: 2026-10-18
 
 ## Scope and status
 
-Current scope: **Public Beta Phase 1 completed and verified; READY FOR CHECKPOINT; admission disabled by default**. See [[#Public Beta Phase 1 — authorized implementation, 2026-10-18]]. Earlier dated sections retain historical implementation/results and are superseded only for the explicitly admitted new beta marker. Internal test capabilities never become production authorization.
+Public Beta Phase 1 is checkpointed and published as `ee56e23c2327914f364a8c9393eee06a27c5212a` (normal push; exact remote hash verified). Admission remains disabled by default. See [[#Public Beta Phase 1 — authorized implementation, 2026-10-18]]. Earlier dated sections retain historical implementation/results and are superseded only for the explicitly admitted new beta marker. Internal test capabilities never become production authorization.
+
+### Fog Visual Phase 1 — implementation plan, 2026-10-18
+
+**Completed/verified in the requested desktop graphics scope; READY FOR VISUAL PHASE 1 CHECKPOINT. Visual work is not committed/pushed.** Graphics only: the uniform three-stripe hidden hex is replaced by procedural cloud cover and finite dispersal over newly authorized terrain. The neutral foundation, original IDs/hit meshes, server-only visibility, ordinary GLBs and shared controller are retained. No terrain-dependent hidden geometry, asset lookup, animation input or prediction. No backend/protocol/rules/schema/gate changes.
+
+Implemented scene-owned shared geometry/materials, one **12 Hz** ambient clock, no per-frame React state, reduced-motion support and an explicit still/simple fallback. Existing Three MarchingCubes builds a compact static smooth surface **once**, with a procedural translucent shader and a low haze layer; no volumetric pass, new GLB/texture/library or per-frame geometry. Each active reveal owns disposable fading clones, sharing geometry/time. Ambient motion stops for a hidden document, disconnection, no unknowns, still/simple modes or reduced motion. Low fragment precision selects Simple. Clock/resource behavior is tested. The committed-frame classifier remains unchanged: refresh/reconnect/match changes baseline, not discover. SVG stays **420 ms**; Three disperses for **1000 ms**, preserving timestamps across toggles. The terrain/token and logical hit targets update immediately underneath non-raycasting effects.
+
+The old `ee56e23` renderer was captured **before runtime edits**, using the same public fixture/demo scaffolding as the new renderer. Chrome **155.0.8059.80**, Windows/ANGLE D3D11, **RTX 5050 Laptop**, viewport 1440×900/Canvas 1186×723; same camera, public scene, GLBs, shadows and pixel ratio. Twelve warm renders then 60 synchronous `gl.render + gl.finish()` samples. This is diagnostic frame latency, **not sustained FPS or a claim of speedup**; small timing differences/noisy fallback timings do not establish superiority on other GPUs.
+
+| Scene / renderer | Median /p95 ms | Draw calls | Triangles |
+| --- | --- | --- | --- |
+| 7 tiles /3 hidden — before | 0.8 /1.5 | 233 | 23798 |
+| Same — mist | 0.8 /1.4 | 230 | 29438 |
+| 50 tiles /21 hidden — before | 8.9 /11.7 | 1301 | 138934 |
+| Same — mist | 8.5 /9.8 | 1280 | 178414 |
+| Same — still mist | 9.3 /11.3 | 1280 | 178414 |
+| Same — simple | 9.4 /17.5 | 1301 | 138934 |
+
+Scene geometries 149→151; texture counts unchanged (6 small/17 large). Animated Fog deliberately changes idle 0→12 frames/s; **still/simple/reduced motion: 0**. Simple removes the cloud mesh/shader from rendering and ambient frames; this single GPU capture does not prove it renders faster. Geometry/texture counts stay stable while idling; reveal material clones and pooled resources have disposal tests. Lower-end/mobile performance is unverified, not certified by this table.
+
+Reproduction: [fog-visual-demo.cjs](../../../web/e2e/fog-visual-demo.cjs) serves **only synthetic public data and ordinary public assets** at loopback `http://127.0.0.1:18772/?demo=1`. Real GamePage/BoardRenderer/Board3D/GLBs, visible land/sea, nearby unknowns, real ship on Sea/Fog boundary; one/two authorized-frame simulation controls, Reset and 50 tiles. No backend, recipe, assignments or feature-gate bypass. [Browser README](../../../web/e2e/README.md#fog-visual-phase-1--local-public-only-preview). `fog-visual.cjs` captures screenshots/diagnostics; `--baseline` refuses the new renderer, requiring unchanged `ee56e23`, so it cannot accidentally relabel a new capture as old. Before/after files: `%TEMP%/catan-fog-visual-phase1/{before,after}.json`, `before-*.png`, `after-*.png`; ignored local artifacts, not published design assets.
+
+Verification **2026-10-18:** **301 frontend tests passed**, TypeScript/production build pass (existing ~973 kB Board3D chunk warning); **13 Fog renderer Chrome groups**, six new visual groups/two profiles and **14 real WS/PostgreSQL groups** pass. Legal Road targets remain clickable through three simultaneous covers; setup/free Ship, Move Ship, Gold, SVG, camera and desktop resize pass. Actual Road/Ship discovery, entitled Gold, refresh and backend restart without old reveals, account Continue and normal Fog refusal pass; prepared/funded scoped fixtures, not another natural full match. **111 targeted Python tests pass, exit 0**, including raw WebSocket/HTTP counterfactual privacy, safe projection and beta policy. Frontend and backend-gate/privacy evidence distinguish synthetic preview from real isolated transport. Full 1673 Python/508 scenarios/production natural beta/Docker were **not repeated** for graphics-only code. Production backend/protocol/assets/dependencies and default gates remain unchanged; graph/user database data preserved. No confirmed new blocker; low-end/mobile and subjective art tuning remain limitations. No next phase starts automatically.
+
+Visual diff scope (20 intended files, excluding the pre-existing user graph):
+
+- Runtime (8): `web/src/board3d/{Board3D.tsx,FogVisual.tsx,fogResources.ts,fogPresentation.ts,resources.ts,board3d.css}`, `web/src/board/fogReveal.ts`, `web/src/components/BoardRenderer.tsx`.
+- Tests/preview (6): `web/e2e/{fog-fixture.tsx,fog-preview.css,fog-rendering.cjs,fog-visual-demo.cjs,fog-visual.cjs}`, `web/tests/fogVisual.test.mjs`.
+- Documentation (6): this plan, `Project State.md`, `React интерфейс.md`, `Design System.md`, `Стили и визуальные границы.md`, `web/e2e/README.md`.
+
+No files are staged for the visual phase; the background public-only preview can remain running independently of PostgreSQL. The task-started disposable PostgreSQL is stopped after verification, retaining its data; no user stack or volume is reset.
 
 ### Natural full-match validation — completed, 2026-10-17
 
@@ -175,7 +206,7 @@ Status: **completed and verified; READY FOR CHECKPOINT in the controlled two-pla
 
 Scope is exactly the verified custom two-player shared-preassigned recipe: 37 coordinates, the original first eight Sea slots hidden, one each Forest/Hills/Pasture/Fields/Mountains/Gold/Sea/Desert, six tokens `3,4,5,6,8,9`, no ports, target 12, no new-island VP. This is not official 2021 Fog Islands. Ordinary room ownership, controller, room lock, candidate execution, COMMIT, durable receipt and F1 publication remain the only gameplay path.
 
-Verification **2026-10-18:** full isolated PostgreSQL/offscreen Qt/Docker suite **1673 passed, 0 skipped, exit 0**, 1219.70 s; output `.venv/test-artifacts/fogbeta-resume-full.log` and durable test result `fogbeta-resume-full-exit.json`. The earlier interrupted-run log's 1671 passes did not retain its OS exit, hence this complete repeat. Both additional native-beta account-emergency/terminal-counterfactual cases are included. Public natural match reproduces **103 rolls/337 commands/13–3 VP**, eight discoveries and 339 conservation checkpoints. Existing Base/New Shores/Four Islands completions/recovery/rematch remain green. **295 web**, TypeScript/build, **508/508** scenarios and **20 Chrome groups** have complete unchanged-code evidence; production Docker builds plus enabled/default Nginx/WS setup pass. Beta test-container admission is restored to `0`. Final evidence paths, privacy/recovery coverage and limits — [[Project State]]. No beta commit/push/tag.
+Historical beta verification **2026-10-18:** full isolated PostgreSQL/offscreen Qt/Docker suite **1673 passed, 0 skipped, exit 0**, 1219.70 s; output `.venv/test-artifacts/fogbeta-resume-full.log` and durable test result `fogbeta-resume-full-exit.json`. The earlier interrupted-run log's 1671 passes did not retain its OS exit, hence this complete repeat. Both additional native-beta account-emergency/terminal-counterfactual cases are included. Public natural match reproduces **103 rolls/337 commands/13–3 VP**, eight discoveries and 339 conservation checkpoints. Existing Base/New Shores/Four Islands completions/recovery/rematch remain green. **295 web**, TypeScript/build, **508/508** scenarios and **20 Chrome groups** have complete unchanged-code evidence; production Docker builds plus enabled/default Nginx/WS setup pass. Beta test-container admission is restored to `0`. Final evidence paths, privacy/recovery coverage and limits — [[Project State]]. Subsequently checkpointed/published as `ee56e23` before visual work; no tag.
 
 Implemented and verified production path:
 

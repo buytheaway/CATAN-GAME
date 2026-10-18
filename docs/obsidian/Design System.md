@@ -1,6 +1,6 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-12
+updated: 2026-10-18
 ---
 
 # Design System
@@ -13,13 +13,21 @@ Room Lifecycle Phase 1 uses the existing lobby heading action styles for a plain
 
 ## Fog presentation — S2B-2B.3A
 
-**Implemented/fixture-tested 2026-10-12; public Fog DISABLED.** Unknown tiles use a uniform blue-grey `#526879` top, dark `#354958` side and three restrained `#a6beca` mist strokes. The mark means unexplored, never Sea/Gold/Desert or a resource hint. SVG and procedural Three hexes preserve existing public centers, rim contact, ownership pieces and legal hitboxes. No Fog asset, hidden GLB, number token, resource symbol, hidden coast or secret tooltip. Revealed tiles reuse the existing eight terrain visuals/GLBs and number tokens immediately.
+**Historical .3A appearance/fixture results, 2026-10-12; Three appearance superseded by Visual Phase 1 below.** Public Fog was DISABLED at that checkpoint; the later gated beta stays disabled by default. Unknown tiles used a uniform blue-grey `#526879` top, dark `#354958` side and three restrained `#a6beca` mist strokes. SVG retains this visual language. The mark means unexplored, never Sea/Gold/Desert or a resource hint. SVG and procedural Three hexes preserve existing public centers, rim contact, ownership pieces and legal hitboxes. No Fog asset, hidden GLB, number token, resource symbol, hidden coast or secret tooltip. Revealed tiles reuse the existing eight terrain visuals/GLBs and number tokens immediately.
 
-Reveal is a finite 420ms translucent veil after a new committed hidden→revealed snapshot, with no gameplay blocking or reward particles; refresh/reconnect/history do not replay it. Reduced motion skips the veil. Existing public Game Log describes discovery and server reward; personal Gold modal explains a current discovery choice without exposing the selected resource to others. No new HUD, fantasy setting, audio cue system or layout redesign. Details — [[React интерфейс#Public Fog presentation — S2B-2B.3A]], [[plans/seafarers-fog]].
+At the .3A checkpoint, reveal was a finite 420ms translucent veil after a new committed hidden→revealed snapshot, with no gameplay blocking or reward particles; refresh/reconnect/history did not replay it. SVG retains that duration; Three's later timing is below. Reduced motion skips the veil. Existing public Game Log describes discovery and server reward; personal Gold modal explains a current discovery choice without exposing the selected resource to others. No new HUD, fantasy setting, audio cue system or layout redesign. Details — [[React интерфейс#Public Fog presentation — S2B-2B.3A]], [[plans/seafarers-fog]].
 
 **Additional verification 2026-10-16, S2B-2B.3B:** unchanged SVG/Board3D/GLB/discovery/Gold presentation is also checked in real two-client Chrome against scoped live WS/PostgreSQL, including refresh and backend restart while pending. No visual/runtime React change or public Fog activation; prepared/funded fixtures are not full natural Fog games. Exact results — [[React интерфейс#Internal live Fog acceptance — S2B-2B.3B]], [[Project State]].
 
-Real Chrome fixture screenshots inspected at 1440×900 and 1024×768: partial revealed Forest/Gold/Sea/Desert, all-hidden neutral board, Gold overlay, 50-tile framing and SVG parity. These are synthetic **PUBLIC** presentation fixtures, not live Fog matches or official scenario assets. Artifacts are ignored test output, not design reference assets; reproduction — [fog-rendering.cjs](../../web/e2e/fog-rendering.cjs). Mobile/low-end/load and live security acceptance remain unverified.
+Historical .3A Chrome fixture screenshots were inspected at 1440×900 and 1024×768: partial revealed Forest/Gold/Sea/Desert, all-hidden neutral board, Gold overlay, 50-tile framing and SVG parity. These are synthetic **PUBLIC** presentation fixtures, not live Fog matches or official scenario assets. Artifacts are ignored test output, not design reference assets; reproduction — [fog-rendering.cjs](../../web/e2e/fog-rendering.cjs). Mobile/low-end/load remained unverified; later live/beta acceptance and current visual checks are separately dated in [[Project State]].
+
+## Fog Visual Phase 1 — modern tabletop mist
+
+**Implemented/verified 2026-10-18.** Unknown Three tiles use a uniform slate `#4e6777` /`#304956` foundation, a soft continuous cloud silhouette and a low translucent haze. Cool blue-grey shaded areas blend into pale mist; gentle procedural drift/breathing replaces the old three-stroke 3D mark. Every unknown tile has the same surface, height and material inputs, independent of actual terrain. No terrain silhouette, hint, token, hidden coast/port or terrain GLB is constructed. Shared procedural geometry, no new downloaded/Blender assets or dependency.
+
+New authorized discoveries disperse the same cover for **1 second**, lifting/spreading/fading above already-mounted normal terrain and token. No flash, reward particles or new HUD; pieces/ownership/GLB style remain unchanged. SVG preserves its old art/420ms fade. Reduced motion uses still mist and immediate discovery; **Fog effects** offers still mist or simple neutral markers for a quieter/lighter view. These controls affect presentation only and do not disable game actions. Visual meshes never intercept pointers; legal placement remains clickable during simultaneous reveals.
+
+The real Board3D preview shows visible Forest/Gold/Sea/Desert, three adjacent unknowns and a real player ship at the Sea/Fog boundary. **Reveal one/two**, Reset and 50 tiles inject only synthetic public frames. [Launch instructions](../../web/e2e/README.md#fog-visual-phase-1--local-public-only-preview); current screenshots/diagnostics live in ignored `%TEMP%/catan-fog-visual-phase1/`. No public Fog activation or trusted recipe exposure. Current checks and measured limits — [[React интерфейс#Fog Visual Phase 1 — procedural mist]], [[plans/seafarers-fog#Fog Visual Phase 1 — implementation plan, 2026-10-18]]. Clean modern tabletop remains the accepted direction; historical fantasy/MMORPG references remain rejected concepts.
 
 ## Product / UX / Visual Polish — Phase 4: Audio
 

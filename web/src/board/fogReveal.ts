@@ -39,7 +39,7 @@ export function advanceFogReveal(previous: RevealBaseline | null, frame: RevealF
 }
 
 /** A single expiry timer, with no per-frame React updates or gameplay callbacks. */
-export function useFogReveal(frame: RevealFrame): ReadonlyMap<number, number> {
+export function useFogReveal(frame: RevealFrame, duration = FOG_REVEAL_MS): ReadonlyMap<number, number> {
   const previous = useRef<RevealBaseline | null>(null);
   const [reveals, setReveals] = useState<ReadonlyMap<number, number>>(() => new Map());
   const reduced = useReducedMotion();
@@ -55,12 +55,12 @@ export function useFogReveal(frame: RevealFrame): ReadonlyMap<number, number> {
   }, [frame.key, frame.tick, frame.tiles, frame.connected, reduced]);
   useEffect(() => {
     if (!reveals.size) return;
-    const deadline = Math.min(...reveals.values()) + FOG_REVEAL_MS;
+    const deadline = Math.min(...reveals.values()) + duration;
     const timer = window.setTimeout(() => {
       const now = performance.now();
-      setReveals(old => new Map([...old].filter(([, started]) => now - started < FOG_REVEAL_MS)));
+      setReveals(old => new Map([...old].filter(([, started]) => now - started < duration)));
     }, Math.max(1, deadline - performance.now()));
     return () => window.clearTimeout(timer);
-  }, [reveals]);
+  }, [reveals, duration]);
   return reveals;
 }

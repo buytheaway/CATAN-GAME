@@ -4,6 +4,7 @@ import {
   PlaneGeometry, RingGeometry, Shape, SphereGeometry, TorusGeometry,
 } from "three";
 import { createPieceMaterials } from "./pieceAssets";
+import { createFogResources } from "./fogResources";
 
 function extrude(points: [number, number][], depth: number, bevel: number) {
   const shape = new Shape();
@@ -73,6 +74,7 @@ export function createVisualResources() {
   const geometries = new Map<string, BufferGeometry>();
   const materials = new Map<string, MeshStandardMaterial | MeshBasicMaterial>();
   const pieces = createPieceMaterials();
+  let fog: ReturnType<typeof createFogResources> | undefined;
   let leases = 0;
   const dispose = () => {
     geometries.forEach(g => g.dispose());
@@ -80,9 +82,11 @@ export function createVisualResources() {
     geometries.clear();
     materials.clear();
     pieces.dispose();
+    fog?.dispose(); fog = undefined;
   };
   return {
     pieces,
+    fog() { return fog ??= createFogResources(); },
     geometry(kind: keyof typeof factories) {
       if (!geometries.has(kind)) geometries.set(kind, factories[kind]());
       return geometries.get(kind)!;
