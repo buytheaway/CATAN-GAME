@@ -1,5 +1,52 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5B.1 - GPU investigation
+
+The historical `ship-art-compare.cjs` reports preserve5A evidence, but its
+`gpuMedianMs` is synchronized `render + finish` wall time, and the old helper
+discarded frame timing arrays. Do not reinterpret it as isolated GPU timing.
+
+Use the corrected benchmark with the existing external Playwright installation
+and installed Chrome. In this workspace its module root is
+`.venv/test-artifacts/fog3a-tools/node_modules` (ignored; no dependency upgrade):
+
+```powershell
+$env:NODE_PATH = (Resolve-Path '.venv/test-artifacts/fog3a-tools/node_modules').Path
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP ('catan-ship-gpu-' + [guid]::NewGuid().ToString('N'))
+node web/e2e/ship-art-gpu.cjs
+```
+
+Run again with a fresh output directory for an independent repeat. `--smoke`
+checks the probe on seven-static with short sample counts, not the full matrix.
+Existing reports cannot be overwritten. The runner pins published5A `web/src`,
+checks the original GLB SHA, and switches current procedural/GLB in the same page.
+Fixtures/public asset must match that checkpoint; source checkout is never reset.
+It uses true asynchronous WebGL timer queries with validity checks, ABBA/BAAB,
+equal90 warm/120 GPU/60 separate wall samples per reading, six cases and four
+readings/model/case. Main-plus-shadow counts, resource/program stability, clock/
+temperature/power snapshots, chronological samples, block results and cold fetch
+timing are saved to `gpu-investigation.json`. Unsupported timers fail explicitly;
+invalid/failing results remain recorded. Screenshots/video are outside timing;
+no video is recorded by this runner. Automatic R3F drawing is temporarily paused
+inside the external probe, ambient listeners continue, and the setting is restored.
+No production instrumentation or server command is used.
+
+This is render-span microbenchmarking, not sustained FPS or exclusive GPU access.
+Actual paced durations are recorded; power/clocks are not locked and other user
+applications are not stopped. Initial GLB detection includes automation; a draw
+can precede detection, so remaining compileAsync wait is not first-use shader
+compilation cost. Browser/driver shader caches are not forcibly cleared.
+
+Completed primary/repeat: `%TEMP%/catan-ship-gpu-5b1-primary/` and
+`catan-ship-gpu-5b1-repeat/`. Each has13 PNGs: seven/fifty normal/reduced/static
+for both bodies and `7-glb-close.png`; raw reports retain opposing tails.
+For interactive inspection, `node web/e2e/ship-art-demo.cjs` opens the existing
+loopback preview at **http://127.0.0.1:18780/?demo=1&shipsart=1**. If already
+running, reuse it. Select **Ship model**, **50 tiles**, and wheel zoom; default
+remains Procedural. This serves only synthetic PUBLIC snapshots without backend.
+Full results, historical corrections, source audit and limits:
+[Board3D investigation](../../docs/obsidian/plans/board3d.md#visual-phase-5b1---ship-gpu-investigation).
+
 ## Visual Phase 5A - Blender ship art comparison
 
 From root with existing dependencies: `node web/e2e/ship-art-demo.cjs`.

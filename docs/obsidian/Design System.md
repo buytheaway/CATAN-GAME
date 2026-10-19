@@ -7,6 +7,14 @@ updated: 2026-10-19
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 5B.1 - ship performance findings
+
+**Investigation tested2026-10-19; no art/default change.** Phase5A is published as `5a3902cd22e080c14d4b6b43c415ed8026297118`. Both original contradictory wall-time reports remain; their historical GPU label/raw-sample claims are corrected in [[plans/board3d#Visual Phase 5B.1 - ship GPU investigation]]. Two corrected GPU-timer ABBA/BAAB runs cover7/50 normal/reduced/static with identical public scene/camera/counts, full raw data and separate loading/warm-up. No persistent GLB-specific50-normal regression reproduced, but clock/power variation, opposing tails and one desktop GPU make default promotion **inconclusive**, not approved or equivalent.
+
+Original `.blend` was inspected read-only; current GLB/materials/shape/pivot/color palette remain unchanged. Three DoubleSide materials, extra triangles and wider sail/shadow coverage are measurable implementation differences; they do not establish the historical spike's cause. Winding/open surfaces mean blanket FrontSide changes could damage appearance. A possible future5B.2 refinement should first validate topology and selective culling against front/back/ghost/shadow views; no optimization or artistic result is preapproved. Geometry/neutral materials are already shared, existing animation wrappers/shared clock retained. Procedural remains the default, GLB explicit opt-in with existing fallback.
+
+New13-shot sets per run under `%TEMP%/catan-ship-gpu-5b1-primary/` and `catan-ship-gpu-5b1-repeat/`: seven-hex standard zoom, close-up,50 hexes, four owner colors and normal/reduced/static. Normal/close/50 GLB images were visually inspected; this is synthetic PUBLIC Board3D evidence, not a new natural game or user artistic approval. Existing loopback preview and original5A media remain available; [reproduction](../../web/e2e/README.md#visual-phase-5b1---gpu-investigation). No new asset/model, lighting, camera, UI redesign or Phase5B.2 implementation.
+
 ## Visual Phase 5A - ship art direction pilot
 
 **One experimental model implemented/visually inspected2026-10-19; final aesthetic approval not implied.** Actual Blender5.2.2 LTS Store installation and background CLI verified; initial missing-toolchain assessment is superseded. One original faceted wooden hull, broad lightly billowed ivory sail and readable owner-colored gunwale/bench/pennant reuse the clean matte tabletop direction. No realistic rigging, texture set, cinematic environment or other model replacement.

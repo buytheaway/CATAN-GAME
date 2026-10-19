@@ -5,9 +5,81 @@ updated: 2026-10-19
 
 # Board3D
 
+## Visual Phase 5B.1 - ship GPU investigation
+
+**Investigation completed/tested 2026-10-19. No promotion or art approval.** Published Phase5A is `5a3902cd22e080c14d4b6b43c415ed8026297118`. Production default stays Procedural; the existing GLB remains opt-in with procedural loading/error fallback. No runtime renderer, model, animation, backend, protocol, persistence, Fog gate or dependency change. Two benchmark-only files correct demonstrated measurement defects; no commit/push or Phase5B.2 implementation.
+
+### Historical evidence and confirmed measurement defects
+
+Both original Phase5A reports are preserved, including 50-normal synchronized wall medians3.80->3.70 ms and independent3.85->5.00 ms/p95 up to11.20. The latter aggregate contains one GLB reading6.20/11.20 followed by3.80/4.40. Across all four GLB readings from both reports, reading medians are3.80/3.60/6.20/3.80; procedural3.70/3.90/3.80/3.90. No universal order/warming trend is established. Do not discard the anomalous reading.
+
+The old field `gpuMedianMs` actually times CPU `performance.now()` around `gl.render + gl.finish`: synchronized render **wall time**, including JS/driver/wait/scheduling and potentially an earlier queued R3F frame. It is not isolated GPU elapsed time. The old helper saves only per-reading summaries; underlying60 wall and30 submission durations were discarded. Historical statements about preserving every raw timing sample are superseded here. Their missing frame samples cannot be recovered. Unequal readiness dwell (GLB side calls fullyReady twice), twelve burst warm renders, ten-render bursts versus paced submission measurements, asymmetric screenshots and unrecorded animation phases/power states limit attribution. Old calls/triangles cover the main pass only: Three resets info after shadow rendering, although timed work includes shadows.
+
+Original immutable reports: `%TEMP%/catan-ship-art-pilot-final/paired-performance.json` SHA256 `ebe9feb20dd6a33ab45cf30dd8afe46b7f9c2c8e512f1226788066ed9bd113ac`; `%TEMP%/catan-ship-art-pilot-repeat/paired-performance.json` SHA256 `2b10d543e8b8e690e5889a60b66b8303a1b9d3a15e02adf46eff9b314e41a1b0`.
+
+### Corrected controlled method
+
+[ship-art-gpu.cjs](../../../web/e2e/ship-art-gpu.cjs) pins the same published5A `web/src` on both sides and verifies the unchanged GLB SHA, then switches models in one actual public Ship Art Demo page. This compares current production-default procedural versus opt-in GLB, rather than different renderer bundles. Chrome155.0.8059.80, RTX5050 Laptop/ANGLE D3D11, driver610.74,1440x900/DPR1/Canvas1186x723; matching public snapshot hash, camera, shadows, occupied edges/owners, four ships on seven hexes and24 on50. Two separate Chrome runs cover all six normal/reduced/static cases.
+
+Each run/case uses ABBA then BAAB (A=Procedural, B=GLB), four readings per model. Both models are loaded before the paired phase. Every reading waits for compileAsync, then90 paced warm renders,120 GPU queries and60 separately paced synchronized wall samples. All frames have chronological indices/timestamps. GPU uses asynchronous `EXT_disjoint_timer_query_webgl2` with availability/disjoint checks; invalid results remain recorded. Wall samples drain earlier work outside the measured span. Automatic R3F drawing is paused/restored only by the external probe; existing normal ambient listeners continue, settled fixtures have no active finite cues. This measures command-span render cost, not sustained gameplay FPS, GPU busy utilization or an isolated ship shader. Actual durations vary with refresh/scheduling and are recorded; clocks/power are not locked. No user applications are stopped. Sampling order/counts/cadence are identical; no claim of an exclusive GPU or fixed millisecond period.
+
+Counters explicitly reset before rendering with info.autoReset=false, including **main plus shadow passes**, unlike historical5A counters. Both runs complete exit0/errors[]: **96 paired readings total;11,520 valid GPU timers,5,760 wall samples and8,640 warm samples**, zero disjoint results. Program/resource counts match before and after every steady reading (nine shader programs); these endpoint checks do not profile every allocation between samples. No model reload after switching; exactly one12,080-byte GLB/page. Normal idle returns to12 frames/s; reduced/static0; no fixture commands sent. Raw values and outliers are retained, never filtered to improve results.
+
+### Complete steady-state results
+
+All arrows are Procedural -> GLB, ms. GPU median/p95 are nearest-rank statistics pooled from480 GPU samples per model/case/run, not the historical mean-of-two-reading-medians metric. New GPU values must not be compared numerically with old wall-time fields as though they were the same measurement.
+
+| Scene | Primary GPU median | Primary GPU p95 | Repeat GPU median | Repeat GPU p95 |
+| --- | --- | --- | --- | --- |
+| 7 normal | .695 -> .657 | 1.336 -> 1.219 | .674 -> .595 | 1.222 -> 1.037 |
+| 7 reduced | .652 -> .621 | 1.215 -> 1.237 | .652 -> .642 | 1.181 -> 1.162 |
+| 7 static | .580 -> .561 | 1.201 -> 1.165 | .677 -> .640 | 1.154 -> 1.084 |
+| 50 normal | 3.256 -> 3.134 | 4.191 -> 3.990 | 3.337 -> 3.189 | 4.533 -> 4.040 |
+| 50 reduced | 3.208 -> 3.166 | 4.023 -> 3.885 | 3.306 -> 3.233 | 4.058 -> 4.021 |
+| 50 static | 3.430 -> 3.407 | 4.204 -> 4.271 | 3.293 -> 3.115 | 4.344 -> 3.796 |
+
+Separate synchronized render wall-time diagnostics (240 samples/model/case/run):
+
+| Scene | Primary wall median | Primary wall p95 | Repeat wall median | Repeat wall p95 |
+| --- | --- | --- | --- | --- |
+| 7 normal | 1.40 -> 1.40 | 2.90 -> 2.10 | 1.40 -> 1.30 | 2.00 -> 1.80 |
+| 7 reduced | 1.40 -> 1.40 | 1.80 -> 1.70 | 1.40 -> 1.40 | 1.80 -> 1.70 |
+| 7 static | 1.30 -> 1.30 | 1.80 -> 1.80 | 1.30 -> 1.40 | 1.80 -> 1.90 |
+| 50 normal | 4.50 -> 4.40 | 5.20 -> 5.40 | 4.80 -> 4.60 | 5.90 -> 5.10 |
+| 50 reduced | 4.70 -> 4.60 | 5.60 -> 5.30 | 4.70 -> 4.70 | 5.40 -> 6.10 |
+| 50 static | 4.80 -> 4.70 | 5.50 -> 5.40 | 4.70 -> 4.60 | 5.60 -> 5.50 |
+
+Main+shadow counts are stable in all modes/runs: seven tiles calls411->395/triangles51,660->52,452;50 tiles calls2486->2390/triangles313,182->317,934. More triangles and fewer calls do not independently establish performance equivalence. In these warmed in-page comparisons both models retain the already-loaded geometry caches:154 geometries/six textures on seven tiles,153/17 on50, with no steady churn. Historical separate-page5A GLB readings added three shared geometries; that is not a between-model memory delta in the new warmed test. The paired-block deltas/per-reading medians, submit timings, every sample and sensor snapshots are in the raw reports.
+
+**Contradictory tails remain:** primary50-static GPU max14.889 ms GLB, versus procedural50-normal max11.047; independent repeat maximum9.594 occurs in procedural50-static. The worst GLB span also has16.90 ms submission/22.60 ms query-ready wall time. Primary50-static p95 is slightly worse for GLB; repeat50-reduced wall p95 is6.10 versus5.40. These are retained, not explained away by lower medians. Timer spans can include scheduling/command-feed stalls; they do not isolate asset shader execution.
+
+### Loading, warming and attribution limits
+
+Twelve fresh page/context JS caches with HTTP cache disabled: GLB fetch duration **1.70-4.70 ms**,12,080-byte body/12,380-byte reported transfer. Opt-in to rAF detection **17.50-40.10 ms** includes UI automation, parsing/mounting and scheduling. A first render may precede detection; the explicitly named post-detection render and remaining compileAsync wait do not measure true first-use shader compilation. Browser/driver shader caches were not forcibly cleared. Remaining compileAsync waits2.40-16.70 ms include traversal/driver work; steady program count is9->9. Initial fetching/remaining compile waits and warm frames are excluded from steady statistics.
+
+Confirmed environmental variation in the new runs, including start/end snapshots: P2/P4/P5 states, graphics clock **540-2572 MHz**,53-62 C,7.99-22.99 W. Per-reading snapshots alone are P2/P4,54-62 C. These snapshots demonstrate varying power/clock conditions; they do **not** prove thermal throttling or explain the historical6.20/11.20 reading, whose telemetry/raw frames were not recorded. Driver scheduling, other GPU work, CPU/GC/JIT/command-feed stalls, warming and normal-phase variation remain possible contributors. Matching snapshots/camera/counts and matching endpoint resources rule out mismatched board sizes, ship counts, repeated loading and net per-reading program/resource growth in the new comparison. No specific historical root cause is proven.
+
+### Asset audit and future optimization candidates
+
+The actual `ship_pilot.blend` was opened read-only with installed Blender5.2.2 LTS background CLI, without saving. Three mesh objects plus identity root/pivots match the export profile; source vertices128 versus exported POSITION/NORMAL vertices339 (flat-normal splits),187 triangles. GLB has three opaque PBR materials, no textures/UV/tangents/skin/morph/baked animation/external resources. Original local-X heading, grounded Y pivot, `.88 * edge length` X scale and outer edge position/yaw/motion wrappers remain. Source and GLB hashes are unchanged.
+
+All three GLB materials are **DoubleSide**; procedural materials use FrontSide. This disables culling and changes shadow-side work; transparent DoubleSide ghost rendering takes six draws/374 submitted triangles versus five/88 procedural, but settled paired cases have no ghosts. The broader/taller sail also changes projected/shadow coverage. These are real mechanisms, **not proof of the old timing spike**. The template/geometry/neutral materials are shared, owner/ghost copies pooled, and cloning does not copy geometry or introduce an animation mixer/extra clock.
+
+Do not blindly switch to FrontSide: topology inspection found inconsistent sail edge winding, an inward-wound pennant and open gunwale/deck surfaces currently masked by DoubleSide. A future5B.2 candidate is to repair intended winding/surfaces first, then evaluate selective culling/ghost single-pass handling with equivalent front/back/shadow visual acceptance. It is not an approved or measured optimization. Instancing three parts is another conditional future option only if profiling warrants its complexity; preserve exact anchors/owner colors/motion/ghosts. Do not merge flat-normal splits or simplify art merely to reduce a count.
+
+### Evidence, reproduction and verdict
+
+Raw reports and13 screenshots each: `%TEMP%/catan-ship-gpu-5b1-primary/gpu-investigation.json`, `%TEMP%/catan-ship-gpu-5b1-repeat/gpu-investigation.json`. Each directory contains7/50 normal/reduced/static procedural and GLB PNGs plus `7-glb-close.png`; normal, close-up and50 GLB images were visually inspected. Four owner colors and existing Fog/buildings/ports use synthetic PUBLIC fixtures, not a natural full match. Native source read report: `%TEMP%/catan-ship-source-audit-323115393be64aeeacddb4027050d446.json`. Earlier5A videos/screenshots/reports remain untouched.
+
+Existing preview stays loopback-only: `node web/e2e/ship-art-demo.cjs` -> `http://127.0.0.1:18780/?demo=1&shipsart=1`. Use model/50 tiles controls and real wheel zoom; default remains Procedural. [Corrected benchmark instructions](../../../web/e2e/README.md#visual-phase-5b1---gpu-investigation).
+
+**Verdict: INCONCLUSIVE for default promotion; no demonstrated persistent GLB-specific regression on this tested GPU.** Both new50-normal medians/p95 favor GLB, but small differences, retained tails, unlocked clock/power, one GPU and an unidentified historical outlier prevent equivalence/general performance claims. Continue optional art evaluation separately; do not promote or redesign the model based only on the original wall-time anomaly. Phase5B.2 art refinement can be proposed with topology/culling validation and user art review, not started automatically.
+
+Verification: **380 frontend tests pass** (377 existing +3 benchmark aggregation/order/invalid-timer cases), TypeScript passes; smoke and both complete controlled runs exit0. No Python suite, new backend/PG acceptance, production build or Docker build run: runtime, dependencies and deployment are unchanged. No new claim about full-match/gameplay coverage. User graph, asset/source, database data and production default preserved.
+
 ## Visual Phase 5A - Blender pipeline and ship pilot
 
-**Implemented/verified; READY FOR CHECKPOINT as an explicit opt-in pilot, 2026-10-19.** Phase4 checkpoint **`2d93c40caed5c5febfc88f49e1234fb7853d2db1`**, `feat: animate robber and pirate movement with safe theft feedback`, was committed/pushed normally with 22 intended files/all 11 new sources. Cached whitespace and exact `origin/main` hash verified; graph/artifacts excluded. No tags. Phase5A remains uncommitted/unpushed.
+**Historical completed verification; published as `5a3902cd22e080c14d4b6b43c415ed8026297118` on2026-10-19 after explicit authorization.** Exactly27 pilot files committed/pushed normally; cached whitespace and exact remote HEAD verified, graph/artifacts excluded, no tags. One additional temporary-root export reproduced identical GLB bytes at checkpoint. Phase4 checkpoint is `2d93c40caed5c5febfc88f49e1234fb7853d2db1`. The following5A evidence is historical; measurement definitions/limits are corrected by Phase5B.1 above.
 
 ### Toolchain and reproducible source
 
@@ -41,9 +113,9 @@ These are prepared/public fixtures and bounded acceptance, not new natural/compe
 
 `node web/e2e/ship-art-demo.cjs` -> `http://127.0.0.1:18780/?demo=1&shipsart=1` (loopback; optional `CATAN_SHIP_ART_PREVIEW_PORT`). Actual Board3D and synthetic PUBLIC snapshots, four owner colors,7/50 tiles, model toggle, Construct/Move/Reset/Multiple ships and existing effects/reduced controls. Reset before replaying consumed targets. No backend, trusted assignments, credentials or gameplay execution. Earlier procedural BEFORE capture/preview is retained at18779. Restarting that helper compiles the current working tree; use the comparator's pinned Git blobs for a reproducible checkpoint comparison. [Browser reproduction](../../../web/e2e/README.md#visual-phase-5a---blender-ship-art-comparison).
 
-Primary and one independent repeat both complete exit0/errors[], retaining all raw readings. Exact checkpoint2d93c40 runtime Git blobs versus new GLB, same four-owner public state/hash/camera/DPR1/shadows/Chrome155/RTX5050 Laptop/ANGLE D3D11,1440x900/Canvas1186x723. One measured page at a time, B/A/A/B ordering,12 warm renders,60 GPU-synchronous render+finish and30 CPU submission samples per reading. Table uses mean of two medians; p95 is the worse reading. CPU submission includes driver/GPU stalls; no isolated CPU or sustained-FPS claim.
+Primary and one independent repeat both complete exit0/errors[], retaining per-reading summaries, not the individual frame timing arrays (see Phase5B.1 correction above). Exact checkpoint2d93c40 runtime Git blobs versus new GLB, same four-owner public state/hash/camera/DPR1/shadows/Chrome155/RTX5050 Laptop/ANGLE D3D11,1440x900/Canvas1186x723. One measured page at a time, B/A/A/B ordering,12 warm renders,60 synchronized render+finish wall and30 submission samples per reading. Table preserves originally reported values; its old GPU label actually denotes synchronized wall time. Mean of two medians; p95 is the worse reading. No isolated GPU/CPU or sustained-FPS claim.
 
-| Scene | First GPU median ms | Repeat GPU median ms | First GPU p95 ms | Repeat GPU p95 ms | First CPU submit median ms |
+| Scene | First wall median ms | Repeat wall median ms | First wall p95 ms | Repeat wall p95 ms | First submit median ms |
 | --- | --- | --- | --- | --- | --- |
 | 7 normal | .90 -> .95 | .80 -> .85 | 2.20 -> 3.00 | 1.60 -> 1.50 | 1.30 -> 1.20 |
 | 7 reduced | .90 -> .90 | .80 -> .85 | 2.40 -> 2.30 | 1.40 -> 2.40 | 1.20 -> 1.10 |
@@ -58,7 +130,7 @@ Stable counts (both runs):7 tiles/four ships calls237->229, triangles29,574->29,
 
 Reports: `%TEMP%/catan-ship-art-pilot-final/paired-performance.json` and `catan-ship-art-pilot-repeat/paired-performance.json`; both preserve raw GPU/CPU/calls/triangle/resource readings and matched PNGs. Final acceptance's actual SVG round-trip was also checked separately (two DOM checks, SVG present/Canvas absent and quiet GLB restoration) in `svg-round-trip.json`. Recording is separate from measurements; final video `f4fe86d4245e8efa0f0ba9734d1f1a9b.webm`. Earlier successful report/video and checkpoint BEFOREs are retained separately. Do not infer four-player live or full natural-match certification from these public display fixtures.
 
-Scope: one original pilot asset/source/profile plus reproducible CLI tooling; optional body/cache/control propagation and focused tests/previews/docs. No production backend, engine rules, protocol, database schema, Fog admission, auth, dependency, terrain/building/robber/pirate asset change. User GUI scene, graph/accounts/matches/volumes preserved. Test PostgreSQL is stopped without deleting data; comparison preview remains running independently. Phase5A is not committed/pushed; stop after this pilot.
+Historical scope: one original pilot asset/source/profile plus reproducible CLI tooling; optional body/cache/control propagation and focused tests/previews/docs. No production backend, engine rules, protocol, database schema, Fog admission, auth, dependency, terrain/building/robber/pirate asset change. User GUI scene, graph/accounts/matches/volumes preserved. Test PostgreSQL was stopped without deleting data. Phase5A was subsequently published only with explicit authorization as recorded above.
 
 ### Exact change scope and limits
 
