@@ -30,6 +30,7 @@ import ShipFleet3D from "./ShipFleet3D";
 import type { ShipCue } from "../board/shipFeedback";
 import type { ThreatCue } from "../board/threatFeedback";
 import Threats3D from "./Threats3D";
+import type { ShipModel } from "./shipAssets";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -60,13 +61,15 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
 export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true, reveals,
   shipCues = new Map(), shipsAnimated = true, onShipsAnimated,
   pieceCues = new Map(), constructionAnimated = true, onConstructionAnimated,
-  threatCues = new Map(), threatsAnimated = true, onThreatsAnimated }: {
+  threatCues = new Map(), threatsAnimated = true, onThreatsAnimated,
+  shipModel = "procedural", onShipModel }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
   reveals?: ReadonlyMap<number, number>;
   shipCues?: ReadonlyMap<string, ShipCue>; shipsAnimated?: boolean; onShipsAnimated?: (enabled: boolean) => void;
   pieceCues?: ReadonlyMap<string, PieceCue>; constructionAnimated?: boolean; onConstructionAnimated?: (enabled: boolean) => void;
   threatCues?: ReadonlyMap<string, ThreatCue>; threatsAnimated?: boolean; onThreatsAnimated?: (enabled: boolean) => void;
+  shipModel?: ShipModel; onShipModel?: (model: ShipModel) => void;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
@@ -105,6 +108,12 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             onChange={e => onShipsAnimated(e.target.value === "motion")}>
             <option value="motion">{reduced ? "Still · reduced motion" : "Motion"}</option>
             <option value="static">Still</option>
+          </select>
+        </label>}
+        {onShipModel && <label className="board3d-ship-model">Ship model
+          <select aria-label="Ship model" value={shipModel} onChange={e => onShipModel(e.target.value as ShipModel)}>
+            <option value="procedural">Procedural</option>
+            <option value="glb">GLB · pilot</option>
           </select>
         </label>}
         {onConstructionAnimated && <label className="board3d-construction-quality">Construction
@@ -157,7 +166,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           {model.roads.map(road => <Road3D key={road.edge.join(",")} road={road} color={colorForPlayer(road.owner, state.players)}
             cue={construction.get(`e:${edgeId(road.edge)}`)} />)}
           <ShipFleet3D ships={model.ships} cues={shipCues} vertices={state.vertices} edges={state.edges} size={state.size}
-            colors={shipColors} moving={shipsAnimated && connected && !reduced} />
+            colors={shipColors} moving={shipsAnimated && connected && !reduced} model={shipModel} />
           {model.buildings.map(building => building.level === 1
             ? <Settlement3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)}
                 cue={construction.get(`v:${building.vertexId}`)} visible={!replacesSettlement(preview, building)} />
@@ -166,7 +175,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           {model.ports.map(port => <Port3D key={port.edge.join(",")} port={port} />)}
           <Threats3D robbers={model.robbers} pirate={model.pirate} positions={publicPositions} cues={threatCues}
             moving={threatsAnimated && connected && !reduced} />
-          <InteractionOverlay3D state={state} interaction={interaction} hover={targetHover} onHover={setTargetHover} />
+          <InteractionOverlay3D state={state} interaction={interaction} hover={targetHover} onHover={setTargetHover} shipModel={shipModel} />
           </FogPresentation>
           </SceneMotion>
           </VisualResources>

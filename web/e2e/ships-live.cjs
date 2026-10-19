@@ -8,9 +8,23 @@ process.env.CATAN_E2E_ORIGIN ||= 'http://127.0.0.1:18774';
 process.env.CATAN_E2E_OUTPUT ||= path.join(os.tmpdir(), 'catan-ships-live-' + Date.now());
 const h = require('./game-actions.cjs'), live = require('./fog-live.cjs');
 const output = process.env.CATAN_E2E_OUTPUT;
+const shipModel = process.env.CATAN_E2E_SHIP_MODEL === 'glb' ? 'glb' : 'procedural';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const report = { scope: 'prepared internal Fog ship fixtures; normal authority/PG; public admission disabled', checks: [], cases: [] };
+const report = { scope: 'prepared internal Fog ship fixtures; normal authority/PG; public admission disabled', shipModel, checks: [], cases: [] };
 function check(label) { report.checks.push(label); console.log('PASS ' + label); }
+async function selectShipModel(c) {
+  if (shipModel !== 'glb') return;
+  await c.page.getByLabel('Ship model', { exact: true }).selectOption('glb');
+  await waitShipModel(c);
+}
+async function waitShipModel(c) {
+  if (shipModel !== 'glb' || !Object.keys(c.match.state.occupied_ships).length) return;
+  await c.page.waitForFunction(() => {
+    let loaded = false, fallback = false;
+    window.__scene.getState().scene.traverse(o => { loaded ||= o.userData.shipModel === 'glb'; fallback ||= !!o.userData.shipAssetFallback; });
+    return loaded && !fallback;
+  });
+}
 async function monitor(c) {
   await c.page.evaluate(() => {
     window.__shipObserved = { build: false, move: false, echo: false, fog: false };
@@ -36,7 +50,7 @@ async function active(c) {
 async function caseRun(browser, entry, ref) {
   const cs = [];
   try {
-    for (const pid of [0, 1]) { const c = await live.open(browser, entry, pid); cs.push(c); await h.open3d(c); }
+    for (const pid of [0, 1]) { const c = await live.open(browser, entry, pid); cs.push(c); await h.open3d(c); await selectShipModel(c); }
     const actor = cs[0], moving = entry.route.type === 'move_ship';
     live.privacy(cs); assert.equal(await active(actor), 0);
     if (!moving) {
@@ -58,7 +72,9 @@ async function caseRun(browser, entry, ref) {
     }
     for (const c of cs) await monitor(c);
     await h.action(cs, actor, () => h.clickTarget(actor, 'edge', moving ? entry.route.to_eid : entry.route.eid), entry.route.type);
-    const accepted = actor.sent.at(-1); await pause(1500);
+    const accepted = actor.sent.at(-1);
+    for (const c of cs) await waitShipModel(c);
+    await pause(1500);
     live.privacy(cs);
     for (const c of cs) {
       const seen = await c.page.evaluate(() => window.__shipObserved);
@@ -99,6 +115,7 @@ async function caseRun(browser, entry, ref) {
       await h.action(cs, actor, () => actor.page.getByRole('button', { name: 'Choose', exact: true }).click(), 'Gold after ship animation');
     }
     live.privacy(cs);
+    for (const c of cs) { await selectShipModel(c); assert.equal(await active(c), 0, 'model choice cannot replay recovered motion'); }
     await actor.page.screenshot({ path: path.join(output, entry.route.type + '.png') });
     for (const c of cs) { assert.deepEqual(c.jsErrors, []); assert.deepEqual(c.console, []); }
     report.cases.push({ type: entry.route.type, passed: true, unexpectedErrors: [],

@@ -7,6 +7,8 @@ import { useVisualResources } from "./VisualResources";
 import type { Point3D, RenderBuilding, RenderEdge } from "./types";
 import PieceVisual from "./PieceVisual";
 import type { PieceCue } from "./pieceFeedback";
+import ShipAsset from "./ShipAsset";
+import type { ShipModel } from "./shipAssets";
 
 const ignoreRaycast = () => undefined;
 type PieceMeshProps = ThreeElements["mesh"] & {
@@ -75,7 +77,7 @@ export function City3D({ building, ghost = false, color = playerColor(building.o
   </group>;
 }
 
-export function ShipBody3D({ length, color, ghost = false }: { length: number; color: string; ghost?: boolean }) {
+function ShipProceduralBody({ length, color, ghost }: { length: number; color: string; ghost: boolean }) {
   return <>
     <PieceMesh kind="hull" color={color} ghost={ghost} scale={[length * 0.88, 1, 1]} raycast={ignoreRaycast} />
     <PieceMesh kind="box" color={VISUAL.dock} ghost={ghost} position={[0, .14, 0]} scale={[.47, .025, .15]} raycast={ignoreRaycast} />
@@ -85,12 +87,20 @@ export function ShipBody3D({ length, color, ghost = false }: { length: number; c
   </>;
 }
 
-export function Ship3D({ ship, ghost = false, color = playerColor(ship.owner), visualRef }: {
-  ship: RenderEdge; ghost?: boolean; color?: string; visualRef?: (node: Group | null) => void;
+export function ShipBody3D({ length, color, ghost = false, model = "procedural" }: {
+  length: number; color: string; ghost?: boolean; model?: ShipModel;
+}) {
+  const body = <ShipProceduralBody length={length} color={color} ghost={ghost} />;
+  return model === "glb" ? <ShipAsset length={length} color={color} ghost={ghost}>{body}</ShipAsset>
+    : <group userData={{ shipModel: "procedural" }}>{body}</group>;
+}
+
+export function Ship3D({ ship, ghost = false, color = playerColor(ship.owner), visualRef, model }: {
+  ship: RenderEdge; ghost?: boolean; color?: string; visualRef?: (node: Group | null) => void; model?: ShipModel;
 }) {
   return <group position={ship.position} rotation={[0, ship.rotation, 0]}
     userData={{ edge: ship.edge, owner: ship.owner, piece: "ship", preview: ghost }}>
-    <group ref={visualRef} userData={{ shipVisual: true }}><ShipBody3D length={ship.length} color={color} ghost={ghost} /></group>
+    <group ref={visualRef} userData={{ shipVisual: true }}><ShipBody3D length={ship.length} color={color} ghost={ghost} model={model} /></group>
   </group>;
 }
 

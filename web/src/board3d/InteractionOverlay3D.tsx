@@ -9,10 +9,11 @@ import { City3D, Road3D, Settlement3D, Ship3D } from "./Pieces3D";
 import { useVisualResources } from "./VisualResources";
 import type { BoardSnapshot } from "./types";
 import { colorForPlayer } from "../board/colors";
+import type { ShipModel } from "./shipAssets";
 
-export default function InteractionOverlay3D({ state, interaction, hover, onHover }: {
+export default function InteractionOverlay3D({ state, interaction, hover, onHover, shipModel }: {
   state: BoardSnapshot; interaction: BoardInteraction;
-  hover: string | null; onHover: (key: string | null) => void;
+  hover: string | null; onHover: (key: string | null) => void; shipModel?: ShipModel;
 }) {
   const pool = useVisualResources();
   const gl = useThree(s => s.gl);
@@ -68,6 +69,6 @@ export default function InteractionOverlay3D({ state, interaction, hover, onHove
     {preview?.kind === "settlement" && <Settlement3D building={preview.building} color={colorForPlayer(preview.building.owner, state.players)} ghost />}
     {preview?.kind === "city" && <City3D building={preview.building} color={colorForPlayer(preview.building.owner, state.players)} ghost />}
     {preview?.kind === "road" && <Road3D road={preview.edge} color={colorForPlayer(preview.edge.owner, state.players)} ghost />}
-    {preview?.kind === "ship" && <Ship3D ship={preview.edge} color={colorForPlayer(preview.edge.owner, state.players)} ghost />}
+    {preview?.kind === "ship" && <Ship3D ship={preview.edge} color={colorForPlayer(preview.edge.owner, state.players)} ghost model={shipModel} />}
   </group>;
 }

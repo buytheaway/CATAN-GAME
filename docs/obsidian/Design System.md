@@ -1,11 +1,21 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-18
+updated: 2026-10-19
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
+
+## Visual Phase 5A - ship art direction pilot
+
+**One experimental model implemented/visually inspected2026-10-19; final aesthetic approval not implied.** Actual Blender5.2.2 LTS Store installation and background CLI verified; initial missing-toolchain assessment is superseded. One original faceted wooden hull, broad lightly billowed ivory sail and readable owner-colored gunwale/bench/pennant reuse the clean matte tabletop direction. No realistic rigging, texture set, cinematic environment or other model replacement.
+
+The pilot is187 triangles/12,080bytes with three materials HullWood/CanvasIvory/PlayerColor. Only PlayerColor receives the existing project palette; neutral materials stay unchanged/shared across owners, ghost clones isolated. All ownership IDs/anchors/legal targets are independent from this art. Original pirate remains dark/distinct. Lighting/camera/shadows remain fixed for comparison. The source/export script regenerates this one model reproducibly; two exports match byte-for-byte.
+
+**Ship model: Procedural /GLB - pilot** is local, default Procedural, with loading/error procedural fallback. It applies equally to confirmed ships/legal ghosts/source echoes without changing existing construction/movement/rocking. Still/reduced and shared demand-clock behavior remain. No new game option or snapshot field. Preview `http://127.0.0.1:18780/?demo=1&shipsart=1`, `node web/e2e/ship-art-demo.cjs`: actual Board3D/public7/50, four owner colors, Fog/settlement/port, near/far inspection and model toggle. Final six-group Chrome PNGs/WebM under `%TEMP%/catan-ship-art-pilot-final/`; checkpoint BEFOREs remain under `catan-ship-art-pilot-baseline/`. Four-color scenes are synthetic, not a certified four-player live match.
+
+Status/tests/performance limits and reproducible asset workflow: [[plans/board3d#Visual Phase 5A - Blender pipeline and ship pilot]], [export instructions](../../tools/blender/README.md). Mobile/low-end and user art approval are unverified; do not turn a triangle count into a quality/performance claim.
 
 ## Visual Phase 4 — robber and pirate motion
 

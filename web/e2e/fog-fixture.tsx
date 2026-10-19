@@ -5,6 +5,7 @@ import GamePage from "../src/components/GamePage";
 import { WSClient, type MatchState, type RoomState, type ServerError } from "../src/wsClient";
 import { goldDiscoveryFixture, publicFogFixture } from "../tests/fixtures/publicFog";
 import { publicShipFixture, shipPreviewChange } from "../tests/fixtures/publicShips";
+import { publicShipArtFixture } from "../tests/fixtures/publicShipArt";
 import { publicBuildingFixture, buildingPreviewChange, type BuildingPreviewKind } from "../tests/fixtures/publicBuildings";
 import { publicThreatFixture, threatPreviewChange, type ThreatPreviewKind } from "../tests/fixtures/publicThreats";
 import "../src/styles.css";
@@ -30,9 +31,10 @@ const client = new WSClient();
 let matchId = 0;
 const preview = new URLSearchParams(location.search).get("demo") === "1";
 const shipPreview = new URLSearchParams(location.search).get("ships") === "1";
+const shipArtPreview = new URLSearchParams(location.search).get("shipsart") === "1";
 const buildingPreview = new URLSearchParams(location.search).get("buildings") === "1";
 const threatPreview = new URLSearchParams(location.search).get("threats") === "1";
-const reducedPreview = (shipPreview || buildingPreview || threatPreview) && new URLSearchParams(location.search).get("reduce") === "1";
+const reducedPreview = (shipPreview || shipArtPreview || buildingPreview || threatPreview) && new URLSearchParams(location.search).get("reduce") === "1";
 if (reducedPreview) {
   const native = window.matchMedia.bind(window);
   window.matchMedia = query => {
@@ -51,9 +53,9 @@ function Fixture() {
     client.onMatchState = setMatch; client.onRoomState = setRoom; client.onStatus = setStatus; client.onError = setError;
     client.connect("ws://public-fixture.invalid/ws", "Explorer"); FixtureSocket.latest.onopen?.();
     const load = (mode: Parameters<typeof publicFogFixture>[0] | "gold" = "partial") => {
-      const state = threatPreview ? publicThreatFixture(mode === "large") : buildingPreview ? publicBuildingFixture(mode === "large") : shipPreview ? publicShipFixture(mode === "large")
+      const state = shipArtPreview ? publicShipArtFixture(mode === "large") : threatPreview ? publicThreatFixture(mode === "large") : buildingPreview ? publicBuildingFixture(mode === "large") : shipPreview ? publicShipFixture(mode === "large")
         : mode === "gold" ? goldDiscoveryFixture() : publicFogFixture(mode);
-      if (preview && !shipPreview && !buildingPreview && !threatPreview && mode === "partial") {
+      if (preview && !shipPreview && !shipArtPreview && !buildingPreview && !threatPreview && mode === "partial") {
         // Public fixture geometry only: put the existing real ship on the sea/fog boundary.
         const boundary = state.edges!.find(edge => {
           const adjacent = state.edge_adj_hexes![edge.join(",")];
@@ -63,7 +65,7 @@ function Fixture() {
       }
       setStatus("connected"); setError(null); matchId++;
       const room: RoomState = { type: "room_state", room_code: "FIXTURE", map_revision: 0, host_pid: 0,
-        status: "in_match", max_players: 2,
+        status: "in_match", max_players: state.players.length,
         players: state.players.map(p => ({ pid: p.pid, name: p.name, color: p.color, connected: true })) };
       FixtureSocket.latest.receive(room);
       FixtureSocket.latest.receive({ type: "match_state", room_code: "FIXTURE", match_id: matchId,
@@ -151,7 +153,7 @@ function Fixture() {
     <GamePage client={client} match={match} room={room} status={status} log={[]}
       error={error} onBackToLobby={() => {}} />
     {preview && <aside className="fog-preview" aria-label="Synthetic public Fog preview">
-      <strong>{threatPreview ? "Robber & pirate preview" : buildingPreview ? "Construction preview" : shipPreview ? "Ship animation preview" : "Fog visual preview"}</strong><small>Synthetic public snapshots · no server</small>
+      <strong>{shipArtPreview ? "Ship art comparison" : threatPreview ? "Robber & pirate preview" : buildingPreview ? "Construction preview" : shipPreview ? "Ship animation preview" : "Fog visual preview"}</strong><small>Synthetic public snapshots · no server</small>
       <div>
         {threatPreview ? <>
           <button onClick={() => (window as any).__fogFixture.threat("robber")}>Move robber</button>
@@ -169,11 +171,11 @@ function Fixture() {
           <button onClick={() => (window as any).__fogFixture.building("road", true)}>Build together</button>
           <button onClick={() => (window as any).__fogFixture.ship(false)}>Construct ship</button>
           <a href={reducedPreview ? "?demo=1&buildings=1" : "?demo=1&buildings=1&reduce=1"}>{reducedPreview ? "Normal motion" : "Reduced motion"}</a>
-        </> : shipPreview ? <>
+        </> : shipPreview || shipArtPreview ? <>
           <button onClick={() => (window as any).__fogFixture.ship(false)}>Construct ship</button>
           <button onClick={() => (window as any).__fogFixture.ship(true)}>Move ship</button>
           <button onClick={() => (window as any).__fogFixture.fleet()}>Multiple ships</button>
-          <a href={reducedPreview ? "?demo=1&ships=1" : "?demo=1&ships=1&reduce=1"}>{reducedPreview ? "Normal motion" : "Reduced motion"}</a>
+          <a href={reducedPreview ? `?demo=1&${shipArtPreview ? "shipsart" : "ships"}=1` : `?demo=1&${shipArtPreview ? "shipsart" : "ships"}=1&reduce=1`}>{reducedPreview ? "Normal motion" : "Reduced motion"}</a>
         </> : <>
           <button onClick={() => (window as any).__fogFixture.reveal(1)}>Reveal one</button>
           <button onClick={() => (window as any).__fogFixture.reveal(2)}>Reveal two</button>
@@ -181,7 +183,7 @@ function Fixture() {
         <button onClick={() => (window as any).__fogFixture.load("partial")}>Reset preview</button>
         <button onClick={() => (window as any).__fogFixture.load("large")}>50 tiles</button>
       </div>
-      <small>Drag to orbit · scroll to zoom. {threatPreview ? "Generic theft includes a new public move. No resource identity is displayed." : shipPreview || buildingPreview ? "Reset before replaying each operation. Motion is presentation only." : "Reveal buttons deliver a new public fixture frame."}</small>
+      <small>Drag to orbit · scroll to zoom. {shipArtPreview ? "Compare Ship model in the board controls. Four public owner colors; no game commands." : threatPreview ? "Generic theft includes a new public move. No resource identity is displayed." : shipPreview || buildingPreview ? "Reset before replaying each operation. Motion is presentation only." : "Reveal buttons deliver a new public fixture frame."}</small>
     </aside>}
   </> : <p>Loading public fixture…</p>;
 }

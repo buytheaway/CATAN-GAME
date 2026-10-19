@@ -1,5 +1,48 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5A - Blender ship art comparison
+
+From root with existing dependencies: `node web/e2e/ship-art-demo.cjs`.
+Open **http://127.0.0.1:18780/?demo=1&shipsart=1**; override with
+`CATAN_SHIP_ART_PREVIEW_PORT`. Actual Board3D/public synthetic7/50 scenes,
+four existing palette colors, Fog/settlement/city/port, **Ship model**
+Procedural /GLB pilot, existing Construct/Move/Reset/Multiple ships and
+effects/reduced controls. Reset before replaying consumed targets. No rules,
+backend, trusted assignments, credentials or public Fog activation.
+
+Use existing external Playwright `NODE_PATH` and installed Chrome/ffmpeg:
+
+```powershell
+node web/e2e/ship-art-visual.cjs
+# Run after all other browser/GPU workloads finish:
+node web/e2e/ship-art-compare.cjs
+```
+
+Use a fresh `CATAN_E2E_OUTPUT` per run. The visual runner writes acceptance.json,
+before/after/near/far/fallback PNGs and a WebM path in that report. The comparator
+reads exact `2d93c40caed5c5febfc88f49e1234fb7853d2db1` runtime Git blobs without
+checkout/reset, with identical public fixture/camera/DPR/shadows/GPU and
+sequential B/A/A/B samples. Normal/reduced/static7/50, GPU render+finish,
+diagnostic CPU submission, calls/triangles/resources/transfer and shared idle
+are checked. Preserve both original and any bounded repeat report; timing
+variance is not a performance improvement. Source art is not substituted into
+the committed baseline. No sustained FPS/mobile certification.
+
+For real ship/Fog smoke, build `web/dist`, use the existing `ships-live.cjs`
+requirements (fresh private output, localhost disposable `DATABASE_URL` ending
+`_test`, unused loopback origin). Set `CATAN_E2E_SHIP_MODEL=glb` before running
+`node web/e2e/ships-live.cjs`; default remains the original procedural checks.
+The opt-in selects the actual GLB via the normal local control, requires loaded
+GLB for occupied ships, and rechecks quiet model selection after recovered Gold
+completion. A zero-ship opening has no model to load. Original authoritative
+commands/ownership/receipts/privacy/recovery assertions remain. This is a
+guarded prepared two-client test, not a natural match or production Fog bypass.
+Keep private manifests/proofs and generated files outside served/tracked paths.
+
+Blender installation/source/export/reload/reproducibility:
+[tools/blender](../../tools/blender/README.md). Final results/limits:
+[Board3D plan](../../docs/obsidian/plans/board3d.md#visual-phase-5a---blender-pipeline-and-ship-pilot).
+
 ## Visual Phase 4 — robber and pirate preview and verification
 
 From the repository root, with existing `web/node_modules`:

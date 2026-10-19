@@ -1,15 +1,27 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-18
+updated: 2026-10-19
 ---
 
 # Project State
 
 ## Current verification and status
 
+### Visual Phase 5A - Blender ship art pilot, 2026-10-19
+
+**Implemented/verified; READY FOR CHECKPOINT as an explicit opt-in pilot.** Phase4 checkpoint **`2d93c40caed5c5febfc88f49e1234fb7853d2db1`** is committed/published, exact `origin/main` hash verified;22 intended files/all11 new sources, graph/artifacts excluded, no tags. Phase5A remains uncommitted/unpushed.
+
+Toolchain unblocked: actual **Blender5.2.2 LTS Windows Store installation**, missed by initial PATH/standard-folder discovery. Direct WindowsApps launch is denied in this shell; checked-in PowerShell launcher uses standard Store activation to run background CLI, without MCP/installation/ACL/PATH changes. `powershell.exe -NoProfile -File tools/blender/export_ship_pilot.ps1` reproducibly generates one original model/source/manifest. Two output roots produced identical GLB SHA; export/reimport verifies geometry/materials/bounds.
+
+Pilot: **12,080 bytes /187 triangles /3 meshes /3 materials**, untextured warm wooden hull/ivory billowed sail/existing exact PlayerColor accents. Original anchors/axis/yaw, controller/legal ghosts, build/move/source echoes and shared12Hz clock remain. **Ship model -> GLB - pilot** is local comparison; default Procedural requests no new model, loading/error falls back to original. No other asset replacement or backend/protocol/persistence/Fog/rules change. [[Design System#Visual Phase 5A - ship art direction pilot]], [[plans/board3d#Visual Phase 5A - Blender pipeline and ship pilot]].
+
+Checks: **377 frontend tests**, TypeScript/build, six final Chrome art acceptance groups and seven real two-client GLB ship/Fog/PostgreSQL groups pass, including rejection/Gold/privacy/receipts/refresh/reconnect/two restarts. Board3D982.63kB/267.16gzip, existing warning; full Python/scenarios not rerun because backend unchanged. Existing final-source robber/pirate8 and construction7 Chrome groups plus two explicit SVG round-trip checks pass. Prepared/public fixtures, not a new natural match. Controlled first GPU median7 normal .90->.95 ms/50 normal3.80->3.70; independent repeat .80->.85/**3.85->5.00**. Both reports retain contradictory50-normal repeat (p95 11.20 ms); no optimization/performance-equivalence claim. Calls decrease237->229/1387->1339 while triangles increase29,574->29,970/180,310->182,686; three added geometries, textures unchanged. Shared idle12 Hz, all-still/reduced0. Keep explicit opt-in/procedural default; low-end/mobile remain unverified.
+
+Comparison preview: `node web/e2e/ship-art-demo.cjs` -> `http://127.0.0.1:18780/?demo=1&shipsart=1`. Actual Board3D/public synthetic7/50, four palette colors, procedural/GLB toggle and existing motion/static/reduced controls. Final PNGs/WebM/report `%TEMP%/catan-ship-art-pilot-final/`; real server report `catan-ship-art-live-final-2/report.json`. Earlier checkpoint BEFOREs under `catan-ship-art-pilot-baseline/` retained. Source/export details and evidence/limits in board3d plan. Preserve user graph/accounts/matches/volumes; no automatic Phase5A commit/push.
+
 ### Visual Phase 4 — robber and pirate, 2026-10-18
 
-**Implemented/verified; READY FOR CHECKPOINT within the measured desktop scope.** Visual Phase3 is published as **`93ee22574fd843e87e571e086367374851a47b12`**, `feat: animate 3D roads settlements and cities`; normal push and exact `origin/main` hash verified, 22 intended files, user graph excluded. Phase4 remains uncommitted/unpushed.
+**Historical completed verification; published as `2d93c40caed5c5febfc88f49e1234fb7853d2db1` on 2026-10-19.** Normal push and exact `origin/main` hash verified,22 intended files/all11 new sources; graph/artifacts excluded. Visual Phase3 is published as **`93ee22574fd843e87e571e086367374851a47b12`**, `feat: animate 3D roads settlements and cities`. The following test results describe Phase4 verification, not new Phase5A model acceptance.
 
 Existing public committed movement/theft events drive an observer above SVG/3D. Unambiguous adjacent known endpoints animate for650 ms; distant endpoints show departure/arrival only. Hidden/ambiguous/offboard origins never invent a route. Native Seafarers robber `-1` snaps; a fully confirmed correlated theft can still show one neutral700 ms card at its known destination. The same card/material/metadata is used for everyone, without reading resource identity. Original figures/anchors/yaw/IDs/targets/controller stay intact. Pirate rocking shares existing12 Hz SceneMotion with Fog/ships; **Robber / pirate → Still**, reduced motion and disconnect suppress effects. Hydration/reconnect/duplicate/stale/new match do not replay history. [[React интерфейс#Visual Phase 4 — authoritative robber and pirate presentation]].
 

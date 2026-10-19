@@ -1,0 +1,32 @@
+{
+  "success": true,
+  "blender_version": "5.2.2 LTS",
+  "asset": "ship-pilot",
+  "source": "tools/blender/export_ship_pilot.py",
+  "mesh_count": 3,
+  "materials": [
+    "HullWood",
+    "PlayerColor",
+    "CanvasIvory"
+  ],
+  "triangles": 187,
+  "vertices": 128,
+  "three_bounds": {
+    "min": [
+      -0.4000000059604645,
+      0.0,
+      -0.14000000059604645
+    ],
+    "max": [
+      0.4000000059604645,
+      0.5350000262260437,
+      0.14000000059604645
+    ]
+  },
+  "coordinate_contract": "glTF Y-up; local X length; pivot (0,0,0); runtime X scale=ship.length*.88",
+  "textures": 0,
+  "animations": 0,
+  "glb_bytes": 12080,
+  "glb_sha256": "07f4fe56c41de24d85f332ab5f7dafbeec176767f51df137a2c2a72d20e911f9",
+  "glb_reload_verified": true
+}

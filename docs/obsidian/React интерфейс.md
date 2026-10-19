@@ -4,6 +4,14 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Visual Phase 5A - optional ship art body
+
+**Implemented/tested 2026-10-19.** `BoardRenderer` owns local `ShipModel` (`procedural` default /`glb`), exposed as **Ship model** in Board3D. The choice reaches confirmed Ship3D, ShipFleet3D departure echoes and InteractionOverlay3D hover ghosts; original root anchors/owner IDs/yaw and animation refs stay intact. `ShipBody3D` selects [ShipAsset.tsx](../../web/src/board3d/ShipAsset.tsx) or its unchanged procedural body. No snapshot field, server preference or controller/rules change; SVG stays unchanged.
+
+[shipAssets.ts](../../web/src/board3d/shipAssets.ts) lazily caches one immutable `/models/pieces/ship-pilot.glb` template per page. Default Procedural makes no asset request. Pending/error uses the old body; a failed load stays cached until refresh. Canvas-owned existing `pool.pieces`/`clonePieceScene` provide exact PlayerColor recolor and isolated ghost materials, neutral source reuse, ignored raycasts and `dispose=null` for cached primitives. X scales by original `ship.length*.88`; source is already centered/Y-up. Local choice resets on page refresh. Existing accepted-event/fresh-baseline build/move/shared-clock motion is unchanged; loading or toggling does not restart cue timestamps.
+
+377 web tests/TS/build pass; six final art Chrome groups and seven real two-client GLB ship/Fog/PostgreSQL groups pass. Prepared/public fixtures, not a new natural match or four-player certification. Reproducible Blender5.2.2 CLI source/export, preview, performance and limits — [[plans/board3d#Visual Phase 5A - Blender pipeline and ship pilot]].
+
 ## Visual Phase 4 — authoritative robber and pirate presentation
 
 **Implemented/tested 2026-10-18.** `GamePage → BoardRenderer → useThreatFeedback → Board3D → Threats3D` consumes existing committed personalized snapshots and public movement/theft events. [threatFeedback.ts](../../web/src/board/threatFeedback.ts) copies only public event fields; even entitled viewers' resource identity is discarded. It requires adjacent live ticks, one matching fresh movement event and unambiguous old/new public figure positions. The observer stays above the SVG/3D toggle. Hydration, first fresh reconnect, stale/duplicate/gapped frames and new match epochs do not invent history.

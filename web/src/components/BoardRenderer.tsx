@@ -9,6 +9,7 @@ import { FOG_3D_REVEAL_MS } from "../board3d/fogPresentation";
 import { useShipFeedback, type ShipEvent } from "../board/shipFeedback";
 import { usePieceFeedback } from "../board3d/pieceFeedback";
 import { selectThreatEvents, useThreatFeedback, type ThreatEvent } from "../board/threatFeedback";
+import type { ShipModel } from "../board3d/shipAssets";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
 
@@ -25,6 +26,7 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
 export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean; tick?: number; events?: readonly (ShipEvent & ThreatEvent)[] }) {
   const [mode, setMode] = useState<"2d" | "3d">("3d");
   const [shipsAnimated, setShipsAnimated] = useState(true);
+  const [shipModel, setShipModel] = useState<ShipModel>("procedural");
   const [constructionAnimated, setConstructionAnimated] = useState(true);
   const [threatsAnimated, setThreatsAnimated] = useState(true);
   const events = useMemo(() => (props.events ?? []).filter(e => e.type === "build_ship" || e.type === "move_ship")
@@ -54,6 +56,7 @@ export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceR
             <Board3D state={props.state} interaction={props.interaction} diceRoll={props.diceRoll}
               matchKey={props.matchKey} connected={props.connected} reveals={reveals}
               shipCues={shipCues} shipsAnimated={shipsAnimated} onShipsAnimated={setShipsAnimated}
+              shipModel={shipModel} onShipModel={setShipModel}
               pieceCues={pieceCues} constructionAnimated={constructionAnimated} onConstructionAnimated={setConstructionAnimated}
               threatCues={threatCues} threatsAnimated={threatsAnimated} onThreatsAnimated={setThreatsAnimated} />
           </Suspense>

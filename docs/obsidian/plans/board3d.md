@@ -1,13 +1,80 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-18
+updated: 2026-10-19
 ---
 
 # Board3D
 
+## Visual Phase 5A - Blender pipeline and ship pilot
+
+**Implemented/verified; READY FOR CHECKPOINT as an explicit opt-in pilot, 2026-10-19.** Phase4 checkpoint **`2d93c40caed5c5febfc88f49e1234fb7853d2db1`**, `feat: animate robber and pirate movement with safe theft feedback`, was committed/pushed normally with 22 intended files/all 11 new sources. Cached whitespace and exact `origin/main` hash verified; graph/artifacts excluded. No tags. Phase5A remains uncommitted/unpushed.
+
+### Toolchain and reproducible source
+
+Actual **Blender 5.2.2 LTS** is installed as Windows Store package `BlenderFoundation.Blender_5.2.2.0_x64__ppwjx1n5r4v9t`. Initial PATH/standard-folder discovery missed this installation; the earlier missing-toolchain description is superseded. Direct execution of its WindowsApps binary returns Access denied in this shell. The registered Store application can run the same background CLI through standard IApplicationActivationManager activation, preserving package identity. No ACL/PATH/registry/installation change or another Blender copy; MCP is not needed by the checked-in launcher. The existing GUI scene is never opened or replaced by the exporter.
+
+Reproduce from root: `powershell.exe -NoProfile -File tools/blender/export_ship_pilot.ps1`. Classic/portable installations can pass `-BlenderPath`. [Launcher/source contract](../../../tools/blender/README.md). `export_ship_pilot.py` creates the original model in a fresh `--background --factory-startup` CLI process and exports only selected mesh/root nodes, Y-up normals/materials, no textures/cameras/lights/baked animations. Outputs: `docs/design/references/blender/ship_pilot.blend`, `ship-pilot.json`, `web/public/models/pieces/ship-pilot.glb`. Existing terrain/building sources remain unchanged. The script regenerates its pilot outputs, not manual edits to generated source.
+
+Two independent output roots produced identical GLB bytes, SHA-256 `07f4fe56c41de24d85f332ab5f7dafbeec176767f51df137a2c2a72d20e911f9`; both exports reimported and verified mesh/material/triangle/world-bounds data inside disposable CLI processes. Native blend byte identity is not claimed. Asset: **12,080 bytes /187 triangles /3 meshes /3 untextured PBR materials**, no external resources or required extensions. `HullWood` and `CanvasIvory` stay neutral; exact `PlayerColor` alone receives existing ownership colors. Three bounds approximately `[-.40,0,-.14]` to `[.40,.535,.14]`.
+
+### Art direction and runtime boundary
+
+Observed baseline: matte warm terrain/rims/raised relief, ivory tokens and beveled owner-colored buildings; player ships were simpler five-mesh hull/deck/mast/sail/accent. The pilot adds a faceted wooden hull, continuous owner-colored gunwale/benches/pennant and a broad lightly billowed ivory sail. Restrained geometry only: no realistic texture set, rigging, particles, pirate/terrain/building replacement or board redesign. Four real project palette colors are inspectable in the synthetic preview. This is one experimental art pilot, not final art approval.
+
+Unchanged flow: committed player-specific snapshot -> GamePage/BoardRenderer -> public render ships -> ShipFleet3D -> original Ship3D anchor/motion group -> selected body. [shipAssets.ts](../../../web/src/board3d/shipAssets.ts) caches one immutable GLTF template/page; [ShipAsset.tsx](../../../web/src/board3d/ShipAsset.tsx) reuses existing Canvas-owned `clonePieceScene` material isolation and ignored raycasts, with original procedural body while loading/on failure. Failed loads are cached until page refresh. Cached source geometry/neutral materials are not disposed by local primitive clones.
+
+**Ship model: Procedural /GLB - pilot** is local BoardRenderer state, default Procedural. Default never requests the new GLB; explicit choice loads it once, additional asset transfer **12,080 bytes** with no textures. Refresh resets the local choice. Confirmed ships, legal hover ghosts and finite source echoes use the same selected body. Original edge root midpoint/Y=.32/local-X heading/yaw `-atan2(dz,dx)` remain; GLB X scale is `ship.length*.88`, without terrain transforms. Inner construction550 ms/movement900 ms/departure350 ms and shared 12 Hz rocking retain original triggers/poses. No new continuous clock, server option, model IDs, alternate game state or controller/rules change. SVG remains unchanged.
+
+### Executed verification
+
+**377 frontend tests pass** (369 checkpoint +8 ship asset cases), TypeScript and production build pass. Real GLB/cache/concurrent/failure fallback, six ownership colors, neutral/ghost isolation, raycast/resource ownership, profile/axes and original animation endpoints tested. Build: Board3D **982.63 kB /267.16 gzip**, versus checkpoint981.25/266.78; existing chunk-size warning remains. No dependency change. Full Python/scenarios not rerun: production backend is untouched; Blender tooling is separate from engine runtime.
+
+Chrome155.0.8059.80: **six public art acceptance groups** pass on final runtime/asset, including default no-request, one cached load, four colors with unchanged shared neutral materials, exact anchors, active GLB source echo, construction/movement, stale/duplicate/reject, Fog/settlement/port, multiple camera distances, 24 ships/50 hexes, SVG, resize, Still/reduced/shared idle and 404 procedural fallback. Final artifacts: `%TEMP%/catan-ship-art-pilot-final/acceptance.json`, PNGs and WebM path in report. Initial successful report/video under `catan-ship-art-pilot/` also retained. Fresh checkpoint BEFORE7/50/near/far/construction/movement/reduced captures remain at `catan-ship-art-pilot-baseline/`; these earlier scenes are baseline inspection, not the matched four-owner performance fixture.
+
+**Seven real two-client ship/Fog WebSocket/PostgreSQL groups pass**, actual exit0, production frontend/executor/F1/receipts with guarded prepared fixtures. GLB selected before paid build/move; both clients must load actual GLB for occupied ships. Invalid command preserves both personalized snapshots; accepted ship motion/discovery/private Gold, duplicate receipts, refresh/native reconnect and two backend restarts preserve exact state without replay. Local model choice is selected again after recovery/mandatory Gold completion and stays quiet. Four expected restart refusals, no unexpected JS/console errors. Report `%TEMP%/catan-ship-art-live-final-2/report.json`. Initial test-oracle wait incorrectly required a visible GLB in a zero-ship opening; fixed to wait only for actual occupancy, then require GLB after the accepted build. Initial failed report is retained separately; no runtime defect or gameplay assertion weakened.
+
+Existing final-source visual regressions also pass: **eight robber/pirate groups and seven construction groups**, including exact anchors, neutral theft privacy, source echoes, cached reconnect/new epoch, combined Fog/ships/buildings, static/reduced and resize. Reports `%TEMP%/catan-ship-art-threat-regression/after.json` and `catan-ship-art-building-regression/after.json`.
+
+These are prepared/public fixtures and bounded acceptance, not new natural/competitive four-player matches. Test-only internal Fog capability stays in its existing isolated launcher; public admission/emergency defaults remain0/0. No production backend/protocol/persistence/auth/rules/maps/Fog-gate change, database reset or volume deletion.
+
+### Viewable comparison and controlled performance
+
+`node web/e2e/ship-art-demo.cjs` -> `http://127.0.0.1:18780/?demo=1&shipsart=1` (loopback; optional `CATAN_SHIP_ART_PREVIEW_PORT`). Actual Board3D and synthetic PUBLIC snapshots, four owner colors,7/50 tiles, model toggle, Construct/Move/Reset/Multiple ships and existing effects/reduced controls. Reset before replaying consumed targets. No backend, trusted assignments, credentials or gameplay execution. Earlier procedural BEFORE capture/preview is retained at18779. Restarting that helper compiles the current working tree; use the comparator's pinned Git blobs for a reproducible checkpoint comparison. [Browser reproduction](../../../web/e2e/README.md#visual-phase-5a---blender-ship-art-comparison).
+
+Primary and one independent repeat both complete exit0/errors[], retaining all raw readings. Exact checkpoint2d93c40 runtime Git blobs versus new GLB, same four-owner public state/hash/camera/DPR1/shadows/Chrome155/RTX5050 Laptop/ANGLE D3D11,1440x900/Canvas1186x723. One measured page at a time, B/A/A/B ordering,12 warm renders,60 GPU-synchronous render+finish and30 CPU submission samples per reading. Table uses mean of two medians; p95 is the worse reading. CPU submission includes driver/GPU stalls; no isolated CPU or sustained-FPS claim.
+
+| Scene | First GPU median ms | Repeat GPU median ms | First GPU p95 ms | Repeat GPU p95 ms | First CPU submit median ms |
+| --- | --- | --- | --- | --- | --- |
+| 7 normal | .90 -> .95 | .80 -> .85 | 2.20 -> 3.00 | 1.60 -> 1.50 | 1.30 -> 1.20 |
+| 7 reduced | .90 -> .90 | .80 -> .85 | 2.40 -> 2.30 | 1.40 -> 2.40 | 1.20 -> 1.10 |
+| 7 static | 1.50 -> .85 | .85 -> .85 | 2.70 -> 2.10 | 1.40 -> 1.60 | 1.65 -> 1.15 |
+| 50 normal | 3.80 -> 3.70 | **3.85 -> 5.00** | 4.90 -> 4.40 | **5.90 -> 11.20** | 4.10 -> 3.90 |
+| 50 reduced | 4.00 -> 3.75 | 3.50 -> 3.55 | 4.90 -> 5.10 | 4.60 -> 4.60 | 4.20 -> 4.20 |
+| 50 static | 3.75 -> 3.70 | 3.70 -> 3.50 | 5.30 -> 5.50 | 4.80 -> 4.10 | 4.15 -> 3.95 |
+
+**Contradictory50-normal repeat is retained, not discarded:** two current readings had medians6.20/3.80 ms, aggregate5.00 versus baseline3.85. Initial7-static baseline also varied1.20/1.80 ms. No third timing run, optimization or GPU-performance-equivalence claim. The pilot remains explicitly opt-in with unchanged procedural default; it is not approved as a default replacement. Low-end/mobile/battery and broader hardware behavior remain unverified.
+
+Stable counts (both runs):7 tiles/four ships calls237->229, triangles29,574->29,970;50 tiles/24 ships calls1387->1339, triangles180,310->182,686. Each pilot is three meshes/187 triangles versus five procedural meshes/88 triangles. Three additional shared geometries; textures unchanged (six small/17 large). Payload12,080 bytes once after opt-in; Chrome reported12,380 bytes response transfer including accounting/header overhead, no extra textures. Default makes no model request. Ship-only shared idle12->12 Hz before/after finite motion; all-still/reduced0, no idle React commits or geometry/texture churn. Transient source echo uses the same selected body/resources; no new continuous clock.
+
+Reports: `%TEMP%/catan-ship-art-pilot-final/paired-performance.json` and `catan-ship-art-pilot-repeat/paired-performance.json`; both preserve raw GPU/CPU/calls/triangle/resource readings and matched PNGs. Final acceptance's actual SVG round-trip was also checked separately (two DOM checks, SVG present/Canvas absent and quiet GLB restoration) in `svg-round-trip.json`. Recording is separate from measurements; final video `f4fe86d4245e8efa0f0ba9734d1f1a9b.webm`. Earlier successful report/video and checkpoint BEFOREs are retained separately. Do not infer four-player live or full natural-match certification from these public display fixtures.
+
+Scope: one original pilot asset/source/profile plus reproducible CLI tooling; optional body/cache/control propagation and focused tests/previews/docs. No production backend, engine rules, protocol, database schema, Fog admission, auth, dependency, terrain/building/robber/pirate asset change. User GUI scene, graph/accounts/matches/volumes preserved. Test PostgreSQL is stopped without deleting data; comparison preview remains running independently. Phase5A is not committed/pushed; stop after this pilot.
+
+### Exact change scope and limits
+
+**27 intended files**, excluding pre-existing user graph; runtime8 files **+88/-16 lines**.
+
+- Runtime: `web/src/components/BoardRenderer.tsx`; `web/src/board3d/{Board3D.tsx,InteractionOverlay3D.tsx,Pieces3D.tsx,ShipFleet3D.tsx,board3d.css,ShipAsset.tsx,shipAssets.ts}`.
+- Tests/preview7: `web/e2e/{fog-fixture.tsx,ships-live.cjs,ship-art-demo.cjs,ship-art-visual.cjs,ship-art-compare.cjs}`; `web/tests/{fixtures/publicShipArt.ts,ship-asset.test.mjs}`.
+- Export tools2: `tools/blender/{export_ship_pilot.py,export_ship_pilot.ps1}`.
+- Art/source/profile3: `docs/design/references/blender/{ship_pilot.blend,ship-pilot.json}`, `web/public/models/pieces/ship-pilot.glb`. Source blend100,816 bytes; production build GLB copy matches source SHA.
+- Documentation7: this plan, Project State, Design System, React interface, Styles/visual boundaries, `web/e2e/README.md`, `tools/blender/README.md`.
+
+No blocking runtime/security defect found in focused independent review. Checkpoint readiness covers one optional art pilot and reproducible export, not default-art rollout, GPU equivalence or broader hardware/competitive acceptance. Failed load retries require page refresh; generated pilot outputs are overwritten on re-export, so preserve manual art revisions separately. User aesthetic approval remains separate. No automatic Phase5A commit/push/tag or further art pass.
+
 ## Visual Phase 4 — robber and pirate presentation plan
 
-**Implemented/verified; READY FOR CHECKPOINT within the limits below, 2026-10-18.** Visual Phase 3 checkpoint `93ee22574fd843e87e571e086367374851a47b12` was committed/pushed normally; exact upstream hash verified. Saved 343 frontend/three focused PostgreSQL/38 browser groups, video and both performance reports were reused rather than rerunning full suites solely for that checkpoint. User graph excluded. Phase4 is not committed/pushed.
+**Historical completed verification, 2026-10-18; published as `2d93c40caed5c5febfc88f49e1234fb7853d2db1` on2026-10-19.** Exact upstream hash/normal push and22 intended files/all11 new sources verified; graph/artifacts excluded. Visual Phase 3 checkpoint `93ee22574fd843e87e571e086367374851a47b12` was committed/pushed normally. Its saved343 frontend/three focused PostgreSQL/38 browser groups, video and both performance reports were reused rather than rerunning full suites solely for that checkpoint. Phase4 evidence below is historical, not Phase5A candidate acceptance.
 
 Audit/path: shared Seven/discard or played Knight → existing pending robber-or-pirate choice → shared controller's destination/victim command → server lock/candidate/COMMIT/receipts → personalized snapshot/public event feed → GamePage/BoardRenderer → Board3D. Existing public movement events already contain `from_tile`/`tile`; `theft` contains public victim/quantity and resource details only for entitled participants. Animation copies only closed public fields, never private resource/hand/VP data. No protocol addition. Historical pre-Phase4 Robber3D performed an unfenced implicit 420 ms movement; Pirate3D was static. This phase replaces that presentation using established baseline/cue/ref infrastructure.
 
@@ -44,7 +111,7 @@ Primary50-static +.85 ms did not reproduce at the same magnitude (+.10 ms repeat
 
 Preview stays loopback-only: `node web/e2e/threats-visual-demo.cjs` → `http://127.0.0.1:18777/?demo=1&threats=1`. Actual GamePage/Board3D, existing GLBs, synthetic PUBLIC 7/50 scenes; movement/theft/sequence/road/ship/reset/reduced/static controls. No gameplay execution, trusted state, assignment recipe or credentials are served. [Reproduction](../../../web/e2e/README.md#visual-phase-4--robber-and-pirate-preview-and-verification).
 
-Evidence outside Git: `%TEMP%/catan-threats-visual-phase4/{before,after,paired-performance}.json`, before/after PNGs and WebM path recorded in `after.json`; `%TEMP%/catan-threats-phase4-live-final-7/report.json` and seven public screenshots; `%TEMP%/catan-threats-phase4-fog-regression/report.json`, `catan-threats-phase4-buildings-regression/after.json`; `.venv/test-artifacts/threats-web-final.log`. Synthetic seat proofs/private fixture manifests remain outside served/tracked paths. Preserve user graph/accounts/matches/volumes. Phase4 remains uncommitted/unpushed; no next phase.
+Evidence outside Git: `%TEMP%/catan-threats-visual-phase4/{before,after,paired-performance}.json`, before/after PNGs and WebM path recorded in `after.json`; `%TEMP%/catan-threats-phase4-live-final-7/report.json` and seven public screenshots; `%TEMP%/catan-threats-phase4-fog-regression/report.json`, `catan-threats-phase4-buildings-regression/after.json`; `.venv/test-artifacts/threats-web-final.log`. Synthetic seat proofs/private fixture manifests remain outside served/tracked paths. User graph/accounts/matches/volumes were preserved. Phase4 was published only with subsequent explicit authorization as recorded above.
 
 **Final checkpoint review, 2026-10-19:** reused the completed 2026-10-18 suites and both independent performance reports; did not relabel them as new runs. Confirmed reports/media exist, reviewed all new runtime/test/preview files, and found no blocking runtime/security issue. Preview was no longer listening after interruption; restarted the existing loopback helper and passed a fresh Chrome smoke (actual robber/pirate buttons, exact final anchors, neutral card, Still/reduced, no gameplay commands/errors). Evidence: `%TEMP%/catan-threats-visual-phase4/final-review-preview.{json,png}`. No production code change. Rechecked585 affected documentation links and Git whitespace; temporary files remain outside tracked scope. Docker Desktop is not running at this review; completed PostgreSQL acceptance is reused, no new connectivity result or database/volume operation. Test-oracle limitation: the live restart animation monitor observes for15 s while backend readiness permits30 s; unusually slow restart beyond that observation window has not been separately verified. Normal tested restarts, exact restored state, pure recovery and unit reconnect/new-epoch fences pass; this is not a reproduced renderer replay defect.
 
