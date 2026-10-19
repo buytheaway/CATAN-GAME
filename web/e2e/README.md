@@ -1,5 +1,65 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 4 — robber and pirate preview and verification
+
+From the repository root, with existing `web/node_modules`:
+
+```powershell
+node web/e2e/threats-visual-demo.cjs
+```
+
+Open **http://127.0.0.1:18777/?demo=1&threats=1**. Actual GamePage/Board3D,
+existing terrain/piece GLBs, public synthetic land/sea/Fog and7/50-tile scenes.
+Controls: Move robber, Move pirate, Generic theft, Movement sequence, Construct
+road/ship, Reset,50 tiles, Reduced motion, existing independent effects selects.
+Generic theft includes a new confirmed public movement event, not an uncorrelated
+private-hand signal. This display fixture neither runs rules nor sends gameplay
+commands. It exposes no trusted recipe, assignments, server seed or credentials.
+`CATAN_THREAT_PREVIEW_PORT` changes the loopback port; Ctrl+C stops the preview.
+
+Use the existing external Playwright via `NODE_PATH`, installed Chrome and its
+matching external ffmpeg cache:
+
+```powershell
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP 'catan-threats-visual-phase4'
+node web/e2e/threats-visual.cjs --baseline
+node web/e2e/threats-visual.cjs
+# Run after all other browser workloads finish:
+node web/e2e/threats-compare.cjs
+```
+
+Baseline is exact published Phase3 `93ee22574fd843e87e571e086367374851a47b12`,
+read through existing sourceRef Git blobs, never checkout/reset. Public fixtures
+are shared between versions. Before/after PNGs, `before.json`, `after.json` with
+the actual WebM path, and `paired-performance.json` stay outside Git. A/B uses
+one Chrome/page at a time, matched scene/camera/DPR/shadows, B/A/A/B ordering,
+7/50 normal/reduced/static scenes, GPU `render+finish`, diagnostic CPU submission,
+steady draw/resource equality and shared-clock idle assertions. CPU submission
+includes driver/GPU stalls; these are not sustained FPS or mobile benchmarks.
+
+Build `web/dist` before real acceptance. Set `DATABASE_URL` to a fresh isolated
+localhost PostgreSQL `*_test` database, external Playwright `NODE_PATH`, unused
+loopback `CATAN_E2E_ORIGIN` (default `http://127.0.0.1:18778`) and a fresh private
+`CATAN_E2E_OUTPUT`, then run `node web/e2e/threats-live.cjs`.
+`tests.threat_visual_support` prepares seven three-player fixtures: robber/pirate
+via Seven/Knight, no-victim, known Fog boundary and native offboard Gold Haven
+robber. It controls RNG only inside the guarded test subprocess and validates
+copied commands/conservation before acceptance. No production activation seam.
+The actual production executor/ownership/COMMIT/F1/receipts are used. Three owning
+profiles verify exact known initial private state, actor/victim-only resource
+details, identical neutral cards, rejection equality, durable duplicate receipts,
+refresh/native reconnect and guarded pure PostgreSQL recovery without rule/RNG
+reexecution. No live internal Fog rematch or natural full match is claimed.
+
+The rejection banner may cover a projected tile center; acceptance chooses an
+uncovered point inside the same public legal hex and asserts the actual outgoing
+command. No force-click or gameplay bypass. The private fixture manifest has
+synthetic seat proofs; keep it and server diagnostics outside served/tracked
+paths. The runner stops its own backend/Chrome and preserves database records
+and volumes. Production Fog admission/emergency defaults stay0/0. Focused tests:
+`tests/test_threat_visual_fixture.py`; current results/limits:
+[Board3D plan](../../docs/obsidian/plans/board3d.md#visual-phase-4--robber-and-pirate-presentation-plan).
+
 ## Visual Phase 3 — construction preview and verification
 
 From the repository root, with existing `web/node_modules`:

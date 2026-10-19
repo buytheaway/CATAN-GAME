@@ -1,8 +1,6 @@
 import type { ThreeElements } from "@react-three/fiber";
-import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
-import { Group } from "three";
-import { useReducedMotion } from "../game/motion";
+import { useMemo } from "react";
+import type { Group } from "three";
 import { TILE_TOP } from "./coordinates";
 import { playerColor, VISUAL } from "./materials";
 import { useVisualResources } from "./VisualResources";
@@ -96,50 +94,44 @@ export function Ship3D({ ship, ghost = false, color = playerColor(ship.owner), v
   </group>;
 }
 
-export function Robber3D({ position, tileIndex }: { position: Point3D; tileIndex: number }) {
-  const group = useRef<Group>(null);
-  const initial = useRef<Point3D>([position[0] + .48, TILE_TOP, position[2] + .1]);
-  const movement = useRef<{ from: Point3D; to: Point3D; start: number } | null>(null);
-  const reduced = useReducedMotion();
-  const invalidate = useThree(s => s.invalidate);
-  useEffect(() => {
-    if (!group.current) return;
-    const to: Point3D = [position[0] + .48, TILE_TOP, position[2] + .1];
-    const from = group.current.position.toArray() as Point3D;
-    if (reduced || from.every((v, i) => v === to[i])) { group.current.position.set(...to); movement.current = null; }
-    else movement.current = { from, to, start: performance.now() };
-    invalidate();
-  }, [position[0], position[2], reduced, invalidate]);
-  useFrame(() => {
-    const move = movement.current;
-    if (!move || !group.current) return;
-    const t = Math.min(1, (performance.now() - move.start) / 420), eased = t * t * (3 - 2 * t);
-    group.current.position.set(...move.from.map((v, i) => v + (move.to[i] - v) * eased + (i === 1 ? Math.sin(t * Math.PI) * .25 : 0)) as Point3D);
-    if (t < 1) invalidate(); else movement.current = null;
-  });
-  return <group ref={group} position={initial.current} userData={{ tileIndex, piece: "robber" }}>
-    <PieceMesh kind="cylinder" color={VISUAL.robber} position={[0, 0.035, 0]} scale={[0.18, 0.07, 0.18]} />
-    <PieceMesh kind="cone" color={VISUAL.robber} position={[0, 0.22, 0]} scale={[0.14, 0.35, 0.14]} />
-    <PieceMesh kind="sphere" color={VISUAL.robber} position={[0, 0.42, 0]} scale={[0.115, 0.115, 0.115]} />
-    <PieceMesh kind="cylinder" color={VISUAL.tokenSide} position={[0, 0.33, 0]} scale={[0.09, 0.03, 0.09]} />
-    <PieceMesh kind="cylinder" color={VISUAL.ink} position={[0, .077, 0]} scale={[.15, .02, .15]} />
-    <PieceMesh kind="cylinder" color="#e3ccb0" position={[0, .01, 0]} scale={[.2, .028, .2]} />
-    <PieceMesh kind="cone" color="#223848" position={[0, .245, -.02]} scale={[.17, .36, .145]} />
-    <PieceMesh kind="cylinder" color="#121e2c" position={[0, .465, 0]} scale={[.165, .034, .165]} />
-    <PieceMesh kind="cone" color="#121e2c" position={[0, .5, 0]} scale={[.125, .11, .125]} />
+export function RobberBody3D({ ghost = false }: { ghost?: boolean }) {
+  return <>
+    <PieceMesh kind="cylinder" color={VISUAL.robber} ghost={ghost} position={[0, 0.035, 0]} scale={[0.18, 0.07, 0.18]} raycast={ignoreRaycast} />
+    <PieceMesh kind="cone" color={VISUAL.robber} ghost={ghost} position={[0, 0.22, 0]} scale={[0.14, 0.35, 0.14]} raycast={ignoreRaycast} />
+    <PieceMesh kind="sphere" color={VISUAL.robber} ghost={ghost} position={[0, 0.42, 0]} scale={[0.115, 0.115, 0.115]} raycast={ignoreRaycast} />
+    <PieceMesh kind="cylinder" color={VISUAL.tokenSide} ghost={ghost} position={[0, 0.33, 0]} scale={[0.09, 0.03, 0.09]} raycast={ignoreRaycast} />
+    <PieceMesh kind="cylinder" color={VISUAL.ink} ghost={ghost} position={[0, .077, 0]} scale={[.15, .02, .15]} raycast={ignoreRaycast} />
+    <PieceMesh kind="cylinder" color="#e3ccb0" ghost={ghost} position={[0, .01, 0]} scale={[.2, .028, .2]} raycast={ignoreRaycast} />
+    <PieceMesh kind="cone" color="#223848" ghost={ghost} position={[0, .245, -.02]} scale={[.17, .36, .145]} raycast={ignoreRaycast} />
+    <PieceMesh kind="cylinder" color="#121e2c" ghost={ghost} position={[0, .465, 0]} scale={[.165, .034, .165]} raycast={ignoreRaycast} />
+    <PieceMesh kind="cone" color="#121e2c" ghost={ghost} position={[0, .5, 0]} scale={[.125, .11, .125]} raycast={ignoreRaycast} />
+  </>;
+}
+
+export function Robber3D({ position, tileIndex, visualRef }: { position: Point3D; tileIndex: number; visualRef?: (node: Group | null) => void }) {
+  const visualData = useMemo(() => ({ threatVisual: "robber", tileIndex, moving: false, arriving: false }), [tileIndex]);
+  return <group position={[position[0] + .48, TILE_TOP, position[2] + .1]} userData={{ tileIndex, piece: "robber" }}>
+    <group ref={visualRef} userData={visualData}><RobberBody3D /></group>
   </group>;
 }
 
-export function Pirate3D({ position, tileIndex }: { position: Point3D; tileIndex: number }) {
+export function PirateBody3D({ ghost = false }: { ghost?: boolean }) {
+  return <>
+    <PieceMesh kind="hull" color={VISUAL.pirate} ghost={ghost} scale={[0.95, 1.2, 1.3]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.trunk} ghost={ghost} position={[0, .155, 0]} scale={[.47, .025, .18]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.pirate} ghost={ghost} position={[-0.12, 0.26, 0]} scale={[0.035, 0.38, 0.035]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.pirate} ghost={ghost} position={[0.015, 0.36, 0]} scale={[0.3, 0.18, 0.04]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0.015, 0.36, 0.025]} scale={[0.03, 0.11, 0.01]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0.015, 0.36, 0.026]} scale={[0.1, 0.03, 0.01]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0.015, 0.36, -0.025]} scale={[0.03, 0.11, 0.01]} raycast={ignoreRaycast} />
+    <PieceMesh kind="box" color={VISUAL.ivory} ghost={ghost} position={[0.015, 0.36, -0.026]} scale={[0.1, 0.03, 0.01]} raycast={ignoreRaycast} />
+  </>;
+}
+
+export function Pirate3D({ position, tileIndex, visualRef }: { position: Point3D; tileIndex: number; visualRef?: (node: Group | null) => void }) {
+  const visualData = useMemo(() => ({ threatVisual: "pirate", tileIndex, moving: false, arriving: false }), [tileIndex]);
   return <group position={[position[0] + 0.15, TILE_TOP + 0.03, position[2] + 0.24]} rotation={[0, -0.3, 0]}
     userData={{ tileIndex, piece: "pirate" }}>
-    <PieceMesh kind="hull" color={VISUAL.pirate} scale={[0.95, 1.2, 1.3]} />
-    <PieceMesh kind="box" color={VISUAL.trunk} position={[0, .155, 0]} scale={[.47, .025, .18]} />
-    <PieceMesh kind="box" color={VISUAL.pirate} position={[-0.12, 0.26, 0]} scale={[0.035, 0.38, 0.035]} />
-    <PieceMesh kind="box" color={VISUAL.pirate} position={[0.015, 0.36, 0]} scale={[0.3, 0.18, 0.04]} />
-    <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, 0.025]} scale={[0.03, 0.11, 0.01]} />
-    <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, 0.026]} scale={[0.1, 0.03, 0.01]} />
-    <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, -0.025]} scale={[0.03, 0.11, 0.01]} />
-    <PieceMesh kind="box" color={VISUAL.ivory} position={[0.015, 0.36, -0.026]} scale={[0.1, 0.03, 0.01]} />
+    <group ref={visualRef} userData={visualData}><PirateBody3D /></group>
   </group>;
 }

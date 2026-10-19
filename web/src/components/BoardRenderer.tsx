@@ -8,6 +8,7 @@ import { FOG_REVEAL_MS, useFogReveal } from "../board/fogReveal";
 import { FOG_3D_REVEAL_MS } from "../board3d/fogPresentation";
 import { useShipFeedback, type ShipEvent } from "../board/shipFeedback";
 import { usePieceFeedback } from "../board3d/pieceFeedback";
+import { selectThreatEvents, useThreatFeedback, type ThreatEvent } from "../board/threatFeedback";
 
 const Board3D = lazy(() => import("../board3d/Board3D"));
 
@@ -21,16 +22,23 @@ class Board3DErrorBoundary extends Component<{ children: ReactNode }, { failed: 
   }
 }
 
-export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean; tick?: number; events?: readonly ShipEvent[] }) {
+export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceRollVisual | null; matchKey?: string; connected?: boolean; tick?: number; events?: readonly (ShipEvent & ThreatEvent)[] }) {
   const [mode, setMode] = useState<"2d" | "3d">("3d");
   const [shipsAnimated, setShipsAnimated] = useState(true);
   const [constructionAnimated, setConstructionAnimated] = useState(true);
+  const [threatsAnimated, setThreatsAnimated] = useState(true);
   const events = useMemo(() => (props.events ?? []).filter(e => e.type === "build_ship" || e.type === "move_ship")
     .map(({ id, tick, type, actor_pid }) => ({ id, tick, type, actor_pid })), [props.events]);
   const shipCues = useShipFeedback({ key: props.matchKey ?? "", tick: props.tick ?? 0,
     ships: props.state.occupied_ships, events, connected: props.connected ?? true }, mode === "3d" && shipsAnimated);
   const pieceCues = usePieceFeedback({ key: props.matchKey ?? "", tick: props.tick ?? 0,
     roads: props.state.occupied_e, vertices: props.state.occupied_v, connected: props.connected ?? true }, mode === "3d" && constructionAnimated);
+  const threatEvents = useMemo(() => selectThreatEvents(props.events ?? []), [props.events]);
+  const robbers = useMemo(() => props.state.robbers?.length ? props.state.robbers : [props.state.robber_tile],
+    [props.state.robbers, props.state.robber_tile]);
+  const threatCues = useThreatFeedback({ key: props.matchKey ?? "", tick: props.tick ?? 0, connected: props.connected ?? true,
+    tiles: props.state.tiles, edgeAdjacency: props.state.edge_adj_hexes, robbers, pirate: props.state.pirate_tile ?? null,
+    events: threatEvents }, mode === "3d" && threatsAnimated);
   const reveals = useFogReveal({ key: props.matchKey ?? "", tick: props.tick ?? 0,
     tiles: props.state.tiles, connected: props.connected ?? true }, mode === "3d" ? FOG_3D_REVEAL_MS : FOG_REVEAL_MS);
   return (
@@ -46,7 +54,8 @@ export default function BoardRenderer(props: BoardViewProps & { diceRoll?: DiceR
             <Board3D state={props.state} interaction={props.interaction} diceRoll={props.diceRoll}
               matchKey={props.matchKey} connected={props.connected} reveals={reveals}
               shipCues={shipCues} shipsAnimated={shipsAnimated} onShipsAnimated={setShipsAnimated}
-              pieceCues={pieceCues} constructionAnimated={constructionAnimated} onConstructionAnimated={setConstructionAnimated} />
+              pieceCues={pieceCues} constructionAnimated={constructionAnimated} onConstructionAnimated={setConstructionAnimated}
+              threatCues={threatCues} threatsAnimated={threatsAnimated} onThreatsAnimated={setThreatsAnimated} />
           </Suspense>
         </Board3DErrorBoundary>
       )}

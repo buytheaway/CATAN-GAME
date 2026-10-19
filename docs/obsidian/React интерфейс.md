@@ -4,6 +4,14 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Visual Phase 4 — authoritative robber and pirate presentation
+
+**Implemented/tested 2026-10-18.** `GamePage → BoardRenderer → useThreatFeedback → Board3D → Threats3D` consumes existing committed personalized snapshots and public movement/theft events. [threatFeedback.ts](../../web/src/board/threatFeedback.ts) copies only public event fields; even entitled viewers' resource identity is discarded. It requires adjacent live ticks, one matching fresh movement event and unambiguous old/new public figure positions. The observer stays above the SVG/3D toggle. Hydration, first fresh reconnect, stale/duplicate/gapped frames and new match epochs do not invent history.
+
+[threatMotion.ts](../../web/src/board3d/threatMotion.ts) interpolates only adjacent known land/sea endpoints for 650 ms. Distant known moves show departure ≤300 ms and destination arrival ≤850 ms, never a guessed transit route. Hidden or ambiguous positions snap safely. Canonical Seafarers robber `-1` has no invented origin: an otherwise fully confirmed move with theft shows only a 700 ms neutral card at the known destination. Without correlated theft it stays quiet. The same ivory card/geometry/metadata is used for all recipients, independent of the stolen resource.
+
+[Threats3D.tsx](../../web/src/board3d/Threats3D.tsx) retains original procedural bodies/anchors/yaw and uses pooled resources. Inner refs perform finite motion; pirate rocking shares existing 12 Hz SceneMotion with ships/Fog. All bodies, departure echoes and cards ignore raycasts. **Robber / pirate → Motion/Still**, reduced motion and disconnect cancel effects; baselines continue to consume snapshots. No per-frame React state or new continuous timer. No command/controller/rules/protocol/Fog gate/backend changes. Verification and limits — [[plans/board3d#Visual Phase 4 — robber and pirate presentation plan]]. Phase3 is the published `93ee225` checkpoint; its older verification below remains historical evidence.
+
 ## Visual Phase 3 — authoritative construction presentation
 
 **Implemented/tested 2026-10-18.** `GamePage → BoardRenderer → usePieceFeedback → Board3D → Road3D/Settlement3D/City3D → PieceVisual` extends the existing feedback path. [pieceFeedback.ts](../../web/src/board3d/pieceFeedback.ts) accepts only key/tick/connection/public `occupied_e`/`occupied_v`, never private terrain, hands, commands or rules. Its observer is above the SVG/Three toggle. Original edge/vertex IDs remain; adjacent additions identify roads/settlements and same-owner 1→2 identifies an upgrade. Removal/owner replacement/downgrade/newly hydrated city/coalesced ticks are ambiguous and display current state without invented transitions.

@@ -7,6 +7,12 @@ updated: 2026-10-18
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 4 — robber and pirate motion
+
+**Implemented/tested 2026-10-18.** Keep the existing black robber and dark pirate visually distinct from owned ships; no new art, textures, particles, camera effects or resource-colored theft signal. Short confirmed adjacent moves lift/travel/arrive for 650 ms. Distant known endpoints use a restrained departure/arrival without drawing a route; offboard/hidden/ambiguous origins never create one. A confirmed theft shows one small ivory card for 700 ms, raised above terrain decoration. Its shape/material/motion are identical for every recipient; it is not evidence of a resource identity.
+
+Pirate rocking is minimal: Y±.004, pitch±.006 rad, roll±.012 rad on shared 12 Hz SceneMotion. **Robber / pirate → Still** and reduced motion restore final transforms without replay. Finite effects coexist with ship/building/Fog effects and never own hit targets. Synthetic public preview: `http://127.0.0.1:18777/?demo=1&threats=1`; [reproduction](../../web/e2e/README.md#visual-phase-4--robber-and-pirate-preview-and-verification). Current test/performance evidence and limitations — [[plans/board3d#Visual Phase 4 — robber and pirate presentation plan]]. This graphics phase does not enable Fog admission.
+
 ## Visual Phase 3 — construction motion
 
 **Implemented/visually verified, 2026-10-18.** Extend the existing clean tabletop art; retain original road/settlement/city GLBs, player colors, terrain, anchor IDs and contact floor. Confirmed roads grow along their actual edge for450 ms; settlements rise/scale subtly for550 ms. A same-owner settlement→city upgrade has a300 ms shrinking ghost of the old settlement and700 ms city emergence, finishing at the unchanged city pose. The ghost is presentation only and never an occupancy/target. No particles, textures, replacement assets or dramatic camera effects.

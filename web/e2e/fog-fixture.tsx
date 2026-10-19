@@ -6,6 +6,7 @@ import { WSClient, type MatchState, type RoomState, type ServerError } from "../
 import { goldDiscoveryFixture, publicFogFixture } from "../tests/fixtures/publicFog";
 import { publicShipFixture, shipPreviewChange } from "../tests/fixtures/publicShips";
 import { publicBuildingFixture, buildingPreviewChange, type BuildingPreviewKind } from "../tests/fixtures/publicBuildings";
+import { publicThreatFixture, threatPreviewChange, type ThreatPreviewKind } from "../tests/fixtures/publicThreats";
 import "../src/styles.css";
 import "../src/shell/shell.css";
 import "./fog-preview.css";
@@ -30,7 +31,8 @@ let matchId = 0;
 const preview = new URLSearchParams(location.search).get("demo") === "1";
 const shipPreview = new URLSearchParams(location.search).get("ships") === "1";
 const buildingPreview = new URLSearchParams(location.search).get("buildings") === "1";
-const reducedPreview = (shipPreview || buildingPreview) && new URLSearchParams(location.search).get("reduce") === "1";
+const threatPreview = new URLSearchParams(location.search).get("threats") === "1";
+const reducedPreview = (shipPreview || buildingPreview || threatPreview) && new URLSearchParams(location.search).get("reduce") === "1";
 if (reducedPreview) {
   const native = window.matchMedia.bind(window);
   window.matchMedia = query => {
@@ -49,9 +51,9 @@ function Fixture() {
     client.onMatchState = setMatch; client.onRoomState = setRoom; client.onStatus = setStatus; client.onError = setError;
     client.connect("ws://public-fixture.invalid/ws", "Explorer"); FixtureSocket.latest.onopen?.();
     const load = (mode: Parameters<typeof publicFogFixture>[0] | "gold" = "partial") => {
-      const state = buildingPreview ? publicBuildingFixture(mode === "large") : shipPreview ? publicShipFixture(mode === "large")
+      const state = threatPreview ? publicThreatFixture(mode === "large") : buildingPreview ? publicBuildingFixture(mode === "large") : shipPreview ? publicShipFixture(mode === "large")
         : mode === "gold" ? goldDiscoveryFixture() : publicFogFixture(mode);
-      if (preview && !shipPreview && !buildingPreview && mode === "partial") {
+      if (preview && !shipPreview && !buildingPreview && !threatPreview && mode === "partial") {
         // Public fixture geometry only: put the existing real ship on the sea/fog boundary.
         const boundary = state.edges!.find(edge => {
           const adjacent = state.edge_adj_hexes![edge.join(",")];
@@ -75,9 +77,24 @@ function Fixture() {
       next.tick++;
       FixtureSocket.latest.receive(next);
     };
+    const threat = (kind: ThreatPreviewKind, theft = false) => {
+      const next = structuredClone(client.matchState)!;
+      next.tick++; threatPreviewChange(next.state, kind, next.tick, theft);
+      FixtureSocket.latest.receive(next);
+    };
     (window as any).__fogFixture = {
       load,
       building,
+      threat,
+      theft: () => threat("robber", true),
+      threatSequence: async () => {
+        const epoch = client.matchState?.match_id;
+        for (const kind of ["robber", "pirate", "robber", "pirate"] as const) {
+          if (client.matchState?.match_id !== epoch) return;
+          threat(kind, true);
+          await new Promise(resolve => window.setTimeout(resolve, 250));
+        }
+      },
       sequence: async () => {
         const epoch = client.matchState?.match_id;
         for (const kind of ["road", "settlement", "upgrade"] as const) {
@@ -134,9 +151,17 @@ function Fixture() {
     <GamePage client={client} match={match} room={room} status={status} log={[]}
       error={error} onBackToLobby={() => {}} />
     {preview && <aside className="fog-preview" aria-label="Synthetic public Fog preview">
-      <strong>{buildingPreview ? "Construction preview" : shipPreview ? "Ship animation preview" : "Fog visual preview"}</strong><small>Synthetic public snapshots · no server</small>
+      <strong>{threatPreview ? "Robber & pirate preview" : buildingPreview ? "Construction preview" : shipPreview ? "Ship animation preview" : "Fog visual preview"}</strong><small>Synthetic public snapshots · no server</small>
       <div>
-        {buildingPreview ? <>
+        {threatPreview ? <>
+          <button onClick={() => (window as any).__fogFixture.threat("robber")}>Move robber</button>
+          <button onClick={() => (window as any).__fogFixture.threat("pirate")}>Move pirate</button>
+          <button onClick={() => (window as any).__fogFixture.theft()}>Generic theft</button>
+          <button onClick={() => (window as any).__fogFixture.threatSequence()}>Movement sequence</button>
+          <button onClick={() => (window as any).__fogFixture.building("road")}>Construct road</button>
+          <button onClick={() => (window as any).__fogFixture.ship(false)}>Construct ship</button>
+          <a href={reducedPreview ? "?demo=1&threats=1" : "?demo=1&threats=1&reduce=1"}>{reducedPreview ? "Normal motion" : "Reduced motion"}</a>
+        </> : buildingPreview ? <>
           <button onClick={() => (window as any).__fogFixture.building("road")}>Construct road</button>
           <button onClick={() => (window as any).__fogFixture.building("settlement")}>Construct settlement</button>
           <button onClick={() => (window as any).__fogFixture.building("upgrade")}>Upgrade city</button>
@@ -156,7 +181,7 @@ function Fixture() {
         <button onClick={() => (window as any).__fogFixture.load("partial")}>Reset preview</button>
         <button onClick={() => (window as any).__fogFixture.load("large")}>50 tiles</button>
       </div>
-      <small>Drag to orbit · scroll to zoom. {shipPreview || buildingPreview ? "Reset before replaying each operation. Motion is presentation only." : "Reveal buttons deliver a new public fixture frame."}</small>
+      <small>Drag to orbit · scroll to zoom. {threatPreview ? "Generic theft includes a new public move. No resource identity is displayed." : shipPreview || buildingPreview ? "Reset before replaying each operation. Motion is presentation only." : "Reveal buttons deliver a new public fixture frame."}</small>
     </aside>}
   </> : <p>Loading public fixture…</p>;
 }

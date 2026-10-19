@@ -4,7 +4,7 @@ import { DirectionalLight, PCFSoftShadowMap } from "three";
 import CameraRig from "./CameraRig";
 import HexTile3D from "./HexTile3D";
 import Port3D from "./Port3D";
-import { City3D, Pirate3D, Road3D, Robber3D, Settlement3D } from "./Pieces3D";
+import { City3D, Road3D, Settlement3D } from "./Pieces3D";
 import { createRenderModel } from "./model";
 import type { BoardBounds, BoardRenderModel, BoardSnapshot } from "./types";
 import type { BoardInteraction } from "../board/interaction";
@@ -28,6 +28,8 @@ import { useReducedMotion } from "../game/motion";
 import { SceneMotion } from "./SceneMotion";
 import ShipFleet3D from "./ShipFleet3D";
 import type { ShipCue } from "../board/shipFeedback";
+import type { ThreatCue } from "../board/threatFeedback";
+import Threats3D from "./Threats3D";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -57,12 +59,14 @@ function BoardLight({ bounds }: { bounds: BoardBounds }) {
 
 export default function Board3D({ state, interaction, diceRoll, matchKey = "", connected = true, reveals,
   shipCues = new Map(), shipsAnimated = true, onShipsAnimated,
-  pieceCues = new Map(), constructionAnimated = true, onConstructionAnimated }: {
+  pieceCues = new Map(), constructionAnimated = true, onConstructionAnimated,
+  threatCues = new Map(), threatsAnimated = true, onThreatsAnimated }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
   reveals?: ReadonlyMap<number, number>;
   shipCues?: ReadonlyMap<string, ShipCue>; shipsAnimated?: boolean; onShipsAnimated?: (enabled: boolean) => void;
   pieceCues?: ReadonlyMap<string, PieceCue>; constructionAnimated?: boolean; onConstructionAnimated?: (enabled: boolean) => void;
+  threatCues?: ReadonlyMap<string, ThreatCue>; threatsAnimated?: boolean; onThreatsAnimated?: (enabled: boolean) => void;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
@@ -76,6 +80,8 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   const hidden = model.tiles.some(tile => tile.visibility === "hidden");
   const shipColors = useMemo(() => new Map(model.ships.map(ship => [ship.owner, colorForPlayer(ship.owner, state.players)])),
     [model.ships, state.players]);
+  const publicPositions = useMemo(() => new Map(model.tiles.filter(tile => tile.visibility === "revealed")
+    .map(tile => [tile.tileIndex, tile.position])), [model.tiles]);
   const hover = useCallback((tileIndex: number | null) => setHoveredTile(tileIndex), []);
   const inspect = useCallback((tileIndex: number) => {
     interaction.onTileClick(tileIndex);
@@ -104,6 +110,13 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
         {onConstructionAnimated && <label className="board3d-construction-quality">Construction
           <select aria-label="Construction effects" value={constructionAnimated ? "motion" : "static"}
             onChange={e => onConstructionAnimated(e.target.value === "motion")}>
+            <option value="motion">{reduced ? "Still · reduced motion" : "Motion"}</option>
+            <option value="static">Still</option>
+          </select>
+        </label>}
+        {onThreatsAnimated && <label className="board3d-threat-quality">Robber / pirate
+          <select aria-label="Robber & pirate effects" value={threatsAnimated ? "motion" : "static"}
+            onChange={e => onThreatsAnimated(e.target.value === "motion")}>
             <option value="motion">{reduced ? "Still · reduced motion" : "Motion"}</option>
             <option value="static">Still</option>
           </select>
@@ -151,8 +164,8 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             : <City3D key={building.vertexId} building={building} color={colorForPlayer(building.owner, state.players)}
                 cue={construction.get(`v:${building.vertexId}`)} />)}
           {model.ports.map(port => <Port3D key={port.edge.join(",")} port={port} />)}
-          {model.robbers.map((robber, i) => <Robber3D key={i} {...robber} />)}
-          {model.pirate && <Pirate3D {...model.pirate} />}
+          <Threats3D robbers={model.robbers} pirate={model.pirate} positions={publicPositions} cues={threatCues}
+            moving={threatsAnimated && connected && !reduced} />
           <InteractionOverlay3D state={state} interaction={interaction} hover={targetHover} onHover={setTargetHover} />
           </FogPresentation>
           </SceneMotion>
