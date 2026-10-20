@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Object3D } from "three";
-import { clonePieceScene } from "./pieceAssets";
-import { loadShipAsset, shipAssetScale } from "./shipAssets";
+import { cloneShipScene, loadShipAsset, shipAssetScale } from "./shipAssets";
 import { useVisualResources } from "./VisualResources";
 
 /** Body only: Ship3D/ShipFleet3D retain ownership, placement, previews and motion. */
@@ -15,7 +14,7 @@ export default function ShipAsset({ length, color, ghost, children }: {
     return () => { mounted = false; };
   }, []);
   const pool = useVisualResources();
-  const scene = useMemo(() => template ? clonePieceScene(template, pool.pieces, color, ghost) : null,
+  const scene = useMemo(() => template ? cloneShipScene(template, pool.pieces, color, ghost) : null,
     [template, pool, color, ghost]);
   return scene ? <group scale={shipAssetScale(length)} userData={{ shipModel: "glb" }}>
     {/* Cached source geometry/neutral materials outlive each local node clone. */}

@@ -9,7 +9,7 @@
     "PlayerColor",
     "CanvasIvory"
   ],
-  "triangles": 187,
+  "triangles": 215,
   "vertices": 128,
   "three_bounds": {
     "min": [
@@ -26,7 +26,215 @@
   "coordinate_contract": "glTF Y-up; local X length; pivot (0,0,0); runtime X scale=ship.length*.88",
   "textures": 0,
   "animations": 0,
-  "glb_bytes": 12080,
-  "glb_sha256": "07f4fe56c41de24d85f332ab5f7dafbeec176767f51df137a2c2a72d20e911f9",
+  "glb_bytes": 13216,
+  "glb_sha256": "0a6b103f64fd29bca195666e1e6ab97808f4812b2de6fec785b413a932294749",
+  "culling": {
+    "HullWood": "FrontSide",
+    "PlayerColor": "FrontSide",
+    "CanvasIvory": "DoubleSide"
+  },
+  "source_topology": {
+    "CanvasIvory": {
+      "vertices": 18,
+      "welded_positions": 18,
+      "faces": 16,
+      "triangles": 32,
+      "boundary_edges": 0,
+      "non_manifold_shared_edges": 0,
+      "inconsistent_edges": 0,
+      "degenerate_triangles": 0,
+      "invalid_normals": 0,
+      "components": [
+        {
+          "faces": 16,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.0006376320404039386
+        }
+      ]
+    },
+    "HullWood": {
+      "vertices": 60,
+      "welded_positions": 60,
+      "faces": 39,
+      "triangles": 95,
+      "boundary_edges": 7,
+      "non_manifold_shared_edges": 0,
+      "inconsistent_edges": 0,
+      "degenerate_triangles": 0,
+      "invalid_normals": 0,
+      "components": [
+        {
+          "faces": 16,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.018156467366983026
+        },
+        {
+          "faces": 1,
+          "closed": false,
+          "consistent_winding": true,
+          "signed_volume": 0.005110969728169342
+        },
+        {
+          "faces": 6,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 8.892003703901234e-05
+        },
+        {
+          "faces": 10,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00018164156373738175
+        },
+        {
+          "faces": 6,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00011339992912932453
+        }
+      ]
+    },
+    "PlayerColor": {
+      "vertices": 50,
+      "welded_positions": 50,
+      "faces": 45,
+      "triangles": 88,
+      "boundary_edges": 0,
+      "non_manifold_shared_edges": 0,
+      "inconsistent_edges": 0,
+      "degenerate_triangles": 0,
+      "invalid_normals": 0,
+      "components": [
+        {
+          "faces": 28,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.002207800209968506
+        },
+        {
+          "faces": 6,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00016624980586736152
+        },
+        {
+          "faces": 6,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00011199997485770534
+        },
+        {
+          "faces": 5,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 3.172500923180146e-05
+        }
+      ]
+    }
+  },
+  "intentional_open_surface": "HullWood inset top-facing deck overlay: seven boundary edges; other components closed",
+  "glb_topology": {
+    "CanvasIvory": {
+      "vertices": 58,
+      "welded_positions": 18,
+      "faces": 32,
+      "triangles": 32,
+      "boundary_edges": 0,
+      "non_manifold_shared_edges": 0,
+      "inconsistent_edges": 0,
+      "degenerate_triangles": 0,
+      "invalid_normals": 0,
+      "components": [
+        {
+          "faces": 32,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.0006376320404039386
+        }
+      ]
+    },
+    "HullWood": {
+      "vertices": 173,
+      "welded_positions": 60,
+      "faces": 95,
+      "triangles": 95,
+      "boundary_edges": 7,
+      "non_manifold_shared_edges": 0,
+      "inconsistent_edges": 0,
+      "degenerate_triangles": 0,
+      "invalid_normals": 0,
+      "components": [
+        {
+          "faces": 38,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.018156467366983026
+        },
+        {
+          "faces": 5,
+          "closed": false,
+          "consistent_winding": true,
+          "signed_volume": 0.005110969728169342
+        },
+        {
+          "faces": 12,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 8.892003703901234e-05
+        },
+        {
+          "faces": 28,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00018164156373738175
+        },
+        {
+          "faces": 12,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00011339992912932453
+        }
+      ]
+    },
+    "PlayerColor": {
+      "vertices": 150,
+      "welded_positions": 50,
+      "faces": 88,
+      "triangles": 88,
+      "boundary_edges": 0,
+      "non_manifold_shared_edges": 0,
+      "inconsistent_edges": 0,
+      "degenerate_triangles": 0,
+      "invalid_normals": 0,
+      "components": [
+        {
+          "faces": 56,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.002207800209968506
+        },
+        {
+          "faces": 12,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00016624980586736152
+        },
+        {
+          "faces": 12,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 0.00011199997485770534
+        },
+        {
+          "faces": 8,
+          "closed": true,
+          "consistent_winding": true,
+          "signed_volume": 3.172500923180146e-05
+        }
+      ]
+    }
+  },
   "glb_reload_verified": true
 }

@@ -4,6 +4,12 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Visual Phase 5B.2 - ship-specific ghost culling
+
+**Implemented/tested2026-10-20.** Existing snapshot -> BoardRenderer -> ShipFleet3D/Ship3D -> ShipAsset path is unchanged. Only ShipAsset's material-clone call now uses `cloneShipScene` from [shipAssets.ts](../../web/src/board3d/shipAssets.ts), wrapping the existing `clonePieceScene`/Canvas pool. Corrected GLB opaque HullWood/PlayerColor inherit asset FrontSide, canvas DoubleSide. For transparent ship hover/source echoes only, Canvas-owned ghost material copies retain legacy DoubleSide/opacity/depth policy; cached originals, other pieces, geometry sharing and ignored raycasts remain unchanged. No rule/controller/game-state field, preference/default, animation trigger or request protocol change.
+
+383 web tests/TS/production build and focused matched/current-art/real ship-Fog acceptance pass; historical counts below belong to their dated checkpoints. Source/export/culling, evidence and mixed performance limits — [[plans/board3d#Visual Phase 5B.2 - ship topology and selective culling]]. GLB remains experimental opt-in, Procedural default.
+
 ## Visual Phase 5A - optional ship art body
 
 **Implemented/tested 2026-10-19.** `BoardRenderer` owns local `ShipModel` (`procedural` default /`glb`), exposed as **Ship model** in Board3D. The choice reaches confirmed Ship3D, ShipFleet3D departure echoes and InteractionOverlay3D hover ghosts; original root anchors/owner IDs/yaw and animation refs stay intact. `ShipBody3D` selects [ShipAsset.tsx](../../web/src/board3d/ShipAsset.tsx) or its unchanged procedural body. No snapshot field, server preference or controller/rules change; SVG stays unchanged.

@@ -1,15 +1,27 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Project State
 
 ## Current verification and status
 
+### Visual Phase 5B.2 - ship topology/culling, 2026-10-20
+
+**Implemented/verified as experimental opt-in; no default promotion or performance improvement claim.** Phase5B.1 checkpoint **`986c99c3cd1b0a7bb38857b75401a4dde2f1bd2a`** was committed/pushed normally with six intended files, whitespace/exact remote hash verified; user graph/artifacts excluded. Original pilot source/GLB remain in Git before correction. Phase5B.2 remains uncommitted/unpushed.
+
+Real Blender5.2.2 CLI inspection confirmed16 inconsistent sail edges and an inward pennant. Their winding is corrected; the renderable open rail is enclosed to support solid FrontSide without moving its external outline. The intentionally thin deck overlay retains seven boundary edges. HullWood/PlayerColor opaque materials now FrontSide; thin canvas stays DoubleSide. Ship-specific transparent hover/source echoes retain legacy DoubleSide/opacity/raycast policy through existing Canvas-owned copies. Default/fallback, anchors/colors/controllers and construction/movement/shared clock unchanged.
+
+Same existing asset: **13,216 bytes/215 triangles**, versus12,080/187; three meshes/materials, no textures. Source vertices128 unchanged, exported vertices339->381; exact bounds/pivot/scale retained. Two native exports produce identical corrected SHA; saved source reopen, GLB reimport and independent frontend topology/manifest/culling checks pass. No other model/backend/rules/protocol/persistence/Fog gate/dependency change.
+
+**383 frontend tests, TypeScript and production build pass**; lazy Board3D982.80kB/267.22gzip, existing warning. Matched normal/close/opposite azimuth/polar limits, real hover,50 hexes/four colors and construction/movement captures pass, plus current six-group art/seven-group construction regressions. **Seven actual two-client ship/Fog WS/PostgreSQL groups** pass: rejection equality, accepted build/move/Gold/discovery, duplicate, refresh/reconnect/two restarts without replay; fresh isolated DB only. Test PostgreSQL stopped afterward without deleting data; original/corrected previews remain running and real Chrome smoke passes. Full Python/scenarios/Docker build not rerun because production backend/deployment unchanged.
+
+Two controlled original/corrected GPU runs retain96 readings/11,520 valid queries and all opposing results. Fifty-normal median7.440->7.376 and7.676->7.162 ms; seven-static median worsens in both (.870->.929/.963->1.082), and p95 does not uniformly improve. No speedup/default-readiness claim. An asymmetric cold-serving path was corrected in test tooling and checked separately with16 fresh-context readings; original cold fields remain documented as biased, steady data retained. Full tables/evidence/limits — [[plans/board3d#Visual Phase 5B.2 - ship topology and selective culling]]. Both original and corrected GLB are inspectable at localhost18781/18782 using `node web/e2e/ship-topology-demo.cjs`; choose GLB pilot, or unchanged Procedural. Media/raw reports under `%TEMP%/catan-ship-topology-5b2/`. User art approval, broader hardware and arbitrary underside/self-intersection certification remain outside this checkpoint.
+
 ### Visual Phase 5B.1 - ship GPU investigation, 2026-10-19
 
-**Completed investigation; INCONCLUSIVE for default promotion.** Phase5A is published as **`5a3902cd22e080c14d4b6b43c415ed8026297118`**. Procedural remains default, GLB opt-in/fallback unchanged. No production runtime, asset, animation, backend, database, Fog gate or dependency change. Only a corrected benchmark, three tests and affected docs; no commit/push or5B.2 implementation.
+**Historical completed investigation; INCONCLUSIVE for default promotion. Published2026-10-20 as `986c99c3cd1b0a7bb38857b75401a4dde2f1bd2a`.** Exactly six intended files committed/pushed after explicit authorization; exact remote hash and whitespace verified, graph/artifacts excluded. That checkpoint changed only benchmark/tests/docs and retained the original5A asset/default. Subsequently authorized5B.2 is recorded above. Phase5A is `5a3902cd22e080c14d4b6b43c415ed8026297118`.
 
 Confirmed5A measurement limitations: old GPU-labeled numbers were `render + finish` synchronized CPU wall time, individual frame timings were discarded, readiness dwell was unequal, burst warm-up and differing sync/submission cadence limited attribution, and counters omitted shadow passes. Both original reports and their6.20/11.20 outlier remain preserved. New same-renderer paired ABBA/BAAB runs use asynchronous GPU queries, separate wall diagnostics, paced equal sample counts and full chronological raw data. **Two complete six-case runs pass,96 readings/11,520 valid GPU samples, zero disjoint/errors**.50-normal GPU median/p95: primary3.256->3.134 /4.191->3.990 ms; repeat3.337->3.189 /4.533->4.040. This does not prove performance equivalence. Primary GLB50-static max14.889 ms and other opposing tails are retained; clocks540-2572MHz/P2/P4/P5 vary including start/end snapshots. No specific cause of the historical anomaly is established.
 

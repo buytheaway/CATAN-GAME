@@ -1,5 +1,39 @@
 # Ship art pilot export
 
+## Topology hardening - 2026-10-20
+
+This regenerates the same experimental ship, not an additional model. Original
+native source/GLB/exporter are preserved in Git at `986c99c` (also5A asset), before
+the5B.2 correction. Use Git history for review; do not reset unrelated work.
+
+Inspect the actual saved native source without saving or exporting:
+
+```powershell
+powershell.exe -NoProfile -File tools/blender/export_ship_pilot.ps1 -InspectOnly
+# Optional: -SourcePath 'C:\path\to\original\ship_pilot.blend'
+```
+
+The same Store CLI opens the file in its disposable background process.
+`ship_topology.py` reports positional-weld edge winding, boundaries, shared
+non-manifold edges, degenerate triangles, unit/finite normals and closed-component
+signed volume. It never welds or edits rendering geometry. Self intersections
+are not certified. Open-component signed volume is not a physical volume.
+
+Corrections: sail sidewall winding, inward pennant, rail inner wall/underside
+enclosure for solid culling. The intentional separate inset deck stays open
+(seven boundary edges). Opaque HullWood/PlayerColor now FrontSide; thin canvas
+conservatively DoubleSide. Runtime ship ghost copies retain legacy DoubleSide,
+opacity and ignored raycasts. No silhouette/palette/anchor/animation redesign.
+
+Current export:13,216 bytes/215 triangles, three meshes/materials, no textures.
+Source128 vertices; exported381 vertices reflect flat-normal splits. Manifest
+includes named culling and source/import topology; both are validated before
+success. Native source reopening and fresh-root repeated GLB export were verified
+with Blender5.2.2 LTS. Corrected SHA256:
+`0a6b103f64fd29bca195666e1e6ab97808f4812b2de6fec785b413a932294749`.
+Native blend byte reproducibility is not claimed. Keep procedural default and
+opt-in/fallback. Mixed measured performance is not a speedup/default-art approval.
+
 Run from the repository root on Windows with the existing Blender installation:
 
 ```powershell

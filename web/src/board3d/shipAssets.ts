@@ -1,5 +1,6 @@
-import type { Object3D } from "three";
+import { DoubleSide, Mesh, type Object3D } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clonePieceScene, type createPieceMaterials } from "./pieceAssets";
 
 export type ShipModel = "procedural" | "glb";
 export const SHIP_ASSET_URL = "/models/pieces/ship-pilot.glb";
@@ -22,3 +23,15 @@ export function createShipAssetCache(
 }
 
 export const loadShipAsset = createShipAssetCache();
+
+/** Preserve the established two-sided transparent hover/echo appearance. */
+export function cloneShipScene(template: Object3D, pool: ReturnType<typeof createPieceMaterials>, color: string, ghost: boolean) {
+  const scene = clonePieceScene(template, pool, color, ghost);
+  if (ghost) scene.traverse(node => {
+    if (node instanceof Mesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+      // These are Canvas-owned ghost copies, never cached neutral originals.
+      material.side = DoubleSide;
+    }
+  });
+  return scene;
+}

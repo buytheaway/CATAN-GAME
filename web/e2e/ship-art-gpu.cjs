@@ -247,5 +247,5 @@ async function main() {
   finally { await save(); if (browser) await browser.close(); if (demo) await new Promise(resolve => demo.server.close(resolve)); }
   console.log('REPORT ' + reportPath);
 }
-module.exports = { orders, stats, summarize, samplePage };
+module.exports = { orders, stats, summarize, samplePage, telemetry };
 if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

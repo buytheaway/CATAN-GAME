@@ -1,15 +1,23 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 5B.2 - ship topology boundary
+
+**Implemented/visually tested2026-10-20; same experimental ship design, no artistic/default approval.** Sail sidewall and pennant windings are corrected; rail inner wall/underside are enclosed within the same outline. Slight inner-wall/contact-shadow differences are disclosed; silhouette, ivory canvas/wood/owner palette, dimensions and anchors remain. The separate thin deck overlay remains open intentionally. Native source/export/GLB inspection is reproducible, not a new model or style pass.
+
+Confirmed opaque HullWood/PlayerColor use FrontSide. Thin CanvasIvory keeps DoubleSide conservatively; all transparent hover/source-echo material copies keep the original DoubleSide/.46 presentation and ignored raycasts/no shadows. No animation, controls, HUD, camera/light redesign, procedural-default or fallback change. Matched original/corrected/procedural real Board3D views cover standard/close/opposite azimuths/polar limits, ghosts, ports/Fog, four colors,50 hexes and fixed-age construction/movement. Public synthetic captures do not certify natural four-player gameplay.
+
+GPU results are mixed, including worse seven-static median in both runs; extra closure raises187->215 triangles/12,080->13,216 bytes. Do not describe selective culling as a proven speedup or default-ready replacement. Full figures, preserved unfavorable reports, visual differences and preview links — [[plans/board3d#Visual Phase 5B.2 - ship topology and selective culling]], [reproduction](../../web/e2e/README.md#visual-phase-5b2---ship-topology-comparison). No additional asset or broader art overhaul.
+
 ## Visual Phase 5B.1 - ship performance findings
 
-**Investigation tested2026-10-19; no art/default change.** Phase5A is published as `5a3902cd22e080c14d4b6b43c415ed8026297118`. Both original contradictory wall-time reports remain; their historical GPU label/raw-sample claims are corrected in [[plans/board3d#Visual Phase 5B.1 - ship GPU investigation]]. Two corrected GPU-timer ABBA/BAAB runs cover7/50 normal/reduced/static with identical public scene/camera/counts, full raw data and separate loading/warm-up. No persistent GLB-specific50-normal regression reproduced, but clock/power variation, opposing tails and one desktop GPU make default promotion **inconclusive**, not approved or equivalent.
+**Historical investigation tested2026-10-19; published as986c99c on2026-10-20, no art/default change in that phase.** Phase5A is `5a3902cd22e080c14d4b6b43c415ed8026297118`. Both original contradictory wall-time reports remain; their historical GPU label/raw-sample claims are corrected in [[plans/board3d#Visual Phase 5B.1 - ship GPU investigation]]. Two corrected GPU-timer ABBA/BAAB runs cover7/50 normal/reduced/static with identical public scene/camera/counts, full raw data and separate loading/warm-up. No persistent GLB-specific50-normal regression reproduced, but clock/power variation, opposing tails and one desktop GPU make default promotion **inconclusive**, not approved or equivalent. Subsequently authorized5B.2 is described above.
 
 Original `.blend` was inspected read-only; current GLB/materials/shape/pivot/color palette remain unchanged. Three DoubleSide materials, extra triangles and wider sail/shadow coverage are measurable implementation differences; they do not establish the historical spike's cause. Winding/open surfaces mean blanket FrontSide changes could damage appearance. A possible future5B.2 refinement should first validate topology and selective culling against front/back/ghost/shadow views; no optimization or artistic result is preapproved. Geometry/neutral materials are already shared, existing animation wrappers/shared clock retained. Procedural remains the default, GLB explicit opt-in with existing fallback.
 

@@ -3,18 +3,19 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { createHash } from "node:crypto";
 
 const compiled = await build({
   stdin: { contents: `export * from "./shipAssets"; export * from "./pieceAssets";
     export * from "./coordinates"; export * from "./shipMotion"; export { ROOM_COLORS } from "../board/colors";
-    export { Group, Mesh, BoxGeometry, MeshStandardMaterial, Vector3, Raycaster, Box3 } from "three";
+    export { Group, Mesh, BoxGeometry, MeshStandardMaterial, Vector3, Raycaster, Box3, FrontSide, DoubleSide } from "three";
     export { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";`,
     resolveDir: fileURLToPath(new URL("../src/board3d/", import.meta.url)), loader: "ts" },
   bundle: true, write: false, platform: "node", format: "esm",
 });
-const { SHIP_ASSET_URL, createShipAssetCache, shipAssetScale, createPieceMaterials,
+const { SHIP_ASSET_URL, createShipAssetCache, shipAssetScale, cloneShipScene, createPieceMaterials,
   clonePieceScene, ignorePieceRaycast, edgePlacement, ROOM_COLORS,
-  shipPose, shipDeparture, Group, Mesh, BoxGeometry, MeshStandardMaterial, Vector3, Raycaster, Box3, GLTFLoader } = await import(
+  shipPose, shipDeparture, Group, Mesh, BoxGeometry, MeshStandardMaterial, Vector3, Raycaster, Box3, GLTFLoader, FrontSide, DoubleSide } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
 
 function template() {
@@ -29,7 +30,76 @@ function template() {
 const meshes = scene => { const result = []; scene.traverse(node => { if (node.isMesh) result.push(node); }); return result; };
 const bytes = await readFile(new URL("../public/models/pieces/ship-pilot.glb", import.meta.url));
 const asset = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), "");
+const manifest = JSON.parse(await readFile(new URL("../../docs/design/references/blender/ship-pilot.json", import.meta.url), "utf8"));
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
+
+test("ship manifest describes actual bytes, triangles, named selective culling and validated export", () => {
+  assert.equal(manifest.glb_sha256, createHash("sha256").update(bytes).digest("hex"));
+  assert.equal(manifest.glb_bytes, bytes.length);
+  assert.equal(manifest.triangles, meshes(asset.scene).reduce((sum, m) => sum + m.geometry.index.count / 3, 0));
+  assert.deepEqual(manifest.culling, { HullWood: "FrontSide", PlayerColor: "FrontSide", CanvasIvory: "DoubleSide" });
+  assert.equal(manifest.glb_reload_verified, true);
+  for (const mesh of meshes(asset.scene)) assert.equal(mesh.material.side, mesh.material.name === "CanvasIvory" ? DoubleSide : FrontSide);
+});
+
+// Independent verification of exported triangles, including normal splits at the
+// same position. This never edits/welds the rendering geometry.
+function topology(geometry) {
+  const p = geometry.attributes.position, normal = geometry.attributes.normal;
+  const keys = new Map(), ids = [], triangles = [], edges = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const key = [p.getX(i), p.getY(i), p.getZ(i)].map(v => v.toFixed(6)).join(",");
+    if (!keys.has(key)) keys.set(key, keys.size); ids.push(keys.get(key));
+  }
+  for (let i = 0; i < geometry.index.count; i += 3) {
+    const vertices = [0, 1, 2].map(j => geometry.index.getX(i + j)), welded = vertices.map(v => ids[v]);
+    const points = vertices.map(v => new Vector3().fromBufferAttribute(p, v));
+    const faceNormal = points[1].clone().sub(points[0]).cross(points[2].clone().sub(points[0]));
+    assert.ok(faceNormal.length() > 1e-12, "degenerate triangle");
+    for (const vertex of vertices) assert.ok(faceNormal.clone().normalize().dot(new Vector3().fromBufferAttribute(normal, vertex)) > .5, "normal opposes face winding");
+    const face = triangles.length; triangles.push({ points, neighbors: new Set(), closed: true });
+    for (let j = 0; j < 3; j++) {
+      const a = welded[j], b = welded[(j + 1) % 3], key = [a, b].sort((a, b) => a - b).join(",");
+      if (!edges.has(key)) edges.set(key, []); edges.get(key).push({ face, a, b });
+    }
+  }
+  let boundary = 0;
+  for (const uses of edges.values()) {
+    assert.ok(uses.length <= 2, "non-manifold shared edge");
+    if (uses.length === 1) { boundary++; triangles[uses[0].face].closed = false; }
+    else {
+      const [a, b] = uses; assert.equal(a.a, b.b, "inconsistent edge winding"); assert.equal(a.b, b.a);
+      triangles[a.face].neighbors.add(b.face); triangles[b.face].neighbors.add(a.face);
+    }
+  }
+  const unseen = new Set(triangles.map((_, i) => i)), volumes = [];
+  while (unseen.size) {
+    const pending = [unseen.values().next().value], component = [];
+    while (pending.length) { const i = pending.pop(); if (!unseen.delete(i)) continue;
+      component.push(triangles[i]); pending.push(...triangles[i].neighbors); }
+    if (component.every(t => t.closed)) volumes.push(component.reduce((sum, t) => sum + t.points[0].dot(t.points[1].clone().cross(t.points[2])) / 6, 0));
+  }
+  return { boundary, volumes };
+}
+test("exported closed ship components face outward; only the intentional deck overlay stays open", () => {
+  for (const mesh of meshes(asset.scene)) {
+    const info = topology(mesh.geometry);
+    assert.equal(info.boundary, mesh.material.name === "HullWood" ? 7 : 0);
+    assert.ok(info.volumes.length > 0 && info.volumes.every(v => v > 1e-10), "inward closed component");
+  }
+});
+test("selective ship culling survives owner/transparent ghost cloning without changing shared sources", () => {
+  const pool = createPieceMaterials();
+  for (const ghost of [false, true]) for (const color of Object.values(ROOM_COLORS)) {
+    const clone = cloneShipScene(asset.scene, pool, color, ghost);
+    for (const part of meshes(clone)) {
+      assert.equal(part.material.side, ghost || part.material.name === "CanvasIvory" ? DoubleSide : FrontSide);
+      assert.equal(part.material.transparent, ghost); assert.equal(part.castShadow, !ghost);
+      assert.equal(part.raycast, ignorePieceRaycast);
+    }
+  }
+  assert.ok(meshes(asset.scene).every(p => !p.material.transparent && p.material.side === (p.material.name === "CanvasIvory" ? DoubleSide : FrontSide))); pool.dispose();
+});
 
 test("experimental ship cache shares one pending request and immutable source across later mounts", async () => {
   const calls = []; let finish;

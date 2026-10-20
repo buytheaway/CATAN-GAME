@@ -1,4 +1,4 @@
-param([string]$BlenderPath, [string]$OutputRoot)
+param([string]$BlenderPath, [string]$OutputRoot, [switch]$InspectOnly, [string]$SourcePath)
 $ErrorActionPreference = 'Stop'
 $shipRepoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if (-not $OutputRoot) { $OutputRoot = $shipRepoRoot }
@@ -8,6 +8,11 @@ $shipStatusDirectory = Join-Path $shipRepoRoot '.venv/test-artifacts'
 [IO.Directory]::CreateDirectory($shipStatusDirectory) | Out-Null
 $shipStatusPath = Join-Path $shipStatusDirectory ('ship-export-' + [guid]::NewGuid().ToString('N') + '.json')
 $shipArguments = '--background --factory-startup --python-exit-code 1 --python "' + $shipExporter + '" -- --output-root "' + $OutputRoot + '" --status-file "' + $shipStatusPath + '"'
+if ($InspectOnly) {
+    if (-not $SourcePath) { $SourcePath = Join-Path $shipRepoRoot 'docs/design/references/blender/ship_pilot.blend' }
+    $SourcePath = (Resolve-Path -LiteralPath $SourcePath).Path
+    $shipArguments += ' --inspect-source "' + $SourcePath + '"'
+}
 $shipStore = Get-AppxPackage 'BlenderFoundation.Blender' -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $BlenderPath -and $shipStore) {
     # Standard Store app activation preserves package identity. No ACL/install changes.

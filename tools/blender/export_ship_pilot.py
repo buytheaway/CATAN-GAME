@@ -12,6 +12,8 @@ import sys
 import traceback
 
 import bpy
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ship_topology import inspect_objects, validate_hardened
 
 
 class MeshParts:
@@ -42,7 +44,7 @@ class MeshParts:
         self.part(vertices, faces)
 
 
-def material(name, hex_color, roughness):
+def material(name, hex_color, roughness, double_sided):
     values = [int(hex_color[i:i+2], 16)/255 for i in (0, 2, 4)]
     linear = [v/12.92 if v <= .04045 else ((v+.055)/1.055)**2.4 for v in values]
     mat = bpy.data.materials.new(name)
@@ -52,6 +54,7 @@ def material(name, hex_color, roughness):
     shader.inputs['Roughness'].default_value = roughness
     shader.inputs['Metallic'].default_value = 0
     mat.diffuse_color = (*linear, 1)
+    mat.use_backface_culling = not double_sided
     return mat
 
 
@@ -76,10 +79,12 @@ def build():
     # Shallow faceted hull, inset deck, and continuous colored gunwale.
     wood.rings([ring(.76,.56,0), ring(.96,.83,.035), ring(1,1,.125)])
     wood.part(ring(.91,.75,.126), [tuple(range(len(outline)))])
-    owner.rings([ring(1,1,.105), ring(1,1,.144)], cap_bottom=False, cap_top=False)
-    outer, inner = ring(1,1,.144), ring(.91,.75,.144)
+    # Close the rail's missing inner wall/underside without moving any outer point.
+    rail = [ring(1,1,.105), ring(1,1,.144), ring(.91,.75,.144), ring(.91,.75,.105)]
     n = len(outline)
-    owner.part(outer+inner, [(i,(i+1)%n,n+(i+1)%n,n+i) for i in range(n)])
+    owner.part([point for loop in rail for point in loop], [
+        (layer*n+i, layer*n+(i+1)%n, ((layer+1)%4)*n+(i+1)%n, ((layer+1)%4)*n+i)
+        for layer in range(4) for i in range(n)])
     owner.box((-.245,0,.141),(.035,.19,.025))
     owner.box((.15,0,.141),(.028,.16,.025))
     wood.box((-.08,0,.151),(.052,.045,.038))
@@ -104,17 +109,19 @@ def build():
             a=row*3+col
             faces.extend([(a,a+1,a+4,a+3),(a+12,a+13,a+10,a+9)])
     boundary=[0,1,2,5,8,7,6,3]
-    faces.extend((a,b,b+9,a+9) for a,b in zip(boundary,boundary[1:]+boundary[:1]))
+    # Oppose each front boundary edge, rather than winding side walls inward.
+    faces.extend((b,a,a+9,b+9) for a,b in zip(boundary,boundary[1:]+boundary[:1]))
     canvas.part(front+back,faces)
     # Ownership remains legible from the top even when the hull is foreshortened.
     owner.part([(-.08,-.008,.535),(.055,-.008,.518),(-.08,-.008,.488),
                 (-.08,.002,.535),(.055,.002,.518),(-.08,.002,.488)],
-        [(0,1,2),(5,4,3),(0,3,4,1),(1,4,5,2),(2,5,3,0)])
+        [tuple(reversed(face)) for face in [(0,1,2),(5,4,3),(0,3,4,1),(1,4,5,2),(2,5,3,0)]])
 
-    materials = [('HullWood',wood,'805331',.80),('PlayerColor',owner,'cc4c48',.76),
-                  ('CanvasIvory',canvas,'f4e7ca',.88)]
+    # The thin billowed canvas conservatively keeps both sides, including ghosts.
+    materials = [('HullWood',wood,'805331',.80,False),('PlayerColor',owner,'cc4c48',.76,False),
+                  ('CanvasIvory',canvas,'f4e7ca',.88,True)]
     objects=[]
-    for name, parts, color, roughness in materials:
+    for name, parts, color, roughness, double_sided in materials:
         mesh=bpy.data.meshes.new(name)
         mesh.from_pydata(parts.vertices,[],parts.faces)
         mesh.update()
@@ -122,7 +129,7 @@ def build():
         obj=bpy.data.objects.new(name,mesh)
         bpy.context.scene.collection.objects.link(obj)
         obj.parent=root
-        mesh.materials.append(material(name,color,roughness))
+        mesh.materials.append(material(name,color,roughness,double_sided))
         objects.append(obj)
     bpy.ops.object.select_all(action='DESELECT')
     root.select_set(True)
@@ -141,6 +148,8 @@ def main(args):
     for path in (source,glb,metadata):
         path.parent.mkdir(parents=True,exist_ok=True)
     objects=build()
+    topology=inspect_objects(objects)
+    validate_hardened(topology)
     triangles=sum(len(obj.data.loop_triangles) for obj in objects)
     assert len(objects)==3 and triangles <= 500
     bpy.ops.wm.save_as_mainfile(filepath=str(source),check_existing=False)
@@ -156,7 +165,10 @@ def main(args):
                         'max':[max(p[i] for p in points) for i in range(3)]},
         'coordinate_contract':'glTF Y-up; local X length; pivot (0,0,0); runtime X scale=ship.length*.88',
         'textures':0,'animations':0,'glb_bytes':glb.stat().st_size,
-        'glb_sha256':hashlib.sha256(glb.read_bytes()).hexdigest()}
+        'glb_sha256':hashlib.sha256(glb.read_bytes()).hexdigest(),
+        'culling':{obj.name: ('FrontSide' if obj.data.materials[0].use_backface_culling else 'DoubleSide') for obj in objects},
+        'source_topology':topology,
+        'intentional_open_surface':'HullWood inset top-facing deck overlay: seven boundary edges; other components closed'}
     assert result['glb_bytes'] < 80000
     # Reload the exported bytes in this disposable CLI process, never the GUI scene.
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -166,6 +178,8 @@ def main(args):
     for obj in imported:
         obj.data.calc_loop_triangles()
     assert sum(len(obj.data.loop_triangles) for obj in imported)==triangles
+    result['glb_topology']=inspect_objects(imported)
+    validate_hardened(result['glb_topology'])
     assert not any(obj.type in ('CAMERA','LIGHT') for obj in bpy.context.scene.objects)
     restored=[obj.matrix_world @ vertex.co for obj in imported for vertex in obj.data.vertices]
     restored_three=[(v.x,v.z,-v.y) for v in restored]
@@ -181,9 +195,15 @@ if __name__ == '__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--output-root',default=str(Path(__file__).resolve().parents[2]))
     parser.add_argument('--status-file',required=True)
+    parser.add_argument('--inspect-source')
     args=parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
     try:
-        result=main(args)
+        if args.inspect_source:
+            bpy.ops.wm.open_mainfile(filepath=str(Path(args.inspect_source).resolve()),load_ui=False)
+            result={'success':True,'blender_version':bpy.app.version_string,
+                    'inspection_only':True,'topology':inspect_objects(bpy.context.scene.objects)}
+        else:
+            result=main(args)
     except Exception:
         result={'success':False,'error':traceback.format_exc()}
         raise

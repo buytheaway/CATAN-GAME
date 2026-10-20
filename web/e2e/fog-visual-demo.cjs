@@ -6,11 +6,14 @@ const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const { build } = require('../node_modules/esbuild');
 
-async function startDemo(port = 0, sourceRef = null) {
+async function startDemo(port = 0, sourceRef = null, shipAssetRef = null) {
   const output = await fs.mkdtemp(path.join(os.tmpdir(), 'catan-fog-visual-'));
   const publicRoot = path.resolve(__dirname, '../public');
   // Test-only controlled A/B: read committed frontend blobs without checkout/reset.
   const repoRoot = path.resolve(__dirname, '../..'), sourceRoot = path.resolve(__dirname, '../src') + path.sep;
+  // Test-only original-art comparison. One fixed PUBLIC asset, never arbitrary paths.
+  const originalShip = Buffer.isBuffer(shipAssetRef) ? shipAssetRef : shipAssetRef
+    ? execFileSync('git', ['show', shipAssetRef + ':web/public/models/pieces/ship-pilot.glb'], { cwd: repoRoot }) : null;
   const plugins = sourceRef ? [{ name: 'committed-frontend', setup(builder) {
     builder.onLoad({ filter: /\.(tsx?|jsx?|css)$/ }, args => {
       if (!args.path.startsWith(sourceRoot)) return;
@@ -30,6 +33,9 @@ async function startDemo(port = 0, sourceRef = null) {
       const url = new URL(req.url, 'http://127.0.0.1');
       if (url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
       if (url.pathname === '/') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(html); return; }
+      if (originalShip && url.pathname === '/models/pieces/ship-pilot.glb') {
+        res.setHeader('Content-Type', 'application/octet-stream'); res.end(originalShip); return;
+      }
       let file;
       if (['/fixture.js', '/fixture.css'].includes(url.pathname)) file = path.join(output, url.pathname.slice(1));
       else if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/models/')) {

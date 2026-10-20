@@ -1,13 +1,87 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-19
+updated: 2026-10-20
 ---
 
 # Board3D
 
+## Visual Phase 5B.2 - ship topology and selective culling
+
+**Implemented/verified in experimental opt-in scope, 2026-10-20; checkpoint verdict below.** Phase5B.1 was committed/pushed as `986c99c3cd1b0a7bb38857b75401a4dde2f1bd2a`; exact upstream hash and six-file scope verified, user graph excluded. Original `.blend`/GLB/exporter remain recoverable from that checkpoint (same asset as5A), providing the requested version-control backup before correction. No5B.2 commit/push has been made.
+
+### Actual topology and minimal corrections
+
+The existing Blender5.2.2 LTS Store CLI opened the original native source read-only. [ship_topology.py](../../../tools/blender/ship_topology.py) audits positional-weld adjacency without editing vertices/normals; [export launcher](../../../tools/blender/export_ship_pilot.ps1) supports `-InspectOnly [-SourcePath ...]`. Original CanvasIvory has16 inconsistent shared edges despite unit/finite normals, no boundary/degenerate triangles. Its eight sidewall face windings are reversed explicitly. The closed PlayerColor pennant is consistently inward (signed volume about-0.000031725); its five faces are reversed, without moving vertices. Other originally closed components were outward.
+
+The original colored rail is a renderable open DoubleSide shell, with14 boundary edges at the inner lip/lower seam. Opening alone is not classified as a defect. To support FrontSide as a solid rail, inner wall and underside are added within the same external outline:14 quads/28 triangles. This changes visible inner-wall shading slightly; the hidden underside closes that component. The separate HullWood top-facing inset deck is an intentional thin overlay: its seven boundary edges are retained, not repaired indiscriminately. No smoothing, retopology, hull/sail redesign or outer-point displacement.
+
+Native source and reimported GLB now have zero inconsistent/shared non-manifold edges, zero degenerate triangles/invalid unit normals; all closed components have positive signed volume. Only the documented deck overlay remains open. These checks do not test arbitrary self-intersections or claim a boolean-unioned printable solid: the original overlapping component construction is retained.
+
+### Selective culling and appearance boundary
+
+Opaque HullWood and PlayerColor use **FrontSide**; thin billowed CanvasIvory conservatively retains **DoubleSide**, avoiding an unnecessary additional canvas-side change. Above-board CameraRig limits remain21.6-52.2 degrees from vertical. The open deck faces upward throughout that supported range. No global FrontSide replacement.
+
+Transparent hover/source echoes preserve the established **DoubleSide on all three Canvas-owned ghost material copies**, opacity.46, depth policy, no shadows and ignored raycasts. Initial candidate inherited opaque FrontSide in ghosts (four draws); it was not kept. [cloneShipScene](../../../web/src/board3d/shipAssets.ts) wraps existing clonePieceScene only for this local ship policy; [ShipAsset.tsx](../../../web/src/board3d/ShipAsset.tsx) uses it. Cached source/neutral and other piece materials are never mutated. Final isolated ghost stays six draws; triangles374->430 reflect enclosure, not an advertised ghost optimization.
+
+Unchanged: Procedural default/no-request/loading-error fallback, exact PlayerColor palette, source pivot/scale/edge IDs/owner/root yaw, build550/move900/depart350 ms/shared12Hz wrappers, controller, SVG and snapshot path. No backend/rules/protocol/persistence/security/Fog gates/dependencies or other model changes.
+
+### Export and size
+
+The same checked-in exporter regenerates only the existing pilot `.blend`, GLB and manifest. The native saved source was reopened/inspected; a second fresh temporary-root export produced identical GLB bytes, with successful GLB reload/topology/bounds validation. Original is preserved in Git and outside Git at `%TEMP%/catan-ship-topology-5b2/original/`.
+
+| Property | Original | Corrected |
+| --- | --- | --- |
+| GLB bytes | 12,080 | 13,216 (+1,136) |
+| Triangles | 187 | 215 (+28) |
+| Source vertices | 128 | 128 |
+| Exported POSITION vertices | 339 | 381 (faceted normal splits) |
+| Meshes/materials/textures | 3/3/0 | 3/3/0 |
+| Native blend bytes | 100,816 | 101,000 |
+
+Corrected SHA256 **`0a6b103f64fd29bca195666e1e6ab97808f4812b2de6fec785b413a932294749`**; unchanged bounds `[-.40,0,-.14]..[.40,.535,.14]`. Manifest adds source/import topology and explicit culling policy. No baked animation, external dependency or additional Blender model. Native blend byte identity across saves is not claimed. Independent frontend tests inspect the actual GLB winding, normals, closed-component volumes, culling, hash/manifest, owner/ghost isolation and original transforms/motion.
+
+### Visual verification and differences
+
+Actual Board3D original/corrected/procedural captures use the same public snapshot, owner colors, camera, viewport and lights/shadows. Normal/close, both azimuths, high/low allowed polar limits, real legal hover,24 ships/50 hexes and matched construction/movement ages pass. Original/corrected root anchors and finite scales match. Final30 screenshots/report: `%TEMP%/catan-ship-topology-5b2/visual-animations/comparison.json`; static18-shot final set also retained under `visual-final/`. Construction ages175/275/1200 ms; movement175/450/1200. Clock control is test-only, on disposable capture pages, and uses actual production cues. Normal views and GPU runs do not use it.
+
+Pointer drags initially coalesced differently, so `visual-candidate/` retains the failed camera-comparison report. Final runner records actual input poses, then restores the original control-generated camera only for matched capture; no production camera change or alternate renderer. Static normal/close/back/ghost images were inspected. The outline/colors/style remain; closed inner rail and local shadow/inner-face shading differ. Pixel equivalence and new artistic approval are not claimed. Current six-group art regression also passes, including fallback404, finite motion/recovery fences, resource sharing, reduced/static/SVG, colors, ports/Fog and resize; WebM at `art-regression/3bb5e67366ac7f1ea6a31a5349c9159b.webm`.
+
+### Controlled original/corrected GPU comparison
+
+[ship-topology-compare.cjs](../../../web/e2e/ship-topology-compare.cjs) reuses the unchanged asynchronous samplePage probe from5B.1. Same current Board3D runtime, original fixed GLB bytes from Git versus corrected bytes. Chrome **155.0.8059.85**, RTX5050 Laptop/ANGLE D3D11/driver610.74,1440x900/DPR1/Canvas1186x723. Two independent complete ABBA/BAAB runs, fresh contexts/readiness on each side,90 warm/120 GPU/60 wall samples per reading, main plus shadows. **96 readings/11,520 valid GPU timers/5,760 wall samples/8,640 warm samples, zero disjoint/browser errors**. All chronological samples, opposing readings and telemetry remain saved. Clock/power/ambient phases are not locked; other user applications remain. This is a render command-span benchmark, not sustained FPS or isolated fragment execution.
+
+All arrows original -> corrected, ms; pooled nearest-rank GPU median/p95:
+
+| Scene | Primary median | Primary p95 | Repeat median | Repeat p95 |
+| --- | --- | --- | --- | --- |
+| 7 normal | 1.950 -> 1.785 | 4.097 -> 4.054 | .853 -> 1.061 | 3.324 -> 3.670 |
+| 7 reduced | 1.677 -> 2.030 | 4.280 -> 4.322 | 1.522 -> 1.365 | 3.675 -> 3.596 |
+| 7 static | .870 -> .929 | 3.656 -> 3.597 | .963 -> 1.082 | 3.975 -> 3.477 |
+| 50 normal | 7.440 -> 7.376 | 13.794 -> 14.539 | 7.676 -> 7.162 | 14.618 -> 14.178 |
+| 50 reduced | 7.652 -> 7.560 | 14.813 -> 14.345 | 7.558 -> 7.544 | 14.882 -> 15.144 |
+| 50 static | 7.462 -> 7.419 | 14.742 -> 14.322 | 7.720 -> 7.517 | 14.625 -> 13.782 |
+
+Both runs: calls395->395/triangles52,452->52,676 on seven tiles; calls2390->2390/triangles317,934->319,278 on50. Programs9->9; scene materials104/111 unchanged; resident geometry/texture counts154/6 and153/17 respectively, matching before/after every steady reading. Topology closure adds triangles; culling does not reduce submitted draw counts. Whole-scene unique geometry counts149/146 also match. Shared idle remains12Hz normal and0 reduced/static.
+
+**No repeatable overall speedup claimed.** Seven-static median is worse in both runs (+.059/+.119 ms); other small-scene signs reverse. Fifty-normal median improves in both, but p95 does not uniformly improve. Corrected maximum GPU spans20.630 ms primary/21.646 repeat are retained. Per-reading clocks1335-2602MHz/P2/P4 and61-65 C vary. Chrome5B.1 was155.0.8059.80 and its warm in-page method differs; absolute timings across phases do not establish a regression or its cause. Raw reports: `gpu-primary/paired-performance.json`, `gpu-repeat/paired-performance.json` under the same temporary artifact root. No outlier filtering.
+
+### Cold-load correction and limitations
+
+The first two steady runs served original bytes from memory but corrected bytes through filesystem reads. Their cold-fetch fields are retained **but are not a symmetric asset-loading comparison**; neither fetching path runs inside the timed steady phase after readiness/compile/warm-up. The comparison helper now preloads both fixed public GLBs and uses the same response branch. Separate `--cold-only` ABBA/BAAB verification on7/50 normal adds16 fresh contexts, HTTP cache disabled, with no GPU timing phase. `cold-normalized/cold-load.json` records every reading.
+
+Symmetric fetch nearest-rank medians:7 hex1.70->4.50 ms;50 hex1.70->1.60. Ranges original1.30-6.70/corrected1.50-8.70 ms. Detection includes UI automation:7 median30.0->31.4 ms,50 median41.9->40.2. Reported transfer12,380->13,516 bytes. Small four-reading-per-side samples do not prove a loading improvement or latency regression. Browser/driver shader caches are not flushed; first draw may precede detection, so no isolated first-use shader compilation claim. Steady program/resource endpoints match; raw wall/compile diagnostics remain in the full reports.
+
+### Verification and readiness
+
+**383 frontend tests /TypeScript /production build pass**, actual exit0. Lazy Board3D982.80kB/267.22gzip; existing chunk warning retained. Blender native inspection, two byte-identical exports/reimport and manifest/independent GLB topology checks pass. Chrome matched capture/current six-group art and seven-group construction regressions pass; the latter preserves cross-piece/default-procedural behavior and does not independently certify new GLB animation. **Two actual two-client ship/Fog WebSocket/PostgreSQL cases /seven groups pass**: rejected-state equality, accepted build/move/discovery/private Gold, duplicate receipt, refresh/native reconnect/two backend restarts without replay. Fresh disposable localhost DB only; existing accounts/matches/volumes untouched. Test PostgreSQL was stopped after verification without deleting its data; task backend exited. Reports `live/report.json`, `building-regression/after.json`. No production backend change, full Python/scenario/Docker-build rerun or new natural match claim.
+
+Interactive original and corrected preview is running independently: `node web/e2e/ship-topology-demo.cjs`, localhost18781/18782 respectively; select **Ship model -> GLB pilot**, or Procedural on either. Final real Chrome smoke verifies both actual URLs, four ships,187/215 triangles and expected12,080/13,216-byte SHA, zero default asset requests/browser errors. `preview-smoke.json` and two PNGs are saved under the same artifact root. Both use actual Board3D/public synthetic snapshots, ports/Fog/four colors and existing Construct/Move/50/camera controls. No public feature gate or trusted recipe endpoint. [Instructions](../../../web/e2e/README.md#visual-phase-5b2---ship-topology-comparison).
+
+**READY FOR CHECKPOINT for topology correctness and experimental opt-in scope.** Affected documentation links/Git whitespace and complete intended-file scope were checked; graph/source backup/other assets and database data preserved. Performance optimization/default promotion remains unproven; low-end/mobile/other APIs and arbitrary underside cameras/self-intersections are not certified. User aesthetic approval remains separate. No5B.2 commit/push/tag or broader art overhaul.
+
 ## Visual Phase 5B.1 - ship GPU investigation
 
-**Investigation completed/tested 2026-10-19. No promotion or art approval.** Published Phase5A is `5a3902cd22e080c14d4b6b43c415ed8026297118`. Production default stays Procedural; the existing GLB remains opt-in with procedural loading/error fallback. No runtime renderer, model, animation, backend, protocol, persistence, Fog gate or dependency change. Two benchmark-only files correct demonstrated measurement defects; no commit/push or Phase5B.2 implementation.
+**Historical investigation completed/tested2026-10-19; published2026-10-20 as `986c99c3cd1b0a7bb38857b75401a4dde2f1bd2a`.** Six intended files committed/pushed with exact remote hash/whitespace checks; graph/artifacts excluded, no tags. No promotion or art approval. Published Phase5A is `5a3902cd22e080c14d4b6b43c415ed8026297118`. That5B.1 checkpoint made no runtime/model change; its original asset measurements below remain historical. Subsequently authorized5B.2 is documented above.
 
 ### Historical evidence and confirmed measurement defects
 

@@ -1,6 +1,69 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5B.2 - ship topology comparison
+
+Original and corrected assets, same real current Board3D/public snapshot:
+
+```powershell
+node web/e2e/ship-topology-demo.cjs
+```
+
+- Original5A GLB: **http://127.0.0.1:18781/?demo=1&shipsart=1**
+- Corrected GLB: **http://127.0.0.1:18782/?demo=1&shipsart=1**
+
+Select **Ship model -> GLB pilot** on each, or **Procedural** to compare the
+unchanged default. Four colors, ports/Fog, Construct/Move/Reset/50 tiles and
+wheel/orbit are existing actual components, no backend. Original serves one
+fixed public GLB from Git986c99c, never arbitrary repository/private files.
+Current and original buffers are preloaded before serving through the same
+branch. Restart helper/refresh pages after re-export; per-page loader stays cached.
+Override ports with `CATAN_SHIP_ORIGINAL_PORT` /`CATAN_SHIP_CORRECTED_PORT`.
+
+Use the existing external Playwright NODE_PATH as in5B.1, and a fresh
+`CATAN_E2E_OUTPUT` directory for every run (reports cannot be overwritten):
+
+```powershell
+node web/e2e/ship-topology-visual.cjs
+node web/e2e/ship-topology-compare.cjs
+# Independent repeat: choose another fresh output directory.
+node web/e2e/ship-topology-compare.cjs
+# Separate normalized cold-only7/50 comparison, no GPU measurement phase:
+node web/e2e/ship-topology-compare.cjs --cold-only
+```
+
+The visual runner captures normal/close/opposite azimuths/polar limits, real
+legal hover, procedural and24 ships/50 hexes, plus actual production construction
+and movement at matched cue ages on disposable clock-controlled pages. Pointer
+coalescing differs across runs: raw input camera poses are recorded before
+canonicalizing the original control-generated pose for matched capture. Production
+CameraRig/animations are unchanged. Static and GPU runs use no fake clock.
+
+GPU comparison reuses5B.1 samplePage, ABBA/BAAB,90 paced warm/120 GPU/60 separate
+wall samples per reading; main plus shadow calls/triangles, materials/geometry/
+programs, fetch/transfer, raw timings/telemetry and opposing results are preserved.
+One measured page at a time; no video/screenshots during measurement. Same
+current runtime on both sides; only original/corrected GLB bytes differ. No
+performance threshold is weakened to claim a speedup. Unsupported/disjoint
+timers and endpoint resource changes remain detectable. Power/clocks/ambient
+phases are not locked; this is not sustained FPS or broader hardware certification.
+
+Saved artifacts `%TEMP%/catan-ship-topology-5b2/`:
+`visual-animations/comparison.json` +30 matched PNGs, `visual-final/` static set,
+`gpu-primary/paired-performance.json`, `gpu-repeat/paired-performance.json`,
+`cold-normalized/cold-load.json`, `art-regression/` report/video,
+`live/report.json`. The first two steady runs' cold fields retain a discovered
+RAM-versus-disk serving asymmetry; use the separately normalized cold report for
+loading comparisons. All steady samples were measured after readiness/warming.
+The failed candidate camera comparison is retained separately, not counted as
+passed. Final ship ghosts keep legacy DoubleSide, not the discarded candidate's
+inherited FrontSide. Shape/inner-wall/shadow differences and mixed timings:
+[Board3D](../../docs/obsidian/plans/board3d.md#visual-phase-5b2---ship-topology-and-selective-culling).
+
 ## Visual Phase 5B.1 - GPU investigation
+
+Historical5B.1 runner validates the original asset SHA. With the corrected5B.2
+working GLB, use the original/corrected comparison above; do not replace historical
+hashes or reset the working tree merely to run the older experiment.
 
 The historical `ship-art-compare.cjs` reports preserve5A evidence, but its
 `gpuMedianMs` is synchronized `render + finish` wall time, and the old helper
