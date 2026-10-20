@@ -1,5 +1,61 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5C - actual board art review
+
+Actual current GamePage/Board3D, not generated concept images. Public-only
+synthetic snapshots; no backend, database, credentials or feature-gate bypass.
+Five shipped board geometries (Base Standard, official New Shores3/4 and Four
+Islands3/4), public Fog before/after and component/owner/ship studies. Occupancy
+is synthetic display scaffolding, **not a played or legality-verified match**.
+
+Open the existing gallery and interactive previews:
+
+```powershell
+node web/e2e/art-direction-review.cjs
+```
+
+**http://127.0.0.1:18785/**. Both review server and its existing fixture upstream
+bind loopback. No production source/assets are edited. Original procedural is
+the default; GLB is explicit opt-in. The gallery offers current-state photos
+and written A/B/C proposals, not rendered variants or user art approval.
+
+Generate the26 real Chrome screenshots (24 full2560x1440/DPR1 plus two native
+browser clips), using the already provisioned external Playwright tools:
+
+```powershell
+$env:NODE_PATH = Join-Path (Get-Location) '.venv/test-artifacts/fog3a-tools/node_modules'
+node web/e2e/art-direction-review.cjs --capture
+```
+
+Default output: `%TEMP%/catan-art-direction-5c/`. Override with
+`CATAN_ART_REVIEW_OUTPUT` consistently for capture and preview; port override is
+`CATAN_ART_REVIEW_PORT`. Existing project `.venv` Python is used to construct
+offline non-Fog public board fields; `CATAN_REVIEW_PYTHON` can select an existing
+interpreter. No installation/DB migration/startup happens in this tool.
+
+`art-review-boards.py` outputs only an explicit geometry/config/occupancy
+allowlist from shipped maps. `art-review-controller.js` supplies synthetic
+client frames and chooses real Still/model controls; it never executes rules
+or modifies a mesh/camera. Normal is actual auto-fit, Close real wheel zoom,
+with expected crop. Fog uses existing public fixtures, no trusted recipe or
+future assignment. Screenshots use the production renderer unchanged.
+
+`capture-report.json`: original PNG hashes/dimensions, camera/projection,
+public-state hashes, token/piece counts, model responses,12 source GLB hashes
+and static triangle/material inventory. Static inventory is **not a GPU
+benchmark**. Initial incomplete counter report and all historical GPU reports
+remain preserved. Images/video/raw JSON stay excluded from Git; temporary
+storage can be cleared, so regenerate if absent. Gallery serves only its
+listed capture basenames, not arbitrary files. The test-only files are never
+imported by App or included in a production bundle.
+
+Completed2026-10-20:26 capture SHA/dimension checks, zero browser errors,
+104 model responses200, matched procedural/GLB state/camera pairs. Separate
+gallery smoke verifies all26 image URLs,12 links, six interactive scenes,
+default no-GLB-fetch and actual zoom/reset. No new broad GPU/full Python/web
+suite/build run;5B.2's383 tests/TS/build/live checks remain dated evidence.
+Detailed proposal — [Design System](../../docs/obsidian/Design%20System.md#visual-phase-5c---current-renderer-and-art-direction-proposal).
+
 ## Visual Phase 5B.2 - ship topology comparison
 
 Original and corrected assets, same real current Board3D/public snapshot:

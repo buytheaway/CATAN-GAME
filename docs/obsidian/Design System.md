@@ -7,6 +7,63 @@ updated: 2026-10-20
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 5C - current renderer and art direction proposal
+
+**Visual audit/proposal,2026-10-20; awaiting user feedback, NOT an approved art replacement.** Production checkpoint5B.2 is `0c5b2864bb989683ddd089ccdd92d696ec922ff9`. All observations below come from actual current Board3D, not generated concept images. Production renderer/assets/default are unchanged. The currently accepted Product Direction below remains authoritative until the user decides otherwise.
+
+### Actual evidence and its limits
+
+Gallery: **http://127.0.0.1:18785/**. Restart: `node web/e2e/art-direction-review.cjs` from root; [capture instructions](../../web/e2e/README.md#visual-phase-5c---actual-board-art-review). **24 full2560x1440 Chrome155.0.8059.85 PNGs plus two native browser clips**. Base Standard, official New Shores3/4 and Four Islands3/4 use exact shipped non-Fog board geometry; occupancy is synthetic display scaffolding, not a legal match or new preset. Existing public seven-hex Fog fixture supplies before/after views, buildings, ships and six existing owner colors. Individual robber/pirate study removes owned ships from the small display area. No trusted Fog recipe/assignment or real account/hand is loaded. Still/reduced-motion, existing neutral lighting, normal CameraRig auto-fit and real wheel close-up are used consistently; close views intentionally crop. These screenshots do not certify animations, mobile, color-blind accessibility or other GPUs.
+
+### What is visible now
+
+| Element | Observed current rendering | Art assessment / boundary |
+| --- | --- | --- |
+| Terrain | Distinct low-poly trees, stepped clay, large sheep, dense wheat, angular peaks, dunes and slab-like Gold; all eight actual terrain GLBs loaded | Recognizable families. Relative detail/scale varies substantially: wheat/sheep compete with smaller houses, while hills/Gold are flatter. Desired balance is subjective, not a new bug. |
+| Ocean / Sea | Cyan raised-wave Sea hexes with gold/sand borders, against dark teal flat decorative ocean and sparse strokes | Clearly distinguishes game tiles from scenery; the material/value discontinuity and repeated wave pattern are visible. Unifying them is a proposed art task, not permission to hide sea IDs/borders. |
+| Settlements / cities / roads | Colored GLBs, neutral foundations/windows, legible small roofs and brick-like roads; shared edge/vertex anchors unchanged | More architectural detail than the simple pirate/harbor boats. Standardize bevel/relative size before adding more miniature buildings. |
+| Ships | Default is a small colored procedural boat; opt-in pilot has brown faceted hull/deck, ivory sail and owner rail/pennant | The pilot looks closer to a wooden miniature and has less solid owner-color area; edge orientation foreshortens its sail. No artistic approval/default promotion follows. |
+| Ownership | Existing red/blue/green/orange and separate white/purple study | Red/blue/amber read distinctly in these frames. Green on Forest, white near ivory sails/tokens deserve contrast/accessibility testing; no quantitative failure or color-blind certification established. Do not change semantic colors in an art-only pass. |
+| Numbers / ports / borders | Large ivory discs, red6/8, dots; resource icons match the HUD; clear sand/gold rims and docks | Strong tabletop hierarchy. Labels deliberately bypass terrain depth to stay legible (`NumberToken3D`); that is an intentional readability choice, not proof of misplaced state. A future negative-space/coin-contact pass must preserve it. |
+| Robber / pirate | Dark hat/pawn and box-sailed black boat with a light mark, rendered at snapshot tile IDs | Shape/material vocabulary is simpler than the pilot/building GLBs. **Observed partial robber occlusion** on Four Islands4 is described below; uniform miniature treatment is subjective future work. |
+| Fog | Soft pale mist volume on a dark slate hex; after reveal the same public IDs show ordinary terrain/tokens | Unknown region is clear. Softness/base contrast differs from crisp terrain facets; decide whether to retain this deliberate abstraction or integrate it more tightly. No change to visibility/privacy. |
+| Lighting / camera | Ambient.85 + hemisphere.55 + directional2.1;1024 soft shadow map, constrained perspective orbit, full-map auto-fit | Neutral and readable on the five complete board layouts. Overly dramatic contrast, extra lights/post-processing or tighter default framing are not required. Close crops are expected zoom behavior. |
+
+**Concrete readability issue, not a gameplay/state defect:** `05-four-islands-4-procedural-normal.png` shows the robber on public tile29, `q=-3/r=2`, Fields12, partly hidden by wheat and the token presentation at default camera; the upper hat remains visible. The source uses the supplied tile ID and fixed offset/common floor (`Pieces3D.Robber3D`/`threatMotion.threatAnchor`), while tall terrain decor and depth-independent number badges can overlap its projected silhouette. No percentage of occluded area, all-angle failure, missing piece, incorrect engine state or broad camera defect is claimed. This deserves a later threat/token/terrain clearance task, not an automatic model/rule change. Other style concerns above are subjective.
+
+The initial capture-tool counter counted both tile metadata and number-token nodes; it was corrected in test tooling, the incomplete report retained, and all final token-count assertions pass. Do not present this instrumentation issue as a renderer bug.
+
+### Static asset inventory, not a GPU benchmark
+
+Read-only GLB inspection records SHA/bytes, mesh-definition triangle totals and declared materials in `capture-report.json`. Triangles: Forest2,910; Fields44,300; Pasture11,990; Hills5,522; Mountains2,470; Desert4,590; Sea4,784; Gold5,310; Road616; Settlement804; City1,664; Ship pilot215. Fields is2,744,072bytes; pilot13,216bytes. All12 assets are untextured. Terrain GLBs declare11–21 materials each; these declarations alone do not count actual draw calls or prove all are used. Runtime scene inventory is recorded separately. Geometry/materials are shared across template clones, but sharing does not make every visible tile free to draw. Largest static density is wheat, not this small ship pilot; which cost dominates the actual GPU remains unproven here.
+
+The two5B.2 reports, including worse seven-static medians and contradictory p95, remain intact. No new GPU run/equivalence, low-end/mobile certification or optimization claim. Demand rendering, bounded shared motion and owner/ghost pooling remain constraints for any later art work.
+
+### Options - not approved or implemented
+
+| Aspect | A - Clean stylized low-poly tabletop (recommended) | B - Premium handcrafted miniatures (alternative) | C - Atmospheric stylized fantasy (comparison only) |
+| --- | --- | --- | --- |
+| Palette | Navy/teal scene, muted green/clay/wheat/stone families, ivory tokens, exact project owner colors. Existing `#0d2333`/`#fff7e5` are useful anchors, not newly approved tokens. | Warm umber/painted wood, muted stone/parchment, deep teal water; retain owner colors. | Slate/blue-green, cool fill and limited amber accents; owner colors need protection from grading. |
+| Geometry / detail | Clear flat faces with restrained bevels, compact vegetation groups, consistent relative piece sizes. Remove visual noise before adding small details. | Tactile bases, softly rounded painted/carved silhouettes; curated, sparse miniature detail rather than realistic villages. | Rougher/jagged scenery, taller silhouettes and rigging; can overwhelm a hex at normal distance. |
+| Materials | Mostly shared matte untextured colors; controlled wood/ivory neutrals. | Painted wood/resin/ceramic with subtle roughness variation; optional shared texture/atlas only if a later budget justifies it. | Rough stone/wood, stronger value separation and atmosphere; material variety must remain bounded. |
+| Lighting | Existing neutral fill and one soft directional light. Improve contact/readability within that system. | Broad neutral studio-like tabletop light and gentle contact shadows; avoid golden/cinematic grading. | Cooler fill/warmer directional contrast, possible haze. Risks hiding tokens/pieces and changing color meaning. |
+| Water | Quiet teal, sparse stylized wave geometry, coordinated Sea/ocean values with clear tile boundaries; no SSR. | Calm painted/glazed sea with restrained sheen, visible cardboard/wood-like board edges. | Darker atmospheric sea, foam/mist; transparent layers/post-processing add cost if introduced. |
+| Buildings / ships | A common simple silhouette/bevel family. Pilot may inform the wooden miniature language; compare owner-color coverage before accepting any replacement. | Carved houses and sailboats with paint panels, slightly richer but still compact rigging; uniform pirate/dock family. | More dramatic architecture/ships. Explicitly avoid tavern/MMORPG/castle direction; any adoption needs a changed user brief. |
+| Effort / performance | Low design cost, medium asset pass; low extra rendering risk only if primitive/material/triangle/transparent budgets stay bounded. No predicted ms improvement. | Medium-to-high asset effort; bevels, extra silhouettes/textures/shadows can increase geometry, memory and draw cost. | High effort/risk for atmospheric passes/particles/shadows; conflicts with accepted clean non-cinematic direction and is not recommended. |
+
+Recommendation: **A**, with selected warmth/tactility from B only if the user requests it. This keeps the board/game information primary and improves consistency without requiring a new scene/renderer. C is an explicit comparison against the brief, not revival of historical rejected fantasy references. The gallery shows the same current renderer for every option; there are **no actual rendered A/B/C variants** and no claim of user approval.
+
+### Prioritized future art tasks - proposals only
+
+1. **Low design complexity / no runtime cost:** decide A versus B and agree a size/silhouette/material sheet for terrain, buildings, owned ships, pirate, docks and tokens. Separately prioritize the observed robber/Fields12 clearance issue; a localized visual fix still needs all-terrain/camera checks and is not implemented here.
+2. **Medium asset work:** align building/ship/pirate proportions, bevels and wood/paint treatment; preserve original pivots, anchors, ownership colors and fallback/default semantics.
+3. **Medium-to-high fidelity risk:** review dense Fields/Pasture geometry and declared/used material/primitive counts. Keep recognition at normal zoom; compare screenshots before considering a performance-motivated simplification. Static counts do not identify a measured bottleneck.
+4. **Low-to-medium material work:** coordinate ocean/Sea values and wave scale, preserving gameplay tile borders and a quiet background.
+5. **Medium readability work:** reserve visual clearance for number/port tokens; evaluate green/white ownership and neutral threats on every terrain. Aesthetic smoothing must not obscure legal hit targets.
+6. **Medium presentation work:** decide Fog base/mist integration after the solid art family is agreed; preserve neutral unknowns and all feature/privacy gates.
+
+**READY FOR USER ART DIRECTION REVIEW.** Await feedback before implementing any of these tasks. Review remains uncommitted; source fixtures/gallery only, no new Blender asset or production change.
+
 ## Visual Phase 5B.2 - ship topology boundary
 
 **Implemented/visually tested2026-10-20; same experimental ship design, no artistic/default approval.** Sail sidewall and pennant windings are corrected; rail inner wall/underside are enclosed within the same outline. Slight inner-wall/contact-shadow differences are disclosed; silhouette, ivory canvas/wood/owner palette, dimensions and anchors remain. The separate thin deck overlay remains open intentionally. Native source/export/GLB inspection is reproducible, not a new model or style pass.

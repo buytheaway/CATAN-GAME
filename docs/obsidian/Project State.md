@@ -7,9 +7,19 @@ updated: 2026-10-20
 
 ## Current verification and status
 
+### Visual Phase 5C - art direction review, 2026-10-20
+
+**Read-only production/asset audit; proposal awaiting user art direction.** Visual5B.2 is published as **`0c5b2864bb989683ddd089ccdd92d696ec922ff9`**, normal push to `origin/main` and exact remote hash verified;21 intended files, cached whitespace check, graph/media/secrets excluded. Procedural remains default; corrected Blender GLB remains opt-in. Existing completed5B.2 suites below were reused, not reported as newly executed.
+
+Current real GamePage/Board3D captured in Chrome155.0.8059.85: **24 full PNGs at2560x1440 plus two native browser detail clips**,12 public scene configurations, normal auto-fit and real wheel close-up. Shipped Base19, official New Shores37/44 and Four Islands37/37 tiles, both player-count variants; existing seven-hex public Fog before/after; procedural/GLB, all six existing owner colors, buildings/roads/ports/robber/pirate. Occupancy is explicitly synthetic display data, **not natural/legality-verified games**. Unknown Fog terrain/numbers stay absent. No production source, assets, gameplay, gates, DB or dependencies changed.
+
+Loopback gallery **http://127.0.0.1:18785/**; restart from root `node web/e2e/art-direction-review.cjs`. Real captures/report/hashes under `%TEMP%/catan-art-direction-5c/`; raw images are not tracked and temporary storage may be cleared. The gallery also links actual interactive public previews. Reproduction/verification — [e2e instructions](../../web/e2e/README.md#visual-phase-5c---actual-board-art-review). Direction proposal and priorities — [[Design System#Visual Phase 5C - current renderer and art direction proposal]], evidence — [[plans/board3d#Visual Phase 5C - read-only art review]].
+
+Recommendation is **A: clean stylized tabletop**, extending the existing accepted direction; B: handcrafted miniatures is an alternative; C: atmospheric fantasy is comparison-only, conflicts with the accepted non-cinematic brief. None is newly approved. Density/proportions, ocean/sea material gap, neutral-pirate/ship family and Fog treatment need an art decision. **Observed readability issue:** Four Islands4 robber on tile29/Fields12 is partly occluded at default camera (hat remains visible); no missing state/gameplay defect claimed. Static asset inventory finds fields44,300 triangles versus mountains2,470/ship215; this does not prove a GPU bottleneck. Both opposing5B.2 GPU reports remain unchanged; no new benchmark/default-promotion claim. Stop before implementation/commit of the review.
+
 ### Visual Phase 5B.2 - ship topology/culling, 2026-10-20
 
-**Implemented/verified as experimental opt-in; no default promotion or performance improvement claim.** Phase5B.1 checkpoint **`986c99c3cd1b0a7bb38857b75401a4dde2f1bd2a`** was committed/pushed normally with six intended files, whitespace/exact remote hash verified; user graph/artifacts excluded. Original pilot source/GLB remain in Git before correction. Phase5B.2 remains uncommitted/unpushed.
+**Implemented/verified as experimental opt-in; published as `0c5b2864bb989683ddd089ccdd92d696ec922ff9` on2026-10-20. No default promotion or performance improvement claim.** Phase5B.1 checkpoint **`986c99c3cd1b0a7bb38857b75401a4dde2f1bd2a`** was committed/pushed normally with six intended files, whitespace/exact remote hash verified; user graph/artifacts excluded. Original pilot source/GLB remain in Git before correction. Phase5B.2 checkpoint includes21 intended files and preserves all reported limitations.
 
 Real Blender5.2.2 CLI inspection confirmed16 inconsistent sail edges and an inward pennant. Their winding is corrected; the renderable open rail is enclosed to support solid FrontSide without moving its external outline. The intentionally thin deck overlay retains seven boundary edges. HullWood/PlayerColor opaque materials now FrontSide; thin canvas stays DoubleSide. Ship-specific transparent hover/source echoes retain legacy DoubleSide/opacity/raycast policy through existing Canvas-owned copies. Default/fallback, anchors/colors/controllers and construction/movement/shared clock unchanged.
 
