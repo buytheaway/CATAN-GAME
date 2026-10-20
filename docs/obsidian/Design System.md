@@ -7,9 +7,15 @@ updated: 2026-10-20
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 5D - required bounded ocean, not implemented
+
+**Explicit user requirement2026-10-20:** Base/Seafarers should have complete surrounding ocean hexes and a clean continuous exterior-edge frame, instead of the current large open background-ocean presentation. Derive a configurable one/two-ring decoration from actual public axial occupancy; distinguish it from playable Sea. Never add decorative cells/IDs to GameState, snapshots, persistence, legal targets, ships, pirate, Fog, ports or victory calculations. Preserve SVG/controls/owned-piece animations and opt-in ship semantics. This is a confirmed requested presentation scope, not blanket approval of A/B/C art proposals below.
+
+**Ocean/frame not implemented:** the preceding audit stopped on Base red-token adjacency. A separately authorized correctness patch now repairs newly generated Base Standard only; verification/status — [[Project State#Base Standard number placement - Visual 5D blocker fix, 2026-10-20]], implementation/history — [[Карты и сценарии#Base Standard random-number correction]]. Full isolated-PG suite1696 passed/3 optional Docker skips (exit0), scenarios508/508 and frontend383 pass; the focused Base correctness blocker is cleared. Four fixed official Seafarers layouts remain unchanged. No ocean/frame geometry, camera improvement or after/performance screenshot is claimed. The physical cardboard frame, including existing playable full Sea spaces, is distinct from a non-playable decorative frame. Gallery tooling regenerates Base from production, but saved5C PNGs/previously loaded fixtures retain the historical invalid tokens; they are not new post-fix captures. No renderer work resumes automatically. [[Карты и сценарии#Visual 5D - official layout audit and Base stop gate]], [[plans/board3d#Visual Phase 5D - map audit gate and bounded ocean scope]].
+
 ## Visual Phase 5C - current renderer and art direction proposal
 
-**Visual audit/proposal,2026-10-20; awaiting user feedback, NOT an approved art replacement.** Production checkpoint5B.2 is `0c5b2864bb989683ddd089ccdd92d696ec922ff9`. All observations below come from actual current Board3D, not generated concept images. Production renderer/assets/default are unchanged. The currently accepted Product Direction below remains authoritative until the user decides otherwise.
+**Visual audit/proposal,2026-10-20; published as `f3dacbbb1b6f2b19008e7aee3f186c491bb4fcbc`; awaiting user feedback, NOT an approved art replacement.** Production checkpoint5B.2 is `0c5b2864bb989683ddd089ccdd92d696ec922ff9`. All observations below come from actual current Board3D, not generated concept images. Production renderer/assets/default are unchanged. The accepted Product Direction and the subsequently requested bounded-ocean scope above are distinct from A/B/C proposal approval.
 
 ### Actual evidence and its limits
 
@@ -62,7 +68,7 @@ Recommendation: **A**, with selected warmth/tactility from B only if the user re
 5. **Medium readability work:** reserve visual clearance for number/port tokens; evaluate green/white ownership and neutral threats on every terrain. Aesthetic smoothing must not obscure legal hit targets.
 6. **Medium presentation work:** decide Fog base/mist integration after the solid art family is agreed; preserve neutral unknowns and all feature/privacy gates.
 
-**READY FOR USER ART DIRECTION REVIEW.** Await feedback before implementing any of these tasks. Review remains uncommitted; source fixtures/gallery only, no new Blender asset or production change.
+**READY FOR USER ART DIRECTION REVIEW.** Review published as `f3dacbb`:7 documentation/public-fixture/gallery files, normal push/exact remote verified; media/graph excluded. No new Blender asset or production change, no A/B/C approval. Subsequently requested bounded-ocean work is gated above.
 
 ## Visual Phase 5B.2 - ship topology boundary
 

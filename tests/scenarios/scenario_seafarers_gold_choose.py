@@ -10,6 +10,8 @@ from tests.harness.engine import GameDriver
 def run(driver: GameDriver) -> Dict[str, Any]:
     base = map_loader.get_preset_map("base_standard")
     data = dict(base)
+    # This fixture adds a fixed Gold token, so it is not randomized Base.
+    data.pop("number_placement", None)
     tiles = [dict(t) for t in base.get("tiles", [])]
     if not tiles:
         driver.fail("no tiles in base map", kind="assertion")

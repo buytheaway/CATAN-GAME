@@ -4,6 +4,7 @@ import json
 import math
 import random
 from copy import deepcopy
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -16,6 +17,7 @@ from app.resource_path import resource_path
 
 
 MAP_VERSION = 1
+BASE_NUMBER_PLACEMENT = "base_random_red_separation_v1"
 FOG_MAP_VERSION = 2
 DEFAULT_PRESET_ID = "base_standard"
 OFFICIAL_NEW_SHORES_ID = "heading_for_new_shores"
@@ -326,6 +328,15 @@ def validate_map_data(data: Dict[str, Any]) -> Dict[str, Any]:
         if any(type(n) is not int or n < 2 or n > 12 or n == 7 for n in deck):
             raise MapValidationError("number_deck contains invalid number")
 
+    if "number_placement" in data:
+        if data["number_placement"] != BASE_NUMBER_PLACEMENT:
+            raise MapValidationError("unsupported number_placement")
+        # This opt-in version is bounded to the randomized Base inventory.
+        # Fixed layouts and other custom recipes retain their semantics.
+        if (len(tiles) != 19 or any(t.get("number") != "random" for t in tiles)
+                or sorted(data.get("number_deck", DEFAULT_NUMBER_DECK)) != sorted(DEFAULT_NUMBER_DECK)):
+            raise MapValidationError("Base number_placement requires 19 random tiles and the standard number deck")
+
     ports = data.get("ports")
     if ports is not None:
         if not isinstance(ports, list):
@@ -507,6 +518,36 @@ def _materialize_tiles(
     return tiles, desert_idx
 
 
+def _separate_red_numbers(board: BoardState) -> None:
+    """Bounded, deterministic repair, with no additional shared RNG draws.
+
+    Keep already valid shuffles. Otherwise prefer the original red positions,
+    then tile order, and swap only the displaced tokens. With 19 tiles and four
+    red tokens there are at most C(19, 4) = 3876 candidate sets, never a reroll.
+    Only opted-in Base recipes (including their canonical old form on a new
+    build) use this repair. It never runs on materialized match recovery.
+    """
+    red = [i for i, t in enumerate(board.tiles) if t.number in (6, 8)]
+    adjacent = [ids for ids in board.edge_adj_hexes.values() if len(ids) == 2]
+
+    def valid(indices):
+        return all(not (a in indices and b in indices) for a, b in adjacent)
+
+    if valid(set(red)):
+        return
+    candidates = red + [i for i, t in enumerate(board.tiles)
+                        if t.number is not None and i not in red]
+    for choice in combinations(candidates, len(red)):
+        selected = set(choice)
+        if valid(selected):
+            displaced = [i for i in red if i not in selected]
+            replacements = [i for i in choice if i not in red]
+            for old, new in zip(displaced, replacements):
+                board.tiles[old].number, board.tiles[new].number = board.tiles[new].number, board.tiles[old].number
+            return
+    raise MapValidationError("number_placement cannot separate red tokens on this topology")
+
+
 def _auto_ports(
     board: BoardState,
     deck: List[str],
@@ -556,6 +597,17 @@ def build_board_from_map(
 
     board = BoardState(tiles=tiles, vertices=vertices, vertex_adj_hexes=v_hexes,
                        edges=edges, edge_adj_hexes=edge_hexes)
+    placement = data.get("number_placement")
+    if placement is None and data.get("name") == DEFAULT_PRESET_ID:
+        # Old durable lobby/rematch configs contain the pre-fix recipe. Only
+        # its exact canonical shape adopts current generation on a NEW build;
+        # custom derivatives and materialized match recovery are unaffected.
+        legacy = get_preset_map(DEFAULT_PRESET_ID)
+        legacy.pop("number_placement")
+        if data == legacy:
+            placement = BASE_NUMBER_PLACEMENT
+    if placement == BASE_NUMBER_PLACEMENT:
+        _separate_red_numbers(board)
     ports: List[Tuple[Tuple[int, int], str]] = []
     hidden = fog_slots(data)
     coast = initially_visible_coasts(board, hidden) if hidden else coastal_edges(board)
