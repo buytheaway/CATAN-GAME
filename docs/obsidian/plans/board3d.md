@@ -1,11 +1,145 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Board3D
 
+## Visual Phase 5D.2 - decorative ocean and continuous frame
+
+**Implemented and verified,2026-10-21; READY FOR CHECKPOINT in this visual scope.** The final GPU repetition after the user closed the external game passed all15 cases; evidence and remaining limits are below. Base correctness prerequisite is checkpointed/pushed as `b61215b1ea1f2693b0f828720f8384ac4e291327`; exact local/remote hash verified. The completed1696-pass Python suite is historical evidence for5D.1 and is not rerun just for checkpointing. User graph remains excluded.
+
+### Existing conventions and intended boundary
+
+Before implementation inspected actual path: Python materialized/public tile geometry → React state → `BoardRenderer` → `createRenderModel` → `Board3D`. `publicTileCenter` uses public center or pointy axial `x=sqrt(3)*(q+r/2), z=1.5*r`; coordinates divide server XY by `size` into Three XZ, Three Y is visual only. Logical hex radius1; current beveled terrain rims are slightly inset. Visible terrain rim is `BOARD_RIM_TOP=.218333`; tile hit plane `TILE_TOP=.26` and server vertices/edges/IDs remain unchanged. Ports retain their supplied edge/endpoints and local coast normal; legal/controller targets remain entirely snapshot-driven. Existing `DecorativeOcean` is background scenery, not complete water hexes or a board perimeter. SVG has independent existing rendering/target handlers.
+
+New client-only `oceanGeometry` derives one/two exterior rings from **all public geometric coordinates**, including unknown Fog slots, without reading terrain/numbers/visibility. Existing playable Sea and printed full-frame Sea cells count as occupied. Exterior flood excludes enclosed holes; exact lattice corners order exposed edges into continuous outer loops. The visual frame follows that union, with joined corners. These cells/edges are presentation metadata only; never extend GameState, IDs, ports, legal projection, exploration, commands or snapshots. All new meshes ignore raycasts.
+
+Shared instanced water bodies/accents and a continuous frame use restrained existing sea/tabletop colors. Default one ring; two rings/frame-off/before are preview controls, not gameplay modes. No new Blender/dependency/animation loop. Camera footprint includes decorative perimeter and conservative public relief/piece bounds; fit stays stable across ordinary snapshots, Fog reveal and ship-model switches. World coordinates/sizes stay unchanged. Before/after source bundles use the committed5D.1 renderer and current actual components; synthetic display occupancy is labeled. Matched screenshots and async GPU query A/B across Base/NS4/FI4/7/50 and motion modes are required before a readiness claim. Raw contradictions are preserved. Implementation/verification did not create a commit or push; checkpointing requires explicit authorization.
+
+### Geometry, framing and scoped corrections
+
+| Actual public footprint | Playable cells | First ring | Second ring additional | Two-ring total decoration | Exterior edges, one/two rings |
+| --- | --- | --- | --- | --- | --- |
+| Base Standard |19|18|24|42|42/54|
+| New Shores3, Four Islands3/4,37-cell custom/Fog footprints |37|24|30|54|54/66|
+| New Shores4 |44|26|32|58|58/70|
+| Seven-hex public fixture |7|12|18|30|30/42|
+| Fifty-hex public fixture |50|32|38|70|70/82|
+
+`buildOceanLayout` derives pointy-axial cells from public centers (priority) or q/r, preserves original scale, and rejects off-grid/unsafe footprints rather than guessing. Bounded exterior flood excludes enclosed holes. Integer corner keys make exact joined CCW exterior loops. Existing playable Sea/full frame Sea remains occupied. The single mitered band has an outside skirt and inner lip; all scenery uses ignored raycasts and has no server tile/edge IDs. Four shared instanced meshes plus one frame mesh avoid per-cell draw/material allocation; lifecycle cleanup retains StrictMode leases.
+
+The final image review found narrow striped shoreline artifacts: water and existing coastal box tops were coplanar at `BOARD_RIM_TOP=.218333`. The smallest correction sets `DECORATIVE_WATER_TOP=BOARD_RIM_TOP-.008`; only new water/seams/waves and the frame's inner lip follow that plane. Existing terrain, coast, hit targets and pieces stay at their original elevations. A regression verifies the actual pooled water geometry remains more than0.007 below the coast top. Pre-fix images and GPU data are retained, not silently replaced.
+
+Before the initial live building acceptance, the existing informational `.game-error` DOM alert covered an otherwise correct raycast target. Only `pointer-events:none` is added; visible error text/`role=alert` remain and there are no focusable children. The historical bundle remains a negative control in the Chrome occlusion check. Base ambient boats now include decorative cells in their clearance, retaining the old clock/routes and all gameplay ships. Shared ocean materials are memoized, preventing hover-driven instance replacement.
+
+Camera uses actual frame vertices plus a constant public relief/piece envelope; no hidden terrain or mutable ownership participates. At aspect1.64, native old→one-ring fit distances: Base11.855→14.518, New Shores3 14.865→18.516, New Shores4 15.431→18.730, Four Islands3 14.187→18.404, Four Islands4 14.580→18.404. The increase fits the requested larger physical outline; stable relief adds no further distance on these fixtures compared with old relief plus the same frame. Two rings are optional and visibly reduce playable area. Normal views retain the full outline/ports/pieces; intentional wheel close-ups crop. Existing Four Islands4 robber/Fields12 partial occlusion remains an unrelated known limitation, not fixed here.
+
+### Evidence and verification boundary
+
+Completed evidence before the final shoreline clearance correction is preserved: **412 frontend tests**, TypeScript, production build; **49 actual Chrome PNGs** covering five official boards, public Fog before/after, native/matched cameras, one/two rings, frame off and close/detail crops; **9 Chrome smoke groups** for hover/snapshot instance stability, raycast pass-through, controls, frustum, no game commands, Fog camera stability and error-overlay retry; **55 live multiplayer checks across12 prepared scenarios**,2–3 real Chrome/WebSocket clients and PostgreSQL. Ship7/building12/threat36 groups include accepted/rejected commands, Fog/Gold, victim choice, uninvolved theft privacy, receipts, reconnect and restart. Fresh isolated test DBs only; test PostgreSQL was returned to stopped, no existing data/volumes reset. These are prepared/funded acceptance fixtures, not natural full matches. Six focused official layout/outer-sea legal shipping Python tests pass; no new full Python/scenario run is claimed.
+
+Initial final49 images/report: `%TEMP%/catan-ocean-5d2-final-v3/`. A test-tool SHA bug originally hashed the JSON representation of Buffer. `ocean-support.cjs` now hashes the bytes directly; original manifest is retained as `capture-report-original-json-buffer-hashes.json`, corrected manifest records old hashes/dimensions and all49 PNG bytes are unchanged. This was a report verification defect, not image manipulation. The source bundle hashes in these captures equal the initial full GPU run; both precede the explicit shoreline correction above. Earlier incomplete/failed reports remain historical.
+
+Live artifacts: `%TEMP%/catan-ocean-5d2-live/956675def9/{ships,buildings,threats}/report.json`; local logs/status under ignored `.venv/test-artifacts/ocean-*-live-956675def9.log` and `ocean-live-status.json`. Actual legal outer-sea photo is constructed through production `apply_cmd` setup settlement/ship and checked legal projection, then exported through a public allowlist; ordinary gallery occupancy is only synthetic display data. Neither preview exposes trusted FogState/recipes, private hands or account credentials.
+
+**Post-correction visual verification,2026-10-21:** frontend **412/412**, TypeScript and production build passed again (exit0). Lazy Board3D989.60kB/269.73gzip; the existing500kB chunk warning remains. Final **49 PNGs** are under `%TEMP%/catan-ocean-5d2-final-v4/`, including seven native/matched before/after camera pairs, five official layouts, public Fog before/after, one/two rings, frame off, close/detail views and legal outer-sea opening. All byte hashes verified, all model responses200, no console/page errors; all seven matched public-state/camera pairs agree. Actual final views show the shoreline striping removed without moving terrain/pieces. The full **9 Chrome smoke groups** pass again, report `%TEMP%/catan-ocean-smoke-final-v4/browser-smoke.json`: Fog camera/outline stable, no decoration raycast hits or commands, stable instances/resources, clipping/resize/SVG round-trip and visible alert retry intact. These visual-only changes do not invalidate the55 completed multiplayer checks above, which were reused rather than presented as newly run. Status/logs: ignored `.venv/test-artifacts/ocean-post-clearance-status.json`, `ocean-web-tests-post-clearance.log`, `ocean-typescript-post-clearance.log`, `ocean-build-post-clearance.log`.
+
+Preview/gallery: **http://127.0.0.1:18786/**. From root, set `NODE_PATH` to existing `.venv/test-artifacts/fog3a-tools/node_modules`, `CATAN_OCEAN_OUTPUT` to `%TEMP%/catan-ocean-5d2-final-v4`, then `node web/e2e/ocean-demo.cjs`. [Exact commands](../../../web/e2e/README.md#visual-phase-5d2---decorative-ocean-and-continuous-frame). Actual gallery, report, preview and PNG HTTP200 checked; listener binds127.0.0.1 only. No backend/DB/login is required. Test scripts are not imported by App or bundled into production. Media/raw reports are excluded from Git and temporary storage may be cleared; regenerate if absent. Final corrected-source GPU results and environment limitation are below.
+
+### Controlled GPU measurements - original geometry retained
+
+First complete report: `%TEMP%/catan-ocean-gpu-final-9c783e92f85545ae86a827ed70d52f91/paired-performance.json`, exit0, Chrome155.0.8059.85, RTX5050 Laptop/driver610.74. **15 cases,120 readings,14,400 valid asynchronous timer samples, zero disjoint samples/errors.** This report measures the geometry before the explicit0.008 shoreline clearance fix; it is retained as real evidence, not silently relabeled final. Both source hashes are recorded in the report.
+
+Same1440x900/DPR1, scene/public-state/owner occupancy, current full-frame camera, lighting/model and motion settings per pair. Counterbalanced ABBA then BAAB; each reading compiles first, warms90 paced frames, measures120 asynchronous `TIME_ELAPSED_EXT` GPU spans and60 separate CPU-wall spans. Main and shadow calls/triangles are counted together; full chronological frames, block medians, resources, telemetry and idle counts remain in JSON. The runner launches no parallel capture/video/GPU workload; exclusive use of the user's system GPU is not guaranteed. Actual Base ambient poses/visible boats are recorded; external probe normalizes both sides to the same after-boat poses during timed spans only, restores the native render/pose afterward and observes real idle. This is a bounded render-span diagnostic on one unlocked GPU, not sustained FPS, speedup proof or lower-end certification.
+
+| Scene/mode | Before median ms | After median ms | Before p95 ms | After p95 ms |
+| --- | --- | --- | --- | --- |
+| Base normal |4.404|4.164|13.521|11.790|
+| Base reduced |5.014|4.303|10.888|12.798|
+| Base static |4.486|4.615|12.790|12.041|
+| New Shores4 normal |12.532|9.725|18.905|20.276|
+| New Shores4 reduced |12.603|10.157|19.938|20.950|
+| New Shores4 static |12.467|9.698|18.142|19.882|
+| Four Islands4 normal |11.155|8.929|14.107|13.210|
+| Four Islands4 reduced |11.065|8.520|16.314|17.888|
+| Four Islands4 static |10.819|8.720|16.969|19.379|
+| Seven normal |0.626|0.597|2.876|1.944|
+| Seven reduced |0.571|0.668|2.330|2.924|
+| Seven static |0.895|1.058|2.277|2.678|
+| Fifty normal |6.403|4.732|12.862|12.030|
+| Fifty reduced |5.732|4.810|14.453|13.499|
+| Fifty static |4.764|4.697|13.391|12.980|
+
+| Scene, all motion modes | Main+shadow calls before/after | Triangles before/after | Instanced meshes / total instances after |
+| --- | --- | --- | --- |
+| Base |2113/2119|582656/586262|4/109|
+| New Shores4 |3693/3699|913262/918554|4/174|
+| Four Islands4 |3376/3382|847070/851936|4/157|
+| Seven |430/436|53028/55410|4/67|
+| Fifty |2491/2497|313542/320022|4/210|
+
+All five scenes add5 mesh objects,6 main-pass draw calls,4 GPU geometries,6 scene materials and3 shader programs, with no additional textures. Resources are stable across timed frames and ordinary hover/snapshots. Reduced is0 idle frames in both versions; non-Base static is also0. Existing Base ambient boats still render about10Hz even when other effects are Static; this predates5D.2. Normal Seafarers/shared motion remains12–13Hz in both versions. No added ocean clock/idle rendering.
+
+**Unfavorable and contradictory data:** seven reduced/static medians and tails increase; Base static block deltas have opposite signs (+0.790/-0.365ms), as do fifty static (+0.313/-0.605ms). New Shores4 and some Four Islands p95 worsen despite lower medians. Temperature/power-state variation and GPU scheduling remain uncontrolled; start/end60→64C,1575→1620MHz do not establish a cause. No equivalence/improvement claim. The short smoke report with seven-static p95 1.621→3.438ms is also retained under `%TEMP%/catan-ocean-gpu-smoke-ac631bea76aa4cbfb19243189c203802/`, explicitly only4 samples per reading, not full acceptance. Final corrected-water measurements are separate below.
+
+### Final-source GPU run - completed, environment-confounded
+
+`%TEMP%/catan-ocean-gpu-post-clearance-final/paired-performance.json`: exit0, same15 cases/120 readings/14,400 valid queries, zero disjoint/errors. Its source hashes exactly match the final49 capture manifest. Mesh/resource/call/triangle counts match the first report above; reduced and non-Base static idle remain0, Base legacy static ambient remains10Hz. All resource/no-command assertions pass.
+
+| Scene/mode | Before median ms | After median ms | Before p95 ms | After p95 ms |
+| --- | --- | --- | --- | --- |
+| Base normal |4.350|4.455|10.966|11.852|
+| Base reduced |4.840|4.775|12.841|13.111|
+| Base static |6.090|5.271|12.398|10.783|
+| New Shores4 normal |12.663|9.927|20.202|19.974|
+| New Shores4 reduced |13.213|10.060|21.293|15.650|
+| New Shores4 static |13.047|10.464|20.812|19.428|
+| Four Islands4 normal |10.370|5.616|14.379|16.572|
+| Four Islands4 reduced |11.773|9.674|14.914|14.874|
+| Four Islands4 static |13.316|10.378|21.742|15.069|
+| Seven normal |1.757|1.189|6.323|5.577|
+| Seven reduced |2.300|1.786|4.060|4.087|
+| Seven static |1.105|2.413|4.077|3.974|
+| Fifty normal |7.569|6.900|11.928|8.971|
+| Fifty reduced |7.630|7.039|11.678|9.862|
+| Fifty static |7.744|6.954|11.741|9.183|
+
+**Environment limitation, not a proven renderer defect:** late in the final run driver telemetry reaches94% utilization and78C, compared with8–35% and62–68C across first-run readings. Afterward `nvidia-smi` also lists an existing `FC25.exe` GPU process. That proves neither per-process utilization nor that this game caused a particular sample, but clean steady GPU conditions cannot be certified. No unrelated user process was stopped. Seven-static pooled median worsens by1.308ms; its block deltas have opposite signs (+1.335/-0.101ms). Four Islands normal p95 also worsens. Preserve these data; do not report equivalence, a speedup, or attribute every variation to the new ocean. Driver power/clock/scheduling variation and unexcluded external load limit inference. A fresh final-source run with other GPU workloads closed is needed for an unqualified controlled-performance sign-off. Browser/functional checks remain verified.
+
+Both original complete raw reports, their unfavorable readings, original pre-fix screenshots and smoke report remain outside Git; their combined validation confirms28,800 valid samples. No production/gameplay/asset change is justified solely by these confounded timings. **Historical review verdict before the clean repetition: NOT READY FOR CHECKPOINT pending final GPU verification.** The repetition below supersedes that readiness status while preserving these measurements and their limits; no5E/commit/push.
+
+### Clean GPU repetition after closing the external game - 2026-10-21
+
+**Completed, exit0; READY FOR CHECKPOINT for Visual5D.2.** Following the user's confirmation, FC25 was absent at preflight, periodic checks and completion; no user process was stopped. Used the unchanged `ocean-gpu.cjs`, same Chrome155.0.8059.85/RTX5050 Laptop/driver610.74,1440x900/DPR1, motion settings, ABBA/BAAB order,90 warm/120 asynchronous GPU/60 wall frames per reading. Exact source hashes, final capture bundle hashes, public scene signatures, canonical cameras and call/triangle counts match the earlier final-source run. No renderer, tests, assets or benchmark implementation was changed to obtain this result.
+
+Raw report: `%TEMP%/catan-ocean-gpu-clean-final-e56b24379ecc4dc39cba14aaa85c753f/paired-performance.json`. **15 cases,120 readings,14,400 valid queries, zero disjoint/errors.** Preflight49C; recorded reading telemetry51–63C and0–22% utilization, with no repeat of the earlier94% load. GPU clocks remain unlocked (observed240–2707MHz), so this is a controlled paired single-device diagnostic, not universal equivalence or sustained-FPS certification. Previous two raw report hashes are unchanged; all three full reports retain360 readings/43,200 valid queries. Validation/status files are ignored `.venv/test-artifacts/ocean-gpu-clean-{preflight,baseline,final-status,summary}.json` and `ocean-gpu-clean-validation.txt`.
+
+| Scene/mode | Before median ms | After median ms | Before p95 ms | After p95 ms |
+| --- | --- | --- | --- | --- |
+| Base normal |2.608|2.237|3.949|2.815|
+| Base reduced |2.553|2.353|3.329|2.973|
+| Base static |2.515|2.198|3.540|2.744|
+| New Shores4 normal |4.497|3.974|5.354|4.794|
+| New Shores4 reduced |4.538|4.144|5.478|5.320|
+| New Shores4 static |4.499|4.106|5.401|5.117|
+| Four Islands4 normal |4.093|3.533|5.195|4.467|
+| Four Islands4 reduced |4.079|3.611|5.020|4.330|
+| Four Islands4 static |4.261|3.593|5.309|5.107|
+| Seven normal |0.473|0.496|1.167|1.038|
+| Seven reduced |0.498|0.528|0.993|1.048|
+| Seven static |0.501|0.508|1.453|1.255|
+| Fifty normal |2.871|2.590|13.999|10.774|
+| Fifty reduced |3.386|2.682|12.099|12.042|
+| Fifty static |2.942|2.371|12.949|11.874|
+
+Costs/resources match the earlier table exactly: +6 main-pass calls,4 GPU geometries,6 scene materials,3 programs, no new textures; resource counts remain stable within every reading. Reduced and non-Base Static still have0 idle frames; existing Base ambient10Hz and normal shared12–13Hz are unchanged. No new ocean timer. Unfavorable results are retained: seven medians increase0.007–0.030ms, seven-reduced p95 rises0.055ms, and fifty-reduced block deltas disagree (-1.423/+0.438ms). Fifty p95 remains much larger than its median. No broad speedup claim or explanation of every historical outlier is supported. The earlier1.308ms seven-static increase is not reproduced here, but remains in the preserved report.
+
+The outstanding performance-verification gate is closed for the tested desktop/GPU scope. Existing412 frontend tests, TypeScript/build,49 PNGs,9 Chrome smoke groups,55 prepared live multiplayer checks and six focused Python checks are reused, not rerun or assigned new counts; source hashes confirm they still apply. Remaining limits: one GPU/Chrome, unlocked clocks/desktop scheduling, no low-end/mobile certification, optional two-ring readability tradeoff, existing Four Islands4 robber/Fields12 occlusion and existing large-chunk warning. Procedural ships remain default, GLB opt-in; no art approval,5E,commit,push or tag.
+
 ## Visual Phase 5D - map audit gate and bounded ocean scope
+
+**Historical5D.1 prerequisite/audit status, superseded for rendering by5D.2 above.** The following “not implemented” statements describe their dated checkpoints, not the current renderer. Base fix is now published as `b61215b`; no historical maps/snapshots are rewritten by5D.2.
 
 **Current correction,2026-10-20:** separately authorized Base Standard number-placement fix is implemented; focused maps,1000 seeds ×3/4 players, historical codec/PostgreSQL and508/508 scenarios pass. Final isolated-PG suite1696 passed/3 opt-in Docker skips, exit0; frontend383 passed. **Base blocker fix READY FOR CHECKPOINT**; [[Project State#Base Standard number placement - Visual 5D blocker fix, 2026-10-20]]. New recipe policy and exact old canonical recipes on new start/rematch separate red tokens through the actual graph without extra RNG; old match heads remain untouched. Official Seafarers and other custom presets are unchanged. The Gold harness derivative removes the inherited Base-only policy, retaining its fixed Gold fixture/assertions. [[Карты и сценарии#Base Standard random-number correction]]. Ocean/frame/camera scope below is still **not implemented** and does not start as part of this fix. Existing5C PNGs are historical; regenerated public gallery fixtures use corrected production numbers.
 

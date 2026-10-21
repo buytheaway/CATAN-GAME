@@ -11,7 +11,7 @@ import type { BoardInteraction } from "../board/interaction";
 import InteractionOverlay3D from "./InteractionOverlay3D";
 import { VisualResources, useVisualResources } from "./VisualResources";
 import { VISUAL } from "./materials";
-import { cameraFootprint, coastVisualPosition } from "./coordinates";
+import { DECORATIVE_WATER_TOP, cameraFootprint, coastVisualPosition, tilePosition } from "./coordinates";
 import GameIcon from "../game/GameIcon";
 import DiceRoll3D from "./DiceRoll3D";
 import type { DiceRollVisual } from "../game/dice";
@@ -31,6 +31,9 @@ import type { ShipCue } from "../board/shipFeedback";
 import type { ThreatCue } from "../board/threatFeedback";
 import Threats3D from "./Threats3D";
 import type { ShipModel } from "./shipAssets";
+import { buildOceanFrameStrip, buildOceanLayout, type OceanRings } from "./oceanGeometry";
+import OceanBoard3D from "./OceanBoard3D";
+import type { Tile } from "../components/BoardView.types";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -62,7 +65,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   shipCues = new Map(), shipsAnimated = true, onShipsAnimated,
   pieceCues = new Map(), constructionAnimated = true, onConstructionAnimated,
   threatCues = new Map(), threatsAnimated = true, onThreatsAnimated,
-  shipModel = "procedural", onShipModel }: {
+  shipModel = "procedural", onShipModel, oceanRings = 1, oceanFrame = true }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
   reveals?: ReadonlyMap<number, number>;
@@ -70,6 +73,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   pieceCues?: ReadonlyMap<string, PieceCue>; constructionAnimated?: boolean; onConstructionAnimated?: (enabled: boolean) => void;
   threatCues?: ReadonlyMap<string, ThreatCue>; threatsAnimated?: boolean; onThreatsAnimated?: (enabled: boolean) => void;
   shipModel?: ShipModel; onShipModel?: (model: ShipModel) => void;
+  oceanRings?: OceanRings; oceanFrame?: boolean;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
@@ -90,10 +94,20 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
     interaction.onTileClick(tileIndex);
   }, [interaction.onTileClick]);
   const { bounds } = model;
-  const footprint = JSON.stringify(cameraFootprint(model));
+  // Only public geometry participates. Fog reveal/ownership changes do not rebuild scenery.
+  const geometryKey = JSON.stringify(state.tiles.map(({ q, r, center }) => ({ q, r, center })));
+  const geometry = useMemo(() => JSON.parse(geometryKey) as Tile[], [geometryKey]);
+  const ocean = useMemo(() => buildOceanLayout(geometry, state.size, oceanRings), [geometry, state.size, oceanRings]);
+  const waterPositions = useMemo(() => geometry.map(tile => tilePosition(tile, state.size)), [geometry, state.size]);
+  const frame = useMemo(() => oceanRings && oceanFrame
+    ? buildOceanFrameStrip(ocean.loops, .08, .245, .035, DECORATIVE_WATER_TOP) : null, [ocean.loops, oceanRings, oceanFrame]);
+  const oceanOutline = frame?.footprint ?? ocean.loops.flat().map(([x, , z]) => [x, DECORATIVE_WATER_TOP, z] as [number, number, number]);
+  const footprint = JSON.stringify([...cameraFootprint(model), ...(oceanRings ? oceanOutline : [])]);
+  const ambientClearance = oceanClearance(model, oceanRings ? ocean.cells.map(c => c.position) : []);
 
   return (
     <div className="board3d" data-renderer="3d" data-tile-count={model.tiles.length}
+      data-ocean-rings={oceanRings} data-ocean-cells={oceanRings ? ocean.cells.length : 0} data-ocean-frame={!!oceanRings && oceanFrame}
       data-selectable={hoveredTile != null && model.tiles[hoveredTile]?.visibility === "revealed" && interaction.targets.tiles.includes(hoveredTile)}>
       <div className="board3d-toolbar">
         {hidden && <label className="board3d-fog-quality">Fog
@@ -154,10 +168,11 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             <shadowMaterial transparent opacity={0.22} />
           </mesh>
           <VisualResources>
+          {!!oceanRings && !!ocean.cells.length && <OceanBoard3D layout={ocean} playable={waterPositions} frame={frame} />}
           <SceneMotion reduced={reduced} connected={connected}>
           <FogPresentation quality={fogQuality} reduced={reduced} connected={connected} hidden={hidden}>
           <DecorativeOcean bounds={bounds} coast={model.coast} />
-          {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={oceanClearance(model)} />}
+          {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={ambientClearance} />}
           {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}

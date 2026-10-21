@@ -1,13 +1,25 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Project State
 
 ## Current verification and status
 
+### Visual Phase 5D.2 - decorative ocean, frame and camera, 2026-10-21
+
+**Implemented and verified; READY FOR CHECKPOINT for Visual5D.2.** The final paired GPU repetition passed after the user closed the external game; the previous performance gate is resolved in the tested desktop scope. Published prerequisite is `b61215b1ea1f2693b0f828720f8384ac4e291327`. Board3D adds a default one-ring decorative ocean and a continuous mitered outer frame, derived exclusively from public tile geometry. Two rings and frame off are test-preview options. Base19 adds18 cells;37-tile boards add24; New Shores4/44 adds26. Second-ring cumulative totals are42/54/58. Existing playable Sea, including official frame Sea, is never duplicated or reclassified. No game IDs, rules, commands, maps, backend, assets, persistence, security or dependencies change. SVG and procedural-default/GLB-opt-in ships remain.
+
+Camera fit includes the actual exterior frame and a stable public relief/piece envelope. Fog reveal, ownership updates and ship-model changes do not reset the camera. Base ambient boats now clear the raised water/frame. A visible command-error alert previously blocked a legal board click; only its informational surface now uses `pointer-events:none`, retaining `role=alert`. Final review also found coplanar shoreline/water surfaces; decorative water alone is lowered0.008 below the existing coast top, with a regression check. These are scoped renderer fixes, not gameplay changes.
+
+Final corrected source: **412 frontend tests, TypeScript/build,49 actual PNGs and9 Chrome smoke groups passed again** in the preceding review. Seven matched before/after camera/public-state pairs and every PNG byte hash are verified. The **55 completed real WebSocket/PostgreSQL checks across12 prepared scenarios** (ships/buildings/threats,2–3 clients) are reused, not claimed as rerun after a water-height-only correction. Those are funded/prepared acceptance fixtures, not natural full matches. Six focused official-layout/outer-sea shipping Python tests also pass. Backend/runtime Python is unchanged; the1696-pass full suite below remains historical. The2026-10-21 GPU repetition adds15 cases/120 readings/14,400 valid queries, exit0, no disjoint/errors; source/camera/fixture hashes match, FC25 absent at preflight/checks/completion, observed load0–22% and reading temperatures51–63C. Normal median before→after: Base2.608→2.237ms, New Shores4 4.497→3.974, Four Islands4 4.093→3.533, seven0.473→0.496, fifty2.871→2.590. The earlier two reports, including the confounded94%-load run, remain unchanged: three full reports retain360 readings/43,200 valid queries. Cost is +6 calls/+4 GPU geometries/+6 materials/+3 programs, textures unchanged, no additional idle clock. Seven's small median increases, opposing block deltas and fifty-frame tails remain documented; no universal equivalence/speedup or low-end certification. The repeat changed only this state note and the existing plan, not renderer/benchmark code. Full tables/raw evidence/limits — [[plans/board3d#Visual Phase 5D.2 - decorative ocean and continuous frame]]. No automatic commit/push or Phase5E.
+
+Loopback public-only gallery/preview: **http://127.0.0.1:18786/**. Reproduction — [e2e instructions](../../web/e2e/README.md#visual-phase-5d2---decorative-ocean-and-continuous-frame). This preview has no accounts/database or trusted Fog state. Its media/reports live outside Git under temporary directories; paths and verification limits are in the plan. Existing user graph and PostgreSQL data are preserved.
+
 ### Base Standard number placement - Visual 5D blocker fix, 2026-10-20
+
+**Historical5D.1 verification, subsequently committed/pushed as `b61215b1ea1f2693b0f828720f8384ac4e291327`.** The following readiness/no-renderer-work statements describe that completed prerequisite, not current5D.2 scope.
 
 **Implemented and verified; READY FOR CHECKPOINT for this focused blocker fix.** Newly generated Base Standard uses recipe policy `number_placement: base_random_red_separation_v1`. After the original terrain/number shuffle and actual graph construction, a bounded deterministic repair selects non-edge-adjacent red positions and swaps displaced tokens. At most3876 candidate sets; no additional RNG draws. Valid original shuffles are retained. Terrain, IDs, topology, ports, token inventory and subsequent seeded dev deck stay unchanged. No global constraint for other Base/custom/Seafarers maps; all30 pre-fix snapshot hashes for15 other presets ×2 seeds remain identical.
 

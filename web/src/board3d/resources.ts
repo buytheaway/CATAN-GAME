@@ -5,6 +5,7 @@ import {
 } from "three";
 import { createPieceMaterials } from "./pieceAssets";
 import { createFogResources } from "./fogResources";
+import { BOARD_RIM_TOP, DECORATIVE_WATER_TOP } from "./coordinates";
 
 function extrude(points: [number, number][], depth: number, bevel: number) {
   const shape = new Shape();
@@ -39,6 +40,21 @@ const factories = {
     geo.rotateX(-Math.PI / 2);
     geo.translate(0, 0.04, 0); // Top stays exactly at TILE_TOP (0.26).
     return geo;
+  },
+  oceanHex: () => {
+    const bottom = BOARD_RIM_TOP - .18;
+    const geometry = new CylinderGeometry(1, 1, DECORATIVE_WATER_TOP - bottom, 6);
+    // Only the side and top are visible; do not submit the hidden bottom cap.
+    geometry.groups.splice(2);
+    geometry.translate(0, (DECORATIVE_WATER_TOP + bottom) / 2, 0);
+    return geometry;
+  },
+  oceanFill: () => {
+    const geometry = new CircleGeometry(1, 6);
+    geometry.rotateZ(Math.PI / 6);
+    geometry.rotateX(-Math.PI / 2);
+    geometry.translate(0, BOARD_RIM_TOP - .035, 0);
+    return geometry;
   },
   port: () => {
     const geo = extrude([[-0.31, -0.23], [0.31, -0.23], [0.31, 0.23], [-0.31, 0.23]], 0.055, 0.01);

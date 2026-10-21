@@ -1,5 +1,76 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5D.2 - decorative ocean and continuous frame
+
+Actual GamePage/Board3D, with shared PUBLIC synthetic snapshots, not concept
+images or a live match. The before bundle reads checkpoint `b61215b` with
+`git show`; the after bundle reads the working tree. No checkout/reset, backend,
+credentials, private Fog recipe, database or production debug API is involved.
+
+```powershell
+$env:NODE_PATH = Join-Path (Get-Location) '.venv/test-artifacts/fog3a-tools/node_modules'
+# Use the completed final capture folder for the existing49-image gallery:
+$env:CATAN_OCEAN_OUTPUT = Join-Path $env:TEMP 'catan-ocean-5d2-final-v4'
+node web/e2e/ocean-demo.cjs
+```
+
+**http://127.0.0.1:18786/**. Scene/source/ring/frame/close/reset controls are
+test-only. Base, official New Shores3/4, Four Islands3/4, public Fog before/after,
+and seven/fifty-hex scenes use real components. The outer ship is synthetic
+display occupancy on an existing playable sea edge; it is not evidence of a
+legal match. Decorative cells never enter the snapshot or fixture graph.
+Procedural ships remain default; `model=glb` explicitly selects the existing pilot.
+
+Capture actual official layouts, matched before/after camera views, native
+overview, two rings, frame off, wheel close-ups and native-pixel detail crops:
+
+```powershell
+# Select a fresh directory: previous evidence is never overwritten.
+$env:CATAN_OCEAN_OUTPUT = Join-Path $env:TEMP ('catan-ocean-5d2-' + [guid]::NewGuid().ToString('N'))
+node web/e2e/ocean-capture.cjs
+# Add the real legal setup/outer-sea-ship view to that capture manifest:
+node web/e2e/ocean-outer-capture.cjs
+# Narrow hover/snapshot/instance/raycast/Fog-reveal invariants, no GPU benchmark:
+node web/e2e/ocean-smoke.cjs
+# Serve that same artifact directory after capture, if the preview was stopped:
+node web/e2e/ocean-demo.cjs
+```
+
+The default artifact directory is `%TEMP%/catan-ocean-5d2/`; use the same
+`CATAN_OCEAN_OUTPUT` for capture and gallery. `CATAN_OCEAN_PORT` overrides18786.
+Captures include real reset/resize/SVG round-trip and public-state checks.
+Normal/close views and native-pixel detail crops are labeled separately.
+Historical5C images are preserved and are not claimed as new ocean evidence.
+PNG SHA256 values hash the actual file bytes, not JSON-encoded Buffer objects.
+If reviewing an old pre-correction manifest, retain its original separately.
+
+Run GPU measurements separately from screenshot/video or other GPU workloads:
+
+```powershell
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP ('catan-ocean-gpu-' + [guid]::NewGuid().ToString('N'))
+node web/e2e/ocean-gpu.cjs
+# Independent bounded repeat: select another fresh directory first.
+node web/e2e/ocean-gpu.cjs
+```
+
+`--smoke` on either runner is a short tool check, not complete acceptance.
+The GPU runner reuses the corrected5B.1 asynchronous timer/disjoint probe,
+ABBA/BAAB,90 paced warm/120 GPU/60 separate wall samples per reading. Base,
+New Shores4, Four Islands4 and7/50 hexes each cover normal/reduced/static.
+The complete after/frame overview camera is copied identically to both sides;
+native camera fits are also retained. This separates changed framing from the
+cost of extra geometry. Base's existing decorative boats move farther out to
+clear the new ring: native poses and rendered visibility are recorded, while
+only the external GPU probe temporarily normalizes both sides to identical
+after-boat poses. The original render method and latest native pose are restored
+after sampling. Existing clocks and idle observations remain actual; Base's
+legacy boat clock can still render10Hz in the effects-Static mode, while reduced
+motion stops it. Full chronological timings, pooled median/p95,
+shadow-plus-main calls/triangles, instance/material/resource inventory, idle
+frames and GPU telemetry are retained, including failures or unfavorable results.
+Reports cannot be overwritten. This is a single unlocked-GPU render-span
+diagnostic, not sustained FPS, artistic approval or low-end certification.
+
 ## Visual Phase 5C - actual board art review
 
 Actual current GamePage/Board3D, not generated concept images. Public-only

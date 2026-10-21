@@ -1,13 +1,23 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-20
+updated: 2026-10-21
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 5D.2 - implemented bounded ocean and frame
+
+**Implemented2026-10-21; final acceptance status — [[Project State#Visual Phase 5D.2 - decorative ocean, frame and camera, 2026-10-21]].** Clean modern tabletop direction: one complete exterior ring of restrained blue water hexes, thin seams, two small static wave hints per cell and a continuous muted blue-grey frame. Current colors are `#286b8b/#2a6e8c/#296c87` water and `#476277` frame. The original brighter playable Sea GLBs, borders and IDs remain visually distinct and unchanged. Two decorative rings/frame off are preview comparisons, not new game options or maps. This scope does not approve the broader A/B/C art proposals below.
+
+The ring uses actual public axial/center geometry, including unknown Fog slots; it never depends on hidden terrain or future reveals. Exterior holes are not filled, playable/physical-frame Sea is not duplicated. All scenery ignores raycasts. Frame corners are joined by a continuous mitered mesh, with a skirt and inner lip; decorative water sits0.008 below the existing coastal strip to avoid coplanar shoreline artifacts. Shared instanced resources add no animation loop. Camera reserves the frame and public relief/pieces without changing logical scale; optional two rings necessarily make playable hexes smaller. Actual paired screenshots, performance costs and remaining readability limits — [[plans/board3d#Visual Phase 5D.2 - decorative ocean and continuous frame]].
+
+Public synthetic gallery: **http://127.0.0.1:18786/**; [launch/capture instructions](../../web/e2e/README.md#visual-phase-5d2---decorative-ocean-and-continuous-frame). A screenshot is evidence of the renderer, not user art approval. Existing Four Islands4 robber/Fields12 occlusion and differing playable/decorative water styles remain known art/readability limitations; no unrelated asset redesign is included.
+
 ## Visual Phase 5D - required bounded ocean, not implemented
+
+**Historical pre-5D.2 requirement/status.** The implementation above supersedes the old “not implemented” description below; original audit/checkpoint evidence is retained.
 
 **Explicit user requirement2026-10-20:** Base/Seafarers should have complete surrounding ocean hexes and a clean continuous exterior-edge frame, instead of the current large open background-ocean presentation. Derive a configurable one/two-ring decoration from actual public axial occupancy; distinguish it from playable Sea. Never add decorative cells/IDs to GameState, snapshots, persistence, legal targets, ships, pirate, Fog, ports or victory calculations. Preserve SVG/controls/owned-piece animations and opt-in ship semantics. This is a confirmed requested presentation scope, not blanket approval of A/B/C art proposals below.
 

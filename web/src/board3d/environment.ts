@@ -10,9 +10,11 @@ export function decorativeShipsEnabled(state: BoardSnapshot) {
     && !Object.keys(state.occupied_ships).length && state.pirate_tile == null;
 }
 
-/** Actual tile extent, plus clearance for the entire boat. Excluded from camera/game bounds. */
-export function oceanClearance({ tiles, bounds }: Pick<BoardRenderModel, "tiles" | "bounds">) {
-  return Math.max(1, ...tiles.map(t => Math.hypot(t.position[0] - bounds.center[0], t.position[2] - bounds.center[2]) + 1)) + .65;
+/** Tile extent, including optional visual ocean, plus clearance for the entire boat. */
+export function oceanClearance({ tiles, bounds }: Pick<BoardRenderModel, "tiles" | "bounds">,
+  decoration: readonly Point3D[] = []) {
+  const positions = [...tiles.map(t => t.position), ...decoration];
+  return Math.max(1, ...positions.map(p => Math.hypot(p[0] - bounds.center[0], p[2] - bounds.center[2]) + 1)) + .65;
 }
 
 const ROUTES = [

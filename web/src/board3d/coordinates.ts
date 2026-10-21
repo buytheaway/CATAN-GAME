@@ -6,6 +6,9 @@ export const TILE_TOP = 0.26;
 // Visible contact plane shared by finalized terrain rims and their procedural fallback.
 // Logical hit geometry continues to use TILE_TOP.
 export const BOARD_RIM_TOP = .21833333333333332;
+// The existing coastal strip ends at BOARD_RIM_TOP. Keep decorative water
+// slightly below it so their overlapping shoreline surfaces cannot z-fight.
+export const DECORATIVE_WATER_TOP = BOARD_RIM_TOP - .008;
 export const TERRAIN_FALLBACK_OFFSET: Point3D = [0, BOARD_RIM_TOP - TILE_TOP, 0];
 
 /** The .05-high coastal strip ends at the visible rim, below piece foundations. */
@@ -68,18 +71,21 @@ export function portConnectors(port: RenderPort) {
     ...edgePlacement(endpoint, label), start: endpoint, end: label }));
 }
 
-/** Visual footprint includes tile rims and port labels, without empty bounding-box corners. */
+/** Public geometry only: elevation/occupancy changes must not reset a player's camera. */
 export function cameraFootprint(model: Pick<BoardRenderModel, "tiles" | "ports">): Point3D[] {
   const outline = model.tiles.flatMap(t => {
     const rim = Array.from({ length: 6 }, (_, i): Point3D =>
       [t.position[0] + Math.sin(i * Math.PI / 3), TILE_TOP, t.position[2] + Math.cos(i * Math.PI / 3)]);
-    // Conservative heights cover both GLB relief and the procedural fallback.
-    // Tall details live inside the hex, not at every empty perimeter corner.
-    const height = ({ forest: 1.15, mountains: 1.42, hills: .68, pasture: .77,
-      fields: .77, desert: .51, gold: .8 } as Record<string, number>)[t.terrain];
-    const detail = height == null ? [] : [-.58, .58].map((x): Point3D =>
-      [t.position[0] + x, height, t.position[2] - .65]);
-    return [...rim, ...detail];
+    // Reserve the same modest relief over every tile, including public Fog slots.
+    // A reveal or loaded GLB then cannot change the fit or disclose hidden terrain.
+    const relief = [-.65, .65].flatMap(x => [-.65, .65].map((z): Point3D =>
+      [t.position[0] + x, 1.42, t.position[2] + z]));
+    // Cover current/future pieces at perimeter vertices and edges regardless of
+    // ownership. This includes both ship renderers without reading legal targets.
+    const pieces = Array.from({ length: 6 }, (_, i): Point3D =>
+      [t.position[0] + 1.4 * Math.sin(i * Math.PI / 3), .95,
+        t.position[2] + 1.4 * Math.cos(i * Math.PI / 3)]);
+    return [...rim, ...relief, ...pieces];
   });
   model.ports.forEach(p => {
     const position = portLabelPosition(p);

@@ -108,6 +108,7 @@ button.resource-card:disabled { cursor: default; }
 .setup-action { display: inline-flex; align-items: center; gap: 10px; color: #e9d8b7; font-size: 13px; padding: 12px 16px; border: 1px solid #53717b; border-radius: 8px; }
 .cancel-action { font-size: 11px; padding: 9px; }
 .game-error, .connection-notice { position: absolute; z-index: 6; top: 62px; left: 50%; transform: translateX(-50%); max-width: min(540px, 90%); padding: 9px 16px; border: 1px solid #b77c78; border-radius: 8px; background: #3e3037; color: #f1c9c3; font-size: 12px; }
+.game-error { pointer-events: none; }
 .connection-notice { top: auto; bottom: 10px; border-color: #a8936a; background: #3a3b35; color: #e5d2a9; }
 .game-drawer-layer { position: fixed; inset: 94px 16px 138px auto; z-index: 8; width: min(350px, 88vw); pointer-events: none; }
 .game-drawer { height: 100%; pointer-events: auto; display: flex; flex-direction: column; gap: 16px; padding: 18px; background: #142c38f5; border: 1px solid #4a6674; border-radius: 12px; box-shadow: 0 12px 30px #08162077; overflow: auto; }

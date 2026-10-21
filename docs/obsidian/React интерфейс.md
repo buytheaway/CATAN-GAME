@@ -4,6 +4,14 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Visual Phase 5D.2 - presentation-only ocean and stable camera
+
+**Implemented2026-10-21; verification — [[plans/board3d#Visual Phase 5D.2 - decorative ocean and continuous frame]].** Existing public snapshot → `BoardRenderer` → `createRenderModel` → `Board3D` path is unchanged. [oceanGeometry.ts](../../web/src/board3d/oceanGeometry.ts) consumes only q/r/center/size to build exterior decoration; [OceanBoard3D.tsx](../../web/src/board3d/OceanBoard3D.tsx) renders shared static instances and the continuous frame. Original snapshot tile/edge/vertex IDs, callbacks and legal targets remain the only interaction source. Scenery never handles clicks or becomes a new board model.
+
+`Board3D` defaults to `oceanRings=1`, `oceanFrame=true`; optional props are used by external public-fixture preview tooling only. No new GamePage state or protocol field. Memoization depends on public geometry, not Fog terrain/ownership. `cameraFootprint` reserves the same relief/piece envelope on every public slot, then adds the frame. It cannot reset on reveal or infer hidden terrain. Existing CameraRig controls/solver, SVG and ship preference remain. Base decorative boats include the ring in their clearance; gameplay ship placement is unchanged.
+
+The informational `.game-error` surface now has `pointer-events:none` because it could cover a valid board target. Its text and `role=alert` remain; it contains no buttons, links or other focusable controls. Connection notices, drawers and their interactive controls are unchanged. A real Chrome forced-occlusion check preserves the historical blocking negative control and verifies current legal retry through the visible alert. This is not a claim of a full screen-reader accessibility audit.
+
 ## Visual Phase 5B.2 - ship-specific ghost culling
 
 **Implemented/tested2026-10-20.** Existing snapshot -> BoardRenderer -> ShipFleet3D/Ship3D -> ShipAsset path is unchanged. Only ShipAsset's material-clone call now uses `cloneShipScene` from [shipAssets.ts](../../web/src/board3d/shipAssets.ts), wrapping the existing `clonePieceScene`/Canvas pool. Corrected GLB opaque HullWood/PlayerColor inherit asset FrontSide, canvas DoubleSide. For transparent ship hover/source echoes only, Canvas-owned ghost material copies retain legacy DoubleSide/opacity/depth policy; cached originals, other pieces, geometry sharing and ignored raycasts remain unchanged. No rule/controller/game-state field, preference/default, animation trigger or request protocol change.
