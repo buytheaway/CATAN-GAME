@@ -41,15 +41,15 @@ export function TokenLabel({ text, color = VISUAL.ink, width = 0.72, depth = 0.7
   );
 }
 
-export default function NumberToken3D({ number }: { number: number }) {
+export default function NumberToken3D({ number, robberClearance = false }: { number: number; robberClearance?: boolean }) {
   const highlighted = number === 6 || number === 8;
   const pool = useVisualResources();
   // Printed board-token dots, purely visual (never a production/roll calculation).
   const pips = Math.max(0, 6 - Math.abs(7 - number));
-  // Keep the logical token position. Draw the badge above decorative relief instead
-  // of floating every token above the tallest mountain or changing terrain assets.
+  // A small in-tile print offset separates the occupied standing area from the
+  // depth-independent badge. Heights, values and all game coordinates stay put.
   return (
-    <group position={[0, TILE_TOP + 0.045, 0.18]} userData={{ number }}>
+    <group position={[robberClearance ? -.2 : 0, TILE_TOP + 0.045, 0.18]} userData={{ number }}>
       <mesh receiveShadow scale={[0.41, 0.075, 0.41]} renderOrder={2}
         geometry={pool.geometry("cylinder")} material={pool.standard(VISUAL.tokenSide, false, undefined, true)} />
       <mesh position={[0, 0.038, 0]} scale={[0.395, 0.012, 0.395]} renderOrder={3}

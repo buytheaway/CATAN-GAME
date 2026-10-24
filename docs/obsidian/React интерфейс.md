@@ -4,6 +4,12 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Visual Phase 5E.1 - public occupancy and local clearance
+
+**Implemented2026-10-21; verification — [[plans/board3d#Visual Phase 5E.1 - piece readability and occlusion]].** `BoardRenderer` still owns the public threat observer and existing finite cues. `Board3D` derives a set from `createRenderModel`'s revealed `robbers`; only an enabled, connected, non-reduced cue with a current destination and revealed public source can temporarily add its departure tile. This set feeds a boolean `robberClearance` through `HexTile3D`, not a new game-state field or legal rule.
+
+`TerrainHexVisual` creates an owned clone, then [terrainReadability.ts](../../web/src/board3d/terrainReadability.ts) transforms existing mesh bounds into tile-local space and hides only approved intersecting vegetation groups. Cached GLB objects/materials/geometries are never changed; a fresh clone restores visibility when the flag clears. `NumberToken3D` uses the same flag for a small in-hex print offset, preserving height/value. Missing GLB uses the existing colored ground without procedural hints on that occupied tile. Hidden Fog mounts neither terrain nor token/clearance. Original robber/pirate anchors, cue timing, hit mesh, controller callbacks, camera, ocean and SVG remain. No per-frame React updates or new timer.
+
 ## Visual Phase 5D.2 - presentation-only ocean and stable camera
 
 **Implemented2026-10-21; verification — [[plans/board3d#Visual Phase 5D.2 - decorative ocean and continuous frame]].** Existing public snapshot → `BoardRenderer` → `createRenderModel` → `Board3D` path is unchanged. [oceanGeometry.ts](../../web/src/board3d/oceanGeometry.ts) consumes only q/r/center/size to build exterior decoration; [OceanBoard3D.tsx](../../web/src/board3d/OceanBoard3D.tsx) renders shared static instances and the continuous frame. Original snapshot tile/edge/vertex IDs, callbacks and legal targets remain the only interaction source. Scenery never handles clicks or becomes a new board model.

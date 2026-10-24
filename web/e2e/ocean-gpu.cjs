@@ -5,11 +5,12 @@ const {chromium}=require('playwright');
 const {startOcean,reference}=require('./ocean-demo.cjs');
 const {samplePage,summarize,telemetry}=require('./ship-art-gpu.cjs');
 const h=require('./ocean-support.cjs');
-async function main(){
+async function main(options = {}){
+ const start = options.start || startOcean, checkpoint = options.reference || reference;
  const smoke=process.argv.includes('--smoke');
  const output=path.resolve(process.env.CATAN_E2E_OUTPUT||path.join(os.tmpdir(),'catan-ocean-gpu-'+Date.now()));
  await fs.mkdir(output,{recursive:true});const file=path.join(output,'paired-performance.json');await fs.writeFile(file,'{}',{flag:'wx'});
- const report={completed:false,reference,checkedAt:new Date().toISOString(),smoke,errors:[],measurements:{},
+ const report={completed:false,reference:checkpoint,checkedAt:new Date().toISOString(),smoke,errors:[],measurements:{},
   method:{order:[['before','after','after','before'],['after','before','before','after']],
    warmFrames:smoke?5:90,gpuFrames:smoke?4:120,wallFrames:smoke?4:60,
    GPU:'Unchanged ship-art-gpu samplePage: asynchronous TIME_ELAPSED_EXT/disjoint checks; full chronological samples; main and shadows',
@@ -20,8 +21,8 @@ async function main(){
   environment:{start:telemetry()}};
  const save=()=>fs.writeFile(file,JSON.stringify(report,null,2));let demo,browser;
  try{
-  demo=await startOcean();report.bundleHashes=demo.bundleHashes;browser=await chromium.launch({channel:'chrome',headless:true});report.chrome=browser.version();
-  for(const scene of(smoke?['seven']:['base','new-shores-4','four-islands-4','seven','fifty']))for(const mode of(smoke?['static']:['normal','reduced','static'])){
+  demo=await start();report.bundleHashes=demo.bundleHashes;browser=await chromium.launch({channel:'chrome',headless:true});report.chrome=browser.version();
+  for(const scene of(smoke?['seven']:(options.scenes || ['base','new-shores-4','four-islands-4','seven','fifty'])))for(const mode of(smoke?['static']:['normal','reduced','static'])){
    const key=scene+'-'+mode,result=report.measurements[key]={readings:[],blocks:[]};let canonical,canonicalBoats;
    // Separate unmeasured page determines complete after framing before paired runs.
    const calibration=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,reducedMotion:mode==='reduced'?'reduce':'no-preference'});
@@ -66,3 +67,4 @@ async function main(){
  console.log('REPORT '+file);
 }
 if(require.main===module)main().catch(error=>{console.error(error);process.exitCode=1;});
+module.exports={main};

@@ -40,23 +40,24 @@ const escape = text => String(text).replace(/[&<>"']/g, value => ({'&':'&amp;','
 function gallery(report) {
   return `<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CATAN 5D.2 ocean review</title><style>body{background:#102332;color:#e9f4fa;font:16px/1.5 system-ui;margin:24px}a{color:#a0e8db}nav{display:flex;gap:14px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}article{background:#193445;padding:12px}img{width:100%}code{overflow-wrap:anywhere}@media(max-width:900px){.grid{grid-template-columns:1fr}}</style><h1>5D.2 · actual hex ocean and frame</h1><p>Real GamePage/Board3D; synthetic PUBLIC display states. Existing playable terrain, coordinates and IDs are unchanged. Outer ships are display scaffolding, not a legality-certified match. Public Fog previews contain no secret assignments.</p><p>Before renderer: <code>${reference}</code>. Current renderer is the working tree. Procedural ship remains default; GLB is opt-in.</p><nav>${scenes.map(scene => `<a href="/preview?shipsart=1&scene=${scene}&source=after&rings=1&fixture=${scene === 'fifty' ? 'large' : 'partial'}">${escape(scene)}</a>`).join('')}</nav><p><a href="/report.json">Capture report</a> · ${escape(report?.checkedAt || 'Run ocean-capture.cjs to populate screenshots.')}</p><div class="grid">${(report?.captures || []).map(item => `<article><a href="/captures/${escape(item.file)}"><img loading="lazy" src="/captures/${escape(item.file)}"></a><h3>${escape(item.scene)} · ${escape(item.source)} · rings ${item.rings} · ${escape(item.zoom)}</h3><p>${escape(item.detail || '')}</p><a href="/preview?${escape(item.query)}">Open same interactive scene</a></article>`).join('')}</div></html>`;
 }
-async function startOcean(port = 0) {
-  if (execFileSync('git', ['rev-parse', reference], { cwd: root, encoding: 'utf8' }).trim() !== reference) throw Error('Checkpoint unavailable');
-  const output = outputRoot(); await fs.mkdir(output, { recursive: true });
+async function startOcean(port = 0, options = {}) {
+  const checkpoint = options.reference || reference;
+  if (execFileSync('git', ['rev-parse', checkpoint], { cwd: root, encoding: 'utf8' }).trim() !== checkpoint) throw Error('Checkpoint unavailable');
+  const output = options.output || outputRoot(); await fs.mkdir(output, { recursive: true });
   const python = process.env.CATAN_REVIEW_PYTHON || path.join(root, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
   const boards = JSON.parse(execFileSync(python, ['-X','utf8',path.join(__dirname,'art-review-boards.py')], {cwd:root,encoding:'utf8'}));
   assertPublicBoards(boards);
   const legalOuter = JSON.parse(execFileSync(python, ['-X','utf8',path.join(__dirname,'ocean-boards.py')], {cwd:root,encoding:'utf8'}));
-  const bundles = { before: await bundleSource(reference), after: await bundleSource(null) };
+  const bundles = { before: await bundleSource(checkpoint), after: await bundleSource(null) };
   const bundleHashes = Object.fromEntries(await Promise.all(Object.entries(bundles).map(async ([key,folder]) =>
     [key,createHash('sha256').update(await fs.readFile(path.join(folder,'fixture.js'))).digest('hex')])));
-  const controller = await fs.readFile(path.join(__dirname,'ocean-controller.js'));
+  const controller = options.controller || await fs.readFile(path.join(__dirname,'ocean-controller.js'));
   const publicRoot = path.join(root,'web/public');
   const report = async () => { try { return JSON.parse(await fs.readFile(path.join(output,'capture-report.json'),'utf8')); } catch { return null; } };
   const server = http.createServer(async (req,res) => {
     try {
       const url = new URL(req.url,'http://127.0.0.1');
-      if(url.pathname === '/') {res.setHeader('Content-Type','text/html; charset=utf-8');res.end(gallery(await report()));return;}
+      if(url.pathname === '/') {res.setHeader('Content-Type','text/html; charset=utf-8');res.end((options.gallery || gallery)(await report()));return;}
       if(url.pathname === '/boards.json') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify(boards));return;}
       if(url.pathname === '/legal-outer.json') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify(legalOuter));return;}
       if(url.pathname === '/report.json') {res.setHeader('Content-Type','application/json');res.end(JSON.stringify(await report() || {},null,2));return;}

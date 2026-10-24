@@ -89,6 +89,14 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
     [model.ships, state.players]);
   const publicPositions = useMemo(() => new Map(model.tiles.filter(tile => tile.visibility === "revealed")
     .map(tile => [tile.tileIndex, tile.position])), [model.tiles]);
+  const robberClearance = useMemo(() => {
+    const tiles = new Set(model.robbers.map(figure => figure.tileIndex));
+    if (threatsAnimated && connected && !reduced) for (const cue of threatCues.values()) {
+      // Existing finite public cues also protect the departure visual; no new clock.
+      if (cue.kind === "robber" && cue.path !== "snap" && tiles.has(cue.to) && publicPositions.has(cue.from)) tiles.add(cue.from);
+    }
+    return tiles;
+  }, [model.robbers, threatCues, publicPositions, threatsAnimated, connected, reduced]);
   const hover = useCallback((tileIndex: number | null) => setHoveredTile(tileIndex), []);
   const inspect = useCallback((tileIndex: number) => {
     interaction.onTileClick(tileIndex);
@@ -175,6 +183,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={ambientClearance} />}
           {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
+            robberClearance={robberClearance.has(t.tileIndex)}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
             reveal={reveals?.get(t.tileIndex)} onHover={hover} onInspect={inspect} />)}
           <Coastline coast={model.coast} />

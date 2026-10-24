@@ -9,9 +9,10 @@ import type { RenderTile } from "./types";
 import { publicTileVisual } from "../board/publicTiles";
 import { FogHexVisual, FogRevealVisual } from "./FogVisual";
 
-export default memo(function HexTile3D({ tile, hovered, legal, selected, reveal, onHover, onInspect }: {
+export default memo(function HexTile3D({ tile, hovered, legal, selected, reveal, robberClearance = false, onHover, onInspect }: {
   tile: RenderTile; hovered: boolean; legal: boolean; selected: boolean;
   reveal?: number;
+  robberClearance?: boolean;
   onHover: (tileIndex: number | null) => void;
   onInspect: (tileIndex: number) => void;
 }) {
@@ -25,11 +26,11 @@ export default memo(function HexTile3D({ tile, hovered, legal, selected, reveal,
     onClick={e => { e.stopPropagation(); if (e.delta < 5 && !hidden) onInspect(tile.tileIndex); }}>
     <mesh geometry={pool.geometry("hex")} material={pool.flat("#ffffff", 0)}
       userData={{ tileIndex: tile.tileIndex }} />
-    {hidden ? <FogHexVisual /> : <TerrainHexVisual terrain={visual.terrain} tileIndex={tile.tileIndex} />}
+    {hidden ? <FogHexVisual /> : <TerrainHexVisual terrain={visual.terrain} tileIndex={tile.tileIndex} robberClearance={robberClearance} />}
     {feedback && <mesh position={[0, TILE_TOP + .015, 0]} rotation={[-Math.PI / 2, 0, Math.PI / 6]}
       geometry={pool.ring(.93, .98, 6)} material={pool.flat(feedback.color, selected ? .9 : hovered ? .8 : .3, true)}
       renderOrder={5} raycast={ignoreTerrainRaycast} />}
-    {visual.number != null && <NumberToken3D number={visual.number} />}
+    {visual.number != null && <NumberToken3D number={visual.number} robberClearance={robberClearance && !hidden} />}
     {!hidden && reveal != null && <FogRevealVisual started={reveal} />}
   </group>;
 });

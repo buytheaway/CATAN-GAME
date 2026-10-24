@@ -7,9 +7,10 @@ import {
 } from "./terrainAssets";
 import { useVisualResources } from "./VisualResources";
 import { TERRAIN_FALLBACK_OFFSET } from "./coordinates";
+import { clearRobberVegetation } from "./terrainReadability";
 
 /** Presentation only. The parent hex retains the original logical hit geometry and IDs. */
-export default function TerrainHexVisual({ terrain, tileIndex }: { terrain: string; tileIndex: number }) {
+export default function TerrainHexVisual({ terrain, tileIndex, robberClearance = false }: { terrain: string; tileIndex: number; robberClearance?: boolean }) {
   const name = terrainAssetName(terrain);
   const [loaded, setLoaded] = useState<{ name: typeof name; template: Object3D | null }>({ name: null, template: null });
   useEffect(() => {
@@ -18,14 +19,19 @@ export default function TerrainHexVisual({ terrain, tileIndex }: { terrain: stri
     return () => { active = false; };
   }, [name]);
   const template = loaded.name === name ? loaded.template : null;
-  const scene = useMemo(() => template ? cloneTerrainScene(template) : null, [template]);
+  const scene = useMemo(() => {
+    if (!template) return null;
+    const clone = cloneTerrainScene(template);
+    if (robberClearance) clearRobberVegetation(clone);
+    return clone;
+  }, [template, robberClearance]);
   const pool = useVisualResources();
   const style = terrainStyle(name ?? terrain);
 
   if (!scene) return <group position={TERRAIN_FALLBACK_OFFSET} userData={{ terrainFallback: name ?? terrain }}>
     <mesh geometry={pool.geometry("hex")} material={[pool.standard(style.color), pool.standard(style.side)]}
       receiveShadow castShadow raycast={ignoreTerrainRaycast} />
-    <TerrainHints terrain={name ?? terrain} tileIndex={tileIndex} />
+    {!robberClearance && <TerrainHints terrain={name ?? terrain} tileIndex={tileIndex} />}
   </group>;
 
   return <group position={[0, TERRAIN_TRANSFORM.lift, 0]} rotation={[0, TERRAIN_TRANSFORM.rotationY, 0]}

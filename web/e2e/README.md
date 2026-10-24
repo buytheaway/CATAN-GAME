@@ -1,5 +1,42 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5E.1 - piece readability
+
+Real public-fixture Board3D, paired against published5D.2 `b1c5a2f`.
+Both sides retain the same one-ring/frame, camera, snapshots and assets.
+No account/server/database or trusted Fog map is exposed. Synthetic display
+occupancy is not a legality-certified match. Procedural ships remain default.
+
+```powershell
+$env:NODE_PATH = Join-Path (Get-Location) '.venv/test-artifacts/fog3a-tools/node_modules'
+$env:CATAN_READABILITY_OUTPUT = Join-Path $env:TEMP 'catan-readability-5e1-final'
+node web/e2e/readability-demo.cjs
+# Open http://127.0.0.1:18787/ (loopback only); Ctrl+C stops the preview.
+```
+
+The gallery serves actual captures if present; `Source` switches committed/current,
+and `Readability terrain` selects an existing public tile as a synthetic robber
+standing-area study. Original scene preserves Four Islands4 tile29/Fields12.
+Orbit/zoom/reset and existing motion preferences work normally. To reproduce
+matched2560x1440 captures, use another terminal with the same output variable:
+
+```powershell
+node web/e2e/readability-capture.cjs
+```
+
+Captures include native-pixel crops, hashes, public-state/camera equality and
+four orientations of the exact Fields12 case. Original reproduction and interim
+vegetation-only evidence are retained separately in temporary storage.
+`readability-smoke.cjs` checks lifecycle/Fog/pointer/static/reduced behavior.
+`readability-gpu.cjs` reuses corrected async timer queries and ABBA/BAAB ordering
+for Base/Four Islands4/50 ×normal/reduced/static. Run after other browser/GPU
+work stops, set a fresh `CATAN_E2E_OUTPUT`, and preserve raw worse results.
+No screenshots/video during timing; loading/compile/warm-up are excluded.
+After timing, `node web/e2e/readability-gpu.cjs --passes <paired-performance.json>`
+records untimed actual main/shadow callbacks and verifies their sum against
+native calls/triangles for every measured scene/mode; it does not alter timings.
+Exact evidence and limitations: `docs/obsidian/plans/board3d.md`,5E.1 section.
+
 ## Visual Phase 5D.2 - decorative ocean and continuous frame
 
 Actual GamePage/Board3D, with shared PUBLIC synthetic snapshots, not concept

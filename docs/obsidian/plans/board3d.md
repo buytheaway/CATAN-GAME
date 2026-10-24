@@ -5,9 +5,61 @@ updated: 2026-10-21
 
 # Board3D
 
+## Visual Phase 5E.1 - piece readability and occlusion
+
+**Implemented and verified; READY FOR CHECKPOINT in this focused desktop scope,2026-10-21.** Baseline is published `b1c5a2f0ae0409a55ba991eb478e8693972fd9c6`; only the user's graph was already modified. Reproduced actual Chrome Four Islands4 tile29 Fields12 at native overview and wheel close-up before renderer changes. Images/report are under `%TEMP%/catan-readability-5e1-initial-1792592113413/`. Tall wheat intersects the existing robber body; depth-independent number badges independently cover its projected silhouette. This is a visual defect, not incorrect tile/state.
+
+Affected path: sanitized public snapshot → BoardRenderer's existing threat observer/cues → Board3D public robbers → HexTile3D revealed terrain → owned TerrainHexVisual clone. `terrainReadability.clearRobberVegetation` hides only approved named wheat/pine/sheep groups whose transformed local XZ bounds intersect radius0.34 around the existing robber anchor. Current GLBs hide4 Fields groups,3 Forest pines or2 Pasture sheep; other five terrain assets keep every group. The helper never hides base/rim/main landforms or mutates shared materials/geometries/templates, including cached bounds. A fresh clone restores vegetation when clearance ends.
+
+Vegetation-only pictures improved the body but a rotated view still lost much of the hat under the number overlay. The final occupied badge therefore moves0.2 left in local X, at its original height/size, fully inside the same hex. Its printed number/pips/colors and depth-overlay policy stay intact. No robber/pirate anchor, world position, scale or visual motion changes; no global token depth change that would bury numbers in mountains. The finite existing public departure cue retains clearance/print offset until expiry, then restores both; static/reduced/disconnected modes keep only the final figure's tile. Hidden Fog never mounts terrain, tokens or clearance. Failed GLB uses existing colored ground, omitting procedural hints on that occupied tile; this degraded fallback intentionally prioritizes the figure over decoration.
+
+### Actual visual and regression evidence
+
+Final matched capture report: `%TEMP%/catan-readability-5e1-final/paired-capture-report.json`, completed with50 actual2560×1440 PNGs/native-pixel crops. Exact public-state, native-camera/projection and file hashes are recorded. Both sources include5D.2 one-ring/frame. Original FI4 tile29 has overview/close-up and three successive real orbit orientations; also Base, New Shores4, Forest/Pasture/Hills/Mountains/Desert/Gold and Fog before. No generated concept images. The gallery's `capture-report.json` preserves those entries and adds the6 focused smoke PNGs (56total), including normal/reduced/static and fallback. Captions distinguish test-controlled states from the linked original interactive scene. Root visually inspected the initial/interim/final exact case, rotated views, terrain crops and full Base/New Shores. Original and vegetation-only reports remain under `%TEMP%/catan-readability-5e1-initial-1792592113413/`, `%TEMP%/catan-readability-5e1/` and quick-study directories; no unfavorable intermediate evidence was overwritten.
+
+Final CPU verification: **423 frontend tests, TypeScript and production build passed, exit0**. New11 regressions exercise actual shipped GLBs/cache identity/local bounds and real React token/hex props, physical separation/containment, values, restored position and hidden gating. Evidence/hashes: `.venv/test-artifacts/readability-final-20261021-1/`. Board3D chunk990.97kB/270.33gzip retains the existing size warning. No backend change, so no full Python/scenario suite rerun or new Python-count claim.
+
+Chrome: existing30 distinct groups pass (threats8/buildings7/ships6/ocean9). Final-token-source threats8/ocean9 were refreshed; building/ship results before the print-only offset are retained rather than counted twice. New6 focused groups on final source verify other-clone immutability, original tile29/anchor/number, actual ignored terrain raycasts/ordinary click no-mutation, departure retention/expiry, hidden Fog fail-closed, static/reduced idle0 and normal12frames/s, plus expected Fields404 fallback. Reports: `%TEMP%/catan-readability-5e1-visual/b1dd2a6e74/`, `%TEMP%/readability-final-token-a0662d7bd3b14a6eb8ce8b8d82418b17/` and `%TEMP%/readability-smoke-final-e8aa4bcf273449349bf10c415997b1bd/` (6 additional PNGs). The first smoke inspector wrongly counted tile metadata as a token; its failed report is preserved, then only that test inspector was corrected. Ships regression omitted its legacy synchronous timing using an ignored acceptance-only wrapper; those screenshots/counters are not GPU timing evidence.
+
+Real TCP/WebSocket/PostgreSQL:55 checks/12 prepared scenarios passed on clearance source before the final badge-only offset: threats36/7, buildings12/3, ships7/2. Three-player theft privacy, accepted/rejected anchors, Seven/Knight, Fog/Gold, receipts, reconnect and restart/no replay remain intact. Fresh disposable databases only, no user data/volume reset. Reports: `%TEMP%/catan-readability-5e1-live/18c31122e3/`; source hashes/statuses/logs retained under ignored `.venv/test-artifacts/`. These are prepared acceptance fixtures, not natural full matches.
+
+After the final print offset/build, **all36 threats checks/7cases were rerun successfully, exit0/errors[]** against final production assets `Board3D-Bxc_GmzL.js`/`index-CRUsmJeM.js`. Report: `%TEMP%/catan-readability-5e1-final-threats-live/2a2ca94b80/threats/report.json`; source hashes match the tested/GPU renderer. Three-player rejection/privacy, Seven/Knight/victims/Fog/offboard, durable duplicate receipts, reconnect/refresh and restart/no replay pass. The existing test PostgreSQL container is restored to its original stopped state; new disposable databases remain intact. Final preview navigation also passed:56 gallery images, actual terrain switching, reset of the synthetic terrain choice when changing maps, disabled absent terrain options and no browser runtime errors. Preview remains running; test browsers/backend processes are closed.
+
+### Performance and verification boundary
+
+Corrected asynchronous GPU A/B **completed, exit0**:9cases/72readings/**8,640 valid queries**, zero disjoint or unexpected errors. Chrome155.0.8059.85 / RTX5050Laptop / driver610.74; viewport1440×900/DPR1, identical public scene/procedural ships/camera/ocean/frame/boat poses. Two counterbalanced ABBA/BAAB blocks,90warm/120query/60wall frames per reading; loading/compile/warm-up separate. No screenshots/video/other test browser during timing; FC25 absent at preflight/spot checks. Telemetry64–68C,11–36% sampled GPU load, unlocked power/clocks. Full chronological samples, both block deltas, resources, telemetry and unfavorable tails: `%TEMP%/catan-readability-gpu-20261021-final/paired-performance.json`. Untimed actual Three main/shadow callbacks reconcile with native calls/triangles in every measured case in `pass-inventory.json`. Source hashes match the paired capture/focused smoke bundles.
+
+| Scene/mode | GPU median before→after ms | GPU p95 before→after ms |
+|---|---:|---:|
+| Base normal |5.477→5.359|9.093→8.159|
+| Base reduced |4.542→4.272|13.111→13.256|
+| Base static |5.188→5.450|12.994→11.172|
+| Four Islands4 normal |8.396→8.576|12.099→11.992|
+| Four Islands4 reduced |9.046→9.206|16.528→18.128|
+| Four Islands4 static |8.916→8.571|13.191→11.521|
+| Fifty normal |5.373→5.160|12.578→12.629|
+| Fifty reduced |5.503→5.611|7.432→7.742|
+| Fifty static |5.641→5.628|12.394→12.767|
+
+Do not call this equality or a proven speedup. FI4 normal/reduced medians rise~2.1%/~1.8%; reduced p95 worsens1.600ms. FI4 static improves, while controls with identical geometry also vary. Opposing block deltas occur for Base reduced, FI4 reduced, fifty normal/static and are retained. This single unlocked desktop run cannot establish causality or zero cost, mobile/low-end certification or sustained game FPS. There is no added structural draw/resource/idle cost; graphics remain bounded in the tested desktop scope.
+
+| Scene | Actual main calls before→after | Shadow calls before→after | Combined triangles before→after |
+|---|---:|---:|---:|
+| Base |1188→1188|931→931|586262→586262|
+| Four Islands4 |1901→1875|1481→1455|851936→821472|
+| Fifty |1398→1398|1099→1099|320022→320022|
+
+Counts agree across all3motion modes. Main+shadow combined calls:2119 unchanged Base,3382→3330 FI4,2497 unchanged fifty. Scene material/geometry/program/GPU-geometry/texture counts are unchanged per pair: Base175/250/11/256/29; FI4183/260/11/266/34; fifty118/149/12/154/17. All72 readings retain equal before/after steady-state resource counts. No assets or additional meshes/materials/geometry factories are added. Reduced idle0 on all maps; static FI4/fifty0, existing Base decorative boats still10–11frames/s on both sources; normal Base10, FI4/fifty12–13. No new permanent render clock.
+
+### Deferred5E.2 proposals and limits
+
+Actual representative maps did not establish another missing settlement/city/ship, wrong owner color, hidden port caused by the frame, or ghost hiding an unrelated real piece. The existing same-owner settlement replacement ghost is intentional. Synthetic seven-hex pirate/port silhouette proximity is not evidence of an attainable legal match defect. Broader figure/token proportions, green-on-forest contrast and water material-family consistency remain proposals, not implemented fixes or user art approval. This local treatment does not promise zero natural occlusion from every possible camera/neighbor landform or future replacement asset. It preserves main landforms and logical hit surfaces; ordinary orbit remains available.
+
+Loopback actual interactive gallery: **http://127.0.0.1:18787/**; [restart/capture/smoke/GPU instructions](../../../web/e2e/README.md#visual-phase-5e1---piece-readability). Current source files and tooling remain uncommitted; temporary media/benchmarks are outside Git. User graph hash stays `040082d631add3046746a2205cf29241d842bf5b85aadb79e081cbe2beb9b25e`. No commit/push/5E.2.
+
 ## Visual Phase 5D.2 - decorative ocean and continuous frame
 
-**Implemented and verified,2026-10-21; READY FOR CHECKPOINT in this visual scope.** The final GPU repetition after the user closed the external game passed all15 cases; evidence and remaining limits are below. Base correctness prerequisite is checkpointed/pushed as `b61215b1ea1f2693b0f828720f8384ac4e291327`; exact local/remote hash verified. The completed1696-pass Python suite is historical evidence for5D.1 and is not rerun just for checkpointing. User graph remains excluded.
+**Historical verification2026-10-21, subsequently committed/pushed as `b1c5a2f0ae0409a55ba991eb478e8693972fd9c6`.** The final GPU repetition after the user closed the external game passed all15 cases; evidence and remaining limits are below. Base correctness prerequisite is checkpointed/pushed as `b61215b1ea1f2693b0f828720f8384ac4e291327`; exact local/remote hash verified. The completed1696-pass Python suite is historical evidence for5D.1 and is not rerun just for checkpointing. User graph remains excluded.
 
 ### Existing conventions and intended boundary
 
