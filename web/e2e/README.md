@@ -1,5 +1,48 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5E.2 - opt-in proportions pilot
+
+Exact committed5E.1 `3d82af6` versus an explicit two-family proposal. Production
+`terrainDetail` remains `current`; only this wrapper selects `pilot`. No backend,
+private map/recipe or new gameplay executor. Ships stay procedural by default.
+
+```powershell
+$env:CATAN_PROPORTIONS_OUTPUT = Join-Path $env:TEMP 'catan-proportions-5e2-final-live-toggle'
+node web/e2e/proportions-demo.cjs
+# Open http://127.0.0.1:18788/ (loopback only).
+```
+
+Gallery pairs OLD/NEW actual renders, not mockups. Current/pilot toggles live
+inside NEW and preserves camera; Source OLD loads the exact committed bundle.
+The one-ring/frame is fixed for comparison. Original FI4 contains tile29/Fields12;
+other scenes cover Base/NS4, Fog before/after and procedural/GLB ships.
+
+For fresh captures/inventory/checks, use the existing external Playwright install
+and a **fresh** `CATAN_PROPORTIONS_OUTPUT` / `CATAN_E2E_OUTPUT`; old raw reports
+are intentionally not overwritten:
+
+```powershell
+$env:NODE_PATH = Join-Path (Get-Location) '.venv/test-artifacts/fog3a-tools/node_modules'
+node web/e2e/proportions-inventory.cjs
+node web/e2e/proportions-capture.cjs
+# --baseline records original Base/FI4 only; --ships records both ship variants
+# in another fresh output directory. Full PNGs2560x1440, native crops600x600.
+node web/e2e/proportions-smoke.cjs
+node web/e2e/proportions-gpu.cjs
+node web/e2e/proportions-gpu.cjs --passes <paired-performance.json>
+```
+
+Inventory reports exact transformed geometry bounds/triangles and projected
+bounding rectangles, not segmented visible-pixel percentages. Smoke checks real
+clone restore,5E.1 clearance, hidden Fog, SVG, raycasts, legal pointer/controller,
+public build/ship/threat events and reconnect/reload. Synthetic display frames
+never certify engine legality or replace real multiplayer testing. GPU runs
+must be exclusive of other captures/benchmarks; async warm90/query120/wall60,
+counterbalanced ABBA/BAAB, normal/reduced/static on Base/NS4/FI4/50. Pass inventory
+is separate/untimed. Preserve worse timings, raw samples and source hashes.
+Detailed measured inventory, evidence and remaining art decisions are in
+`docs/obsidian/plans/board3d.md`,5E.2 section. No art/default promotion is implied.
+
 ## Visual Phase 5E.1 - piece readability
 
 Real public-fixture Board3D, paired against published5D.2 `b1c5a2f`.

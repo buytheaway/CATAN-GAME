@@ -1,13 +1,91 @@
 ---
 tags: [catan, plan, board3d]
-updated: 2026-10-21
+updated: 2026-10-24
 ---
 
 # Board3D
 
+## Visual Phase 5E.2 - proportions and visual hierarchy
+
+**Implemented and verified; READY FOR CHECKPOINT as an opt-in experiment,2026-10-24.** Published5E.1 checkpoint is `3d82af6c8fc4449bd80b28f8c4bf20bde689e14e`, exact local/origin/main equality verified after normal fast-forward push. Its19 intended files were committed separately, excluding the existing user graph and temporary artifacts; the423-test/GPU evidence below is historical, not rerun for checkpointing.5E.2 remains uncommitted and is not approved for production-default promotion.
+
+Actual path: committed player-specific snapshot → existing BoardRenderer/controller → Board3D → revealed HexTile3D → cached terrain's owned clone. A presentation-only optional `terrainDetail` prop defaults to `current`; GamePage/App, commands, snapshots and saved preferences gain no setting/field. Only the external e2e wrapper explicitly passes `pilot`. Default measured node transforms/visibility equal5E.1. No new GLBs/Blender models/materials, lighting overhaul or ship-default change. Hidden Fog, game IDs, numbers, anchors, raycasting, camera/ocean/frame and shared finite animation architecture remain unchanged.
+
+### Measured baseline and hierarchy
+
+`proportions-inventory.cjs` measures exact loaded mesh vertices under actual scene transforms, not source-file units or guessed sizes. The logical pointy hex has radius1, across-flats width1.732051, across-corners2, area2.598076. Terrain transform remains scale1/1.2 and Y rotationπ/2. Sizes below are X×Y×Z in scene units; axis-aligned footprints include empty corners and are not occupied-pixel areas. Terrain heights include their original bases/landforms; decoration rows isolate individual groups. Triangles are visible single-pass mesh-instance totals, not shadow-inclusive draw cost.
+
+| Object | Current measured size / height | Approx triangles | Pilot |
+|---|---|---:|---|
+| Five sheep | individual heights.331–.387; Alert.458×.380×.609 | Pasture total11990 | uniform.8, Alert.367×.304×.488; same five animals/support points |
+| Wheat |7 masses +2 fringe groups; mass heights.420–.531 | Fields44300 | hide Mass02/07; remaining5masses/2fringes height×.78; Fields33114 |
+| Forest |7 pines, individual heights.682–.762; tile height.984 |2910|unchanged |
+| Mountains |tile1.732×1.408×1.986 |2470|unchanged |
+| Hills / Desert |tile heights.593 /.499 |5522 /4590|unchanged |
+| Sea / Gold |tile heights.325 /.519 |4784 /5310|unchanged |
+| Road, unit edge |.884×.087×.144 |616|unchanged |
+| Settlement |.346×.420×.306 |804|unchanged |
+| City |.500×.547×.434 |1664|unchanged |
+| Procedural ship |.716×.422×.264 |88|default, unchanged |
+| Opt-in GLB ship |.704×.535×.280 |215|opt-in, unchanged |
+| Robber / pirate |.400×.559×.400 /.773×.464×.343 |684 /128|unchanged |
+| Number / port badge |.820×.085×.820 /.720×.058×.720 |194 /120|unchanged |
+
+All eight terrain bases remain1.732×1.986 in XZ. Pasture's complete height.761→.685 and Fields.756→.626 in the pilot; their ground/rims do not scale. Original hillside contact is preserved at each animal's own support, not flattened to a global Y. Ocean cells are1.732×.172×2; default one-ring counts Base18/NS4 26/FI4 24. Actual full frame bounds: Base12.284×.210×11.185, NS4 17.481×.210×14.185, FI4 15.748×.210×14.185. These are existing unchanged meshes, not new gameplay boundaries.
+
+At actual Base2560×1440 native overview, Alert sheep projected geometry box56.7×64.7px→45.2×51.7; the measured settlement48.8×57.6, city71.2×81.8, number93.9×69.5 remain unchanged. These examples occupy different board positions/depths and are not a segmented visible-silhouette or visibility-percentage comparison. Matched nearby-object crops provide the visual evidence. Raw measurements: `%TEMP%/catan-proportions-5e2/baseline-inventory-corrected.json`, `envelopes.json`, and final capture report inventories. The first raw inventory included nested sheep mesh names in group counts; it is preserved, with the corrected count explicitly five independent groups.
+
+Confirmed hierarchy concerns: a sheep's AABB footprint is larger than a settlement's and can visually compete with a nearby house; wheat groups can exceed settlement height and dominate the tile/city surroundings. Actual baseline crops show both. This does not prove every player misses a building, nor that realistic animal/house scale is required. Numbers remain legible; no additional missing figure, hidden port, ownership defect or third high-impact category was established. Trees/mountains being taller is intentional terrain vocabulary, not sufficient evidence for another global rescale. The desired hierarchy is owned pieces → neutral threats/mandatory targets → numbers/ports → terrain identity → decoration, without changing event/hit priority.
+
+### Two-category controlled proposal
+
+`terrainProportions.applyTerrainDetail` accepts only the explicit pilot, on a fresh owned clone **after5E.1 clearance**. Five named sheep groups shrink uniformly20% about measured footprint centre/minimum Y; their poses, centres and hillside foot contact persist. Wheat Mass02/07 are hidden, and remaining named wheat groups compress Y22% about their original base; XZ footprint/ground stay fixed. No other family changes. Materials/geometries/templates/raycast functions are shared and unchanged; repeated application is idempotent with weak scene references. Current-mode restoration uses a fresh source clone. No animation loop or per-frame React state is introduced. Procedural loading/error fallback remains the existing fallback, not a new artistic variant.
+
+This is deliberately **opt-in, awaiting user art approval**. Shrink amount, which wheat clumps to retain, sparse/solid field balance and broader miniature proportions are subjective. Do not infer approved production art from dimensions, tests or a faster GPU sample. No broader water/material/palette/Forest/Mountains/piece/default-ship redesign is implemented.5E.1 original robber anchors/standing clearance and occupied badge offset remain in both variants.
+
+### Actual comparison and verification
+
+Loopback gallery **http://127.0.0.1:18788/** uses exact committed5E.1 `git show` blobs for OLD and current renderer with explicit pilot for NEW. The current/pilot selector switches live without moving the camera; selecting the committed source loads that exact bundle. One-ring/frame-on is fixed on both sides. All snapshots are synthetic PUBLIC display data with existing source IDs; occupancy is not a legality-certified match, and no account/backend/private Fog recipe is exposed.
+
+Final gallery has113 actual PNGs:102 matched Base/NS4/FI4/Fog-before/Fog-after overview/close/orbit/crops,8 matched procedural/GLB ship views with existing four owner colors, and3 focused1440×900 normal/reduced/static views. Full captures are2560×1440; native crops600×600. Every PNG hash/public-state/native-camera equality is checked. Root inspected adjacent sheep/house, wheat/city, Fields12/tile29, full Base/NS4 and rotated before/after views. Reports/media: `%TEMP%/catan-proportions-5e2-final-live-toggle/` (`paired-capture-report.json` preserves the102 source report, `capture-report.json` adds supplements), `%TEMP%/catan-proportions-5e2-ship-captures/`, `%TEMP%/catan-proportions-smoke-accepted/`. Original28 baseline and intermediate102 captures remain in separate directories, not overwritten. [Launch/reproduction](../../../web/e2e/README.md#visual-phase-5e2---opt-in-proportions-pilot).
+
+**428 frontend tests / TypeScript / production build pass, exit0**, including5 new actual-GLB tests for default/unknown no-op, sheep contact/centre/scale, wheat count/height/footprint, cache/resource immutability, idempotency and5E.1 preservation. Logs: `.venv/test-artifacts/proportions-5e2-final/`.30 existing Chrome regression groups pass on production-current (threats8/buildings7/ships6/ocean9), plus8 focused opt-in groups: committed/default equality, live restore without camera reset, Fields12/anchor/raycast, SVG round-trip, motion/idle, hidden Fog/reveal, legal ship pointer/build/move/GLB/reconnect/reload, and construction on public synthetic Fields/Pasture. Ships regression omits the old synchronous timing via the existing ignored acceptance-only wrapper; it is not GPU evidence. Reports: `%TEMP%/catan-proportions-5e2-visual/df7069cafc/`, `%TEMP%/catan-proportions-ships-regression/` and accepted smoke folder. Intermediate test-tool selector/unsupported fixture-reset failures remain recorded, not classified as production defects.
+
+No backend change, production-default change or new raycast/controller path, so no full Python/scenario suite or fresh PostgreSQL multiplayer run. Docker daemon is also unavailable; no production database was started or modified. Final5E.1 live36/7 and earlier55/12 remain historical evidence, not rerun2026-10-24. Fresh Chrome checks the unchanged default, opt-in public controller, reload/reconnect and new-frame behavior; no fresh durable server-restart/gameplay certification is implied. The support tests preserve original minimum Y/footprint centre, not physical collision fitting of every hoof to the hillside.
+
+### Performance gate
+
+**Completed, exit0:12cases/96readings/11520valid async GPU queries, zero disjoint/errors.** Exact `3d82af6` versus opt-in pilot, Base/NS4/FI4/50 ×normal/reduced/static; two ABBA/BAAB blocks. Chrome155.0.8059.85, RTX5050Laptop driver610.74,1440×900/DPR1. Identical camera/public state/ship default/ocean/frame/normalized ambient boat poses,90warm/120GPU/60wall frames per reading. Loading/compile/warm-up excluded. No other test browser/screenshot/video during timing; FC25 absent at preflight/spot checks. Sampled temperature63–67C, GPU utilization14–42%; clocks/power are unlocked. All raw samples, worse readings, opposing block deltas, idle and telemetry remain in `%TEMP%/catan-proportions-gpu-20261024/paired-performance.json`. Separate untimed `pass-inventory.json` reconciles actual Three main/shadow callbacks with native calls/triangles in every case. Bundle hashes match final screenshots/accepted opt-in smoke. No5E.2 commit/push or5F.
+
+| Scene/mode | GPU median old→pilot ms | GPU p95 old→pilot ms |
+|---|---:|---:|
+| Base normal |4.406→3.774|12.472→12.376|
+| Base reduced |3.992→4.121|12.768→12.679|
+| Base static |4.301→4.841|12.245→12.850|
+| New Shores4 normal |10.204→9.700|20.302→18.707|
+| New Shores4 reduced |10.475→10.111|20.395→19.548|
+| New Shores4 static |9.362→9.765|18.382→18.466|
+| Four Islands4 normal |8.485→8.213|17.166→16.977|
+| Four Islands4 reduced |8.602→7.088|18.901→18.531|
+| Four Islands4 static |7.369→7.648|18.331→17.744|
+| Fifty normal |4.049→3.417|12.760→12.813|
+| Fifty reduced |4.211→4.318|13.074→13.293|
+| Fifty static |2.850→3.855|10.844→12.545|
+
+Timings are **mixed, not proven universal improvement/equivalence**. Base/NS4/FI4 static medians worsen in both blocks, despite fewer primitives. FI4 normal/reduced, NS4 reduced and other cases retain opposing or differing deltas. The50-hex fixture has no Fields/Pasture and is explicitly an **unchanged control**, not a dense wheat/sheep stress test; its identical draw/triangle workload also has large timing variance (static median+1.005ms, opposite block signs). This suggests measurement/environment variation but does not isolate a cause. No unfavorable result is discarded, no low-end/mobile or sustained FPS certification is claimed. Default production appearance was not promoted to the pilot.
+
+| Scene | Main calls old→pilot | Shadow calls old→pilot | Main+shadow triangles old→pilot |
+|---|---:|---:|---:|
+| Base |1188→1132|931→875|586262→496774|
+| New Shores4 |2061→1991|1638→1568|918554→806694|
+| Four Islands4 |1875→1805|1455→1385|821472→709612|
+| Fifty control |1398→1398|1099→1099|320022→320022|
+
+Counts agree across motion modes. Shared scene material/geometry/program/texture counts remain: Base175/250/11/29, NS4215/305/11/38, FI4183/260/11/34, fifty118/149/12/17. Mesh-node totals also remain1213/2080/1916/1394; hidden wheat still exists in the owned graph. GPU-uploaded geometry drops256→242 /311→297 /266→252; fifty154 unchanged. All96 readings have stable post-warm-up resources. GLB bytes/transfer sizes do not improve because files are unchanged. Reduced idle0 everywhere; static NS4/FI4/fifty0, Base's existing decorative boats10–11frames/s; normal Base10–11/others12–13. No additional permanent render clock. Initial clone fitting/cold-start latency is not certified by this steady-state microbenchmark.
+
 ## Visual Phase 5E.1 - piece readability and occlusion
 
-**Implemented and verified; READY FOR CHECKPOINT in this focused desktop scope,2026-10-21.** Baseline is published `b1c5a2f0ae0409a55ba991eb478e8693972fd9c6`; only the user's graph was already modified. Reproduced actual Chrome Four Islands4 tile29 Fields12 at native overview and wheel close-up before renderer changes. Images/report are under `%TEMP%/catan-readability-5e1-initial-1792592113413/`. Tall wheat intersects the existing robber body; depth-independent number badges independently cover its projected silhouette. This is a visual defect, not incorrect tile/state.
+**Historical verification2026-10-21; committed/pushed2026-10-24 as `3d82af6c8fc4449bd80b28f8c4bf20bde689e14e`.** Baseline was published `b1c5a2f0ae0409a55ba991eb478e8693972fd9c6`; only the user's graph was already modified. Reproduced actual Chrome Four Islands4 tile29 Fields12 at native overview and wheel close-up before renderer changes. Images/report are under `%TEMP%/catan-readability-5e1-initial-1792592113413/`. Tall wheat intersects the existing robber body; depth-independent number badges independently cover its projected silhouette. This is a visual defect, not incorrect tile/state.
 
 Affected path: sanitized public snapshot → BoardRenderer's existing threat observer/cues → Board3D public robbers → HexTile3D revealed terrain → owned TerrainHexVisual clone. `terrainReadability.clearRobberVegetation` hides only approved named wheat/pine/sheep groups whose transformed local XZ bounds intersect radius0.34 around the existing robber anchor. Current GLBs hide4 Fields groups,3 Forest pines or2 Pasture sheep; other five terrain assets keep every group. The helper never hides base/rim/main landforms or mutates shared materials/geometries/templates, including cached bounds. A fresh clone restores vegetation when clearance ends.
 
@@ -55,7 +133,7 @@ Counts agree across all3motion modes. Main+shadow combined calls:2119 unchanged 
 
 Actual representative maps did not establish another missing settlement/city/ship, wrong owner color, hidden port caused by the frame, or ghost hiding an unrelated real piece. The existing same-owner settlement replacement ghost is intentional. Synthetic seven-hex pirate/port silhouette proximity is not evidence of an attainable legal match defect. Broader figure/token proportions, green-on-forest contrast and water material-family consistency remain proposals, not implemented fixes or user art approval. This local treatment does not promise zero natural occlusion from every possible camera/neighbor landform or future replacement asset. It preserves main landforms and logical hit surfaces; ordinary orbit remains available.
 
-Loopback actual interactive gallery: **http://127.0.0.1:18787/**; [restart/capture/smoke/GPU instructions](../../../web/e2e/README.md#visual-phase-5e1---piece-readability). Current source files and tooling remain uncommitted; temporary media/benchmarks are outside Git. User graph hash stays `040082d631add3046746a2205cf29241d842bf5b85aadb79e081cbe2beb9b25e`. No commit/push/5E.2.
+Historical5E.1 loopback gallery: **http://127.0.0.1:18787/**; [restart/capture/smoke/GPU instructions](../../../web/e2e/README.md#visual-phase-5e1---piece-readability). At that verification source/tooling remained uncommitted; the authorized checkpoint/push followed on2026-10-24 as recorded above. Temporary media/benchmarks remain outside Git. User graph hash was preserved as `040082d631add3046746a2205cf29241d842bf5b85aadb79e081cbe2beb9b25e`. These statements describe5E.1, not a prohibition on subsequently authorized5E.2.
 
 ## Visual Phase 5D.2 - decorative ocean and continuous frame
 

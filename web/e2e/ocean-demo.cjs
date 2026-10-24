@@ -11,11 +11,11 @@ const root = path.resolve(__dirname, '../..');
 const reference = 'b61215b1ea1f2693b0f828720f8384ac4e291327';
 const scenes = ['base', 'new-shores-3', 'new-shores-4', 'four-islands-3', 'four-islands-4', 'fog-before', 'fog-after', 'seven', 'fifty', 'outer-legal'];
 const outputRoot = () => path.resolve(process.env.CATAN_OCEAN_OUTPUT || path.join(os.tmpdir(), 'catan-ocean-5d2'));
-async function bundleSource(sourceRef) {
+async function bundleSource(sourceRef, wrapperFile = 'ocean-wrapper.tsx') {
   const output = await fs.mkdtemp(path.join(os.tmpdir(), 'catan-ocean-bundle-'));
   const sourceRoot = path.join(root, 'web/src') + path.sep;
   const actual = path.join(root, 'web/src/board3d/Board3D.tsx');
-  const wrapper = await fs.readFile(path.join(__dirname, 'ocean-wrapper.tsx'), 'utf8');
+  const wrapper = await fs.readFile(path.join(__dirname, wrapperFile), 'utf8');
   const plugins = [{ name: 'test-only-ocean-options', setup(builder) {
     builder.onResolve({ filter: /(?:^|\/)Board3D$/ }, args => {
       if (!args.importer.endsWith('BoardRenderer.tsx')) return;
@@ -48,7 +48,7 @@ async function startOcean(port = 0, options = {}) {
   const boards = JSON.parse(execFileSync(python, ['-X','utf8',path.join(__dirname,'art-review-boards.py')], {cwd:root,encoding:'utf8'}));
   assertPublicBoards(boards);
   const legalOuter = JSON.parse(execFileSync(python, ['-X','utf8',path.join(__dirname,'ocean-boards.py')], {cwd:root,encoding:'utf8'}));
-  const bundles = { before: await bundleSource(checkpoint), after: await bundleSource(null) };
+  const bundles = { before: await bundleSource(checkpoint, options.wrapper), after: await bundleSource(null, options.wrapper) };
   const bundleHashes = Object.fromEntries(await Promise.all(Object.entries(bundles).map(async ([key,folder]) =>
     [key,createHash('sha256').update(await fs.readFile(path.join(folder,'fixture.js'))).digest('hex')])));
   const controller = options.controller || await fs.readFile(path.join(__dirname,'ocean-controller.js'));

@@ -7,6 +7,7 @@ const {samplePage,summarize,telemetry}=require('./ship-art-gpu.cjs');
 const h=require('./ocean-support.cjs');
 async function main(options = {}){
  const start = options.start || startOcean, checkpoint = options.reference || reference;
+ const query = options.query || h.query;
  const smoke=process.argv.includes('--smoke');
  const output=path.resolve(process.env.CATAN_E2E_OUTPUT||path.join(os.tmpdir(),'catan-ocean-gpu-'+Date.now()));
  await fs.mkdir(output,{recursive:true});const file=path.join(output,'paired-performance.json');await fs.writeFile(file,'{}',{flag:'wx'});
@@ -27,7 +28,7 @@ async function main(options = {}){
    // Separate unmeasured page determines complete after framing before paired runs.
    const calibration=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,reducedMotion:mode==='reduced'?'reduce':'no-preference'});
    try{await calibration.addInitScript(h.observeScene);const page=await calibration.newPage();
-    await page.goto(demo.origin+'/preview?'+h.query(scene,'after',1,true,mode));await h.ready(page);
+    await page.goto(demo.origin+'/preview?'+query(scene,'after',1,true,mode));await h.ready(page);
     canonical=(await h.settings(page)).camera;result.canonicalCamera=canonical;
     canonicalBoats=await h.boats(page);result.canonicalBoats=canonicalBoats;
    }finally{await calibration.close();}
@@ -36,7 +37,7 @@ async function main(options = {}){
     try{
      await context.addInitScript(h.observeScene);const page=await context.newPage();
      page.on('pageerror',error=>report.errors.push(error.message));page.on('console',message=>{if(message.type()==='error')report.errors.push(message.text());});
-     await page.goto(demo.origin+'/preview?'+h.query(scene,side,1,true,mode));await h.ready(page);
+     await page.goto(demo.origin+'/preview?'+query(scene,side,1,true,mode));await h.ready(page);
      const native=await h.settings(page);await h.useCamera(page,canonical);const settings=await h.settings(page);
      const signature={...settings};delete signature.camera;
      if(result.signature)assert.deepEqual(signature,result.signature);else result.signature=signature;

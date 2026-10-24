@@ -34,6 +34,7 @@ import type { ShipModel } from "./shipAssets";
 import { buildOceanFrameStrip, buildOceanLayout, type OceanRings } from "./oceanGeometry";
 import OceanBoard3D from "./OceanBoard3D";
 import type { Tile } from "../components/BoardView.types";
+import type { TerrainDetail } from "./terrainProportions";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -65,7 +66,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   shipCues = new Map(), shipsAnimated = true, onShipsAnimated,
   pieceCues = new Map(), constructionAnimated = true, onConstructionAnimated,
   threatCues = new Map(), threatsAnimated = true, onThreatsAnimated,
-  shipModel = "procedural", onShipModel, oceanRings = 1, oceanFrame = true }: {
+  shipModel = "procedural", onShipModel, oceanRings = 1, oceanFrame = true, terrainDetail = "current" }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
   reveals?: ReadonlyMap<number, number>;
@@ -74,6 +75,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   threatCues?: ReadonlyMap<string, ThreatCue>; threatsAnimated?: boolean; onThreatsAnimated?: (enabled: boolean) => void;
   shipModel?: ShipModel; onShipModel?: (model: ShipModel) => void;
   oceanRings?: OceanRings; oceanFrame?: boolean;
+  terrainDetail?: TerrainDetail;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
@@ -183,7 +185,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
           {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={ambientClearance} />}
           {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
-            robberClearance={robberClearance.has(t.tileIndex)}
+            robberClearance={robberClearance.has(t.tileIndex)} detail={terrainDetail}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
             reveal={reveals?.get(t.tileIndex)} onHover={hover} onInspect={inspect} />)}
           <Coastline coast={model.coast} />

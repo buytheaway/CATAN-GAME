@@ -1,11 +1,19 @@
 ---
 tags: [catan, дизайн, концепт]
-updated: 2026-10-21
+updated: 2026-10-24
 ---
 
 # Design System
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
+
+## Visual Phase 5E.2 - measured proportions proposal
+
+**Opt-in implemented/tested proposal2026-10-24; not approved production art.** Gameplay pieces should remain primary, followed by neutral threats/mandatory targets, numbers/ports, resource identity and decoration. This hierarchy does not alter click priority or game rules. Actual loaded dimensions show sheep footprints larger than settlements and wheat groups higher than settlement roofs; nearby-object captures confirm the visual competition. Neither taller mountains/trees nor artistic disagreement alone is classified as a rendering bug. Number tokens remain readable; no third category is changed.
+
+The controlled pilot shrinks five sheep uniformly20% around their original support, reduces wheat height22% and hides two of seven large wheat masses. Colors, landforms, ground/rims, trees, numbers, buildings, ships, robber/pirate, ports, water/frame and camera stay unchanged; no asset replacement or universal scale/glow/outline.5E.1 occupied standing clearance and print offset remain. Production defaults to `current`; the proposal is selected only by external public-fixture preview. User must approve the chosen sizes, density and whether to promote it. No general A/B/C art direction approval is implied.
+
+Actual OLD/NEW gallery: **http://127.0.0.1:18788/**. Live current/pilot comparison keeps the same camera; source selection also offers exact committed5E.1. World-space tables,110 matched views/3 motion views, verification and raw performance limitations — [[plans/board3d#Visual Phase 5E.2 - proportions and visual hierarchy]], [restart](../../web/e2e/README.md#visual-phase-5e2---opt-in-proportions-pilot).
 
 ## Visual Phase 5E.1 - occupied standing-area readability
 

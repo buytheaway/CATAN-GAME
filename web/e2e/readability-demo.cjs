@@ -11,7 +11,7 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 function gallery(report) {
   return `<!doctype html><meta charset="utf-8"><title>CATAN 5E.1 readability</title><style>body{background:#102332;color:#e9f4fa;font:16px/1.5 system-ui;margin:24px}a{color:#a0e8db}nav{display:flex;gap:16px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}img{width:100%}article{background:#193445;padding:10px}</style><h1>5E.1 · actual Board3D readability</h1><p>Synthetic PUBLIC snapshots, real renderer. Before: ${reference}; after: working tree. Display occupancy is not a legality-certified match. No hidden Fog assignments. Neither gameplay nor assets are changed.</p><nav>${scenes.map(scene=>`<a href="/preview?shipsart=1&scene=${scene}&source=after&rings=1&motion=still&fixture=${scene==='fifty'?'large':'partial'}">${scene}</a>`).join('')}</nav><p>Use Source for committed/current, Terrain for a synthetic robber standing-area study. Existing orbit/zoom/reset and effect preferences remain available.</p><p><a href="/report.json">Capture evidence</a> · ${escape(report?.checkedAt || 'Captures not recorded yet')}</p><div class="grid">${(report?.captures||[]).map(c=>`<article><a href="/captures/${escape(c.file)}"><img loading="lazy" src="/captures/${escape(c.file)}"></a><p>${escape(c.scene)} · ${escape(c.source)} · ${escape(c.detail||'')}</p><a href="/preview?${escape(c.query)}">Interactive scene</a></article>`).join('')}</div>`;
 }
-async function startReadability(port=0) {
+async function startReadability(port=0, options={}) {
   let controller = await fs.readFile(path.join(__dirname,'ocean-controller.js'),'utf8');
   // Both 5E.1 sources include 5D.2. Keep exactly the same ocean/frame on both.
   if (!controller.includes('if (source === "before") {')) throw Error('Ocean preview adapter changed; verify the matched baseline');
@@ -31,7 +31,8 @@ async function startReadability(port=0) {
     sceneSelect.onchange=event=>{const url=new URL(location.href);url.searchParams.delete('terrain');history.replaceState(null,'',url);reload.call(sceneSelect,event);};
     window.__readabilityPreview={ready:true,terrain:terrain||null};
   })().catch(error=>{window.__readabilityPreview={error:error.message};console.error(error);});`;
-  return startOcean(port,{reference,output:output(),controller,gallery});
+  return startOcean(port,{reference:options.reference||reference,output:options.output||output(),
+    controller:controller+(options.controllerSuffix||''),gallery:options.gallery||gallery,wrapper:options.wrapper});
 }
 module.exports={startReadability,reference,scenes,terrains};
 if(require.main===module) startReadability(Number(process.env.CATAN_READABILITY_PORT||18787))

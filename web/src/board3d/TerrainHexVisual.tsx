@@ -8,9 +8,10 @@ import {
 import { useVisualResources } from "./VisualResources";
 import { TERRAIN_FALLBACK_OFFSET } from "./coordinates";
 import { clearRobberVegetation } from "./terrainReadability";
+import { applyTerrainDetail, type TerrainDetail } from "./terrainProportions";
 
 /** Presentation only. The parent hex retains the original logical hit geometry and IDs. */
-export default function TerrainHexVisual({ terrain, tileIndex, robberClearance = false }: { terrain: string; tileIndex: number; robberClearance?: boolean }) {
+export default function TerrainHexVisual({ terrain, tileIndex, robberClearance = false, detail = "current" }: { terrain: string; tileIndex: number; robberClearance?: boolean; detail?: TerrainDetail }) {
   const name = terrainAssetName(terrain);
   const [loaded, setLoaded] = useState<{ name: typeof name; template: Object3D | null }>({ name: null, template: null });
   useEffect(() => {
@@ -23,8 +24,9 @@ export default function TerrainHexVisual({ terrain, tileIndex, robberClearance =
     if (!template) return null;
     const clone = cloneTerrainScene(template);
     if (robberClearance) clearRobberVegetation(clone);
+    applyTerrainDetail(clone, detail);
     return clone;
-  }, [template, robberClearance]);
+  }, [template, robberClearance, detail]);
   const pool = useVisualResources();
   const style = terrainStyle(name ?? terrain);
 

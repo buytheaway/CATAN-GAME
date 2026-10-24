@@ -4,6 +4,12 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Visual Phase 5E.2 - optional terrain detail, unchanged production default
+
+**Implemented opt-in preview2026-10-24; verification — [[plans/board3d#Visual Phase 5E.2 - proportions and visual hierarchy]].** `Board3D` gains optional `terrainDetail: "current" | "pilot"`, default `current`, passed through revealed `HexTile3D` to `TerrainHexVisual`. App/GamePage/BoardRenderer/controller, WS schemas and saved preferences gain no user setting or gameplay model. Hidden Fog still mounts only its neutral cover. The e2e wrapper alone opts in and uses an external-store event to compare variants without changing camera/snapshot/cue state; no preview code enters production App.
+
+On an owned GLB clone,5E.1 `clearRobberVegetation` runs first, then [terrainProportions.ts](../../web/src/board3d/terrainProportions.ts) changes only approved sheep/wheat node transforms/visibility. Actual support bounds retain foot/ground contact; weak references prevent repeated compounding without retaining dead clones. Current mode uses fresh untouched source clones. Cached geometry/materials, logical hit meshes/IDs and finite animation observers remain unchanged. No per-frame state, additional clock, backend field or SVG change. Production/default measured nodes equal the committed5E.1 baseline; the pilot awaits art approval.
+
 ## Visual Phase 5E.1 - public occupancy and local clearance
 
 **Implemented2026-10-21; verification — [[plans/board3d#Visual Phase 5E.1 - piece readability and occlusion]].** `BoardRenderer` still owns the public threat observer and existing finite cues. `Board3D` derives a set from `createRenderModel`'s revealed `robbers`; only an enabled, connected, non-reduced cue with a current destination and revealed public source can temporarily add its departure tile. This set feeds a boolean `robberClearance` through `HexTile3D`, not a new game-state field or legal rule.

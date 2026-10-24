@@ -1,15 +1,23 @@
 ---
 tags: [catan, состояние]
-updated: 2026-10-21
+updated: 2026-10-24
 ---
 
 # Project State
 
 ## Current verification and status
 
+### Visual Phase 5E.2 - opt-in proportions pilot, 2026-10-24
+
+**Implemented/verified; READY FOR CHECKPOINT as an opt-in experiment, not production art approval.**5E.1 is committed/pushed as `3d82af6c8fc4449bd80b28f8c4bf20bde689e14e`, exact local/origin hash verified. Current task adds a measured inventory and a two-category opt-in pilot, not a production-default art change: sheep uniform scale.8 with original support level, wheat height.78 with2of7large masses hidden. No assets/new models/colors/ship-default, backend/rules/map/protocol/persistence/Fog gates change. `Board3D.terrainDetail` defaults to `current`; only e2e preview supplies `pilot`. Existing5E.1 clearance runs first; other models/numbers/IDs/targets/camera/ocean/frame stay fixed.
+
+**428 frontend tests, TypeScript and build pass**,30 existing Chrome groups and8 opt-in groups pass.110 matched actual views plus3 normal/reduced/static views are available at **http://127.0.0.1:18788/**; current/pilot live toggle preserves camera. Synthetic PUBLIC snapshots only, not natural matches/private recipes. Docker daemon unavailable; no fresh PostgreSQL smoke/full Python/scenario run is claimed. Backend and production interaction semantics are unchanged;5E.1 live evidence remains historical. Source dimensions, actual screenshots, hierarchy findings, performance gate and remaining user art decisions — [[plans/board3d#Visual Phase 5E.2 - proportions and visual hierarchy]].5E.2 remains uncommitted; no5F.
+
+Final GPU comparison completed:12cases/96readings/11520valid async queries, no disjoint/errors; all main/shadow pass inventories reconcile. Geometry work decreases on Base/NS4/FI4, programs/materials/textures stay fixed, no new idle clock. Timings remain mixed: Base static4.301→4.841ms, NS4 static9.362→9.765, FI4 static7.369→7.648; the unchanged50-hex control also varies strongly. All raw/worse/block results are retained. No general speedup, GPU equivalence, low-end certification or default-promotion claim. Full median/p95/resource/idle tables are in the linked plan.
+
 ### Visual Phase 5E.1 - piece readability, 2026-10-21
 
-**Implemented and verified; READY FOR CHECKPOINT in the tested desktop scope.** Baseline is published `b1c5a2f0ae0409a55ba991eb478e8693972fd9c6` (completed5D.2). Reproduced official Four Islands4 tile29/Fields12: wheat intersects the robber and the depth-independent number badge covers its silhouette at some rotations. A small public-occupancy clearance hides only intersecting wheat/tree/sheep groups on that tile's owned terrain clone; the badge shifts0.2 left within the same hex. Robber position/height, IDs, number values, assets, rules, raycasts, camera, ocean/frame and SVG remain unchanged. Known public departure clearance reuses existing finite cues; hidden Fog never participates. No new clock or backend change. No commit/push or5E.2.
+**Historical verification2026-10-21; committed/pushed2026-10-24 as `3d82af6c8fc4449bd80b28f8c4bf20bde689e14e`.** Baseline is published `b1c5a2f0ae0409a55ba991eb478e8693972fd9c6` (completed5D.2). Reproduced official Four Islands4 tile29/Fields12: wheat intersects the robber and the depth-independent number badge covers its silhouette at some rotations. A small public-occupancy clearance hides only intersecting wheat/tree/sheep groups on that tile's owned terrain clone; the badge shifts0.2 left within the same hex. Robber position/height, IDs, number values, assets, rules, raycasts, camera, ocean/frame and SVG remain unchanged. Known public departure clearance reuses existing finite cues; hidden Fog never participates. No new clock or backend change. The following tests describe the completed5E.1 checkpoint, not the current5E.2 run.
 
 Final checks: **423 frontend tests, TypeScript and production build pass**.50 matched actual PNGs plus6 focused normal/reduced/static/Fog/fallback captures are available in the56-image gallery.30 existing distinct Chrome groups and6 new lifecycle/clone/privacy/pointer groups pass; affected threats/ocean groups refreshed after the print offset.55 real multiplayer checks across12 prepared scenarios passed before that final offset; final production renderer's36 threat checks/7cases then passed again, including three-player theft privacy, receipts/reconnect and PostgreSQL recovery. No full Python/scenario rerun because backend is unchanged. Asynchronous GPU A/B:9cases/72readings/8640validqueries, no disjoint/errors. FI4 main+shadow calls3382→3330, triangles851936→821472; resources unchanged, no added idle clock. Timing results remain mixed: FI4 normal median8.396→8.576ms, reduced p9516.528→18.128; static median improves8.916→8.571. Opposing results/raw data are preserved; no GPU equivalence/speedup or low-end claim. Exact tables, paths, current/final-source evidence and5E.2 deferrals — [[plans/board3d#Visual Phase 5E.1 - piece readability and occlusion]].
 
