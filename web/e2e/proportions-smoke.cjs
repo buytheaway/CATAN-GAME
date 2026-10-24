@@ -55,7 +55,13 @@ async function main(){const output=process.env.CATAN_E2E_OUTPUT||path.join(os.tm
   await fog.context().close();check('hidden Fog constructs no private terrain or token; public reveal gets pilot decoration without camera reset');
 
   const play=await open('seven','pilot','normal');
+  const rendered=await play.evaluate(()=>window.__scene.getState().gl.info.render.frame);
   await play.getByRole('button',{name:'Ship',exact:true}).click();
+  await play.waitForFunction(previous=>{
+   const store=window.__scene?.getState(),edge=window.__fogFixture.snapshot().state.legal.ships[0];let found=false;
+   if(!store||store.gl.info.render.frame<=previous)return false;
+   store.scene.traverse(n=>{found ||= n.userData.targetType==='edge'&&n.userData.edge.join(',')===edge.join(',');});return found;
+  },rendered);
   const point=await play.evaluate(()=>{const s=window.__fogFixture.snapshot().state,e=s.legal.ships[0],{scene,camera,gl}=window.__scene.getState();let target;scene.traverse(n=>{if(n.userData.targetType==='edge'&&n.userData.edge.join(',')===e.join(','))target=n;});if(!target)throw Error('Missing existing ship legal target');const p=target.getWorldPosition(target.position.clone()).project(camera),r=gl.domElement.getBoundingClientRect();return{x:r.x+(p.x+1)*r.width/2,y:r.y+(1-p.y)*r.height/2};});
   await play.mouse.click(point.x,point.y);await play.waitForFunction(()=>window.__fogFixture.commands().length===1);
   await play.evaluate(()=>{window.__fogFixture.ship(false);window.__fogFixture.settle(true);});

@@ -1,5 +1,47 @@
 # Game UI / Game Room UX browser checks
 
+## Visual Phase 5F.1 - water material harmony
+
+Real Board3D, exact committed5E.2 `e01e8fb` versus an opt-in water material
+proposal. Production keeps `waterAppearance="current"`, current terrain
+proportions, one ring and procedural ships. No backend/private recipe or public
+Fog gate change. All occupancy in this demo is synthetic PUBLIC display data.
+
+```powershell
+$env:CATAN_WATER_OUTPUT = Join-Path $env:TEMP 'catan-water-5f1-accepted'
+node web/e2e/water-demo.cjs
+# Open http://127.0.0.1:18789/ (loopback only).
+```
+
+Current / Water Pilot toggles live without moving the camera. Source OLD loads
+the exact committed renderer; selecting Pilot there opens NEW. One/two rings,
+frame, camera, effect controls and procedural/GLB ships remain available.
+Base, official New Shores3/4, Four Islands3/4 and public Fog before/after have
+matched2560x1440 overviews and native600x600 detail crops in the gallery.
+
+Use the existing external Playwright install and **fresh** output directories for
+new raw reports; capture/benchmark files are not overwritten:
+
+```powershell
+$env:NODE_PATH = Join-Path (Get-Location) '.venv/test-artifacts/fog3a-tools/node_modules'
+# Set CATAN_WATER_OUTPUT to a fresh directory before new screenshots.
+node web/e2e/water-capture.cjs
+# --baseline captures the committed Base/NS4/FI4 before implementation.
+# Set CATAN_E2E_OUTPUT to a fresh directory before each check/benchmark.
+node web/e2e/water-smoke.cjs
+node web/e2e/water-gpu.cjs
+node web/e2e/water-gpu.cjs --passes <paired-performance.json>
+node web/e2e/water-inventory.cjs <paired-performance.json>
+```
+
+GPU timing must run exclusively of other capture/acceptance browsers and video
+encoding. The existing async probe warms90frames, records120GPU/60wall frames,
+and uses two ABBA/BAAB blocks for Base/NS4/FI4/50 ×normal/reduced/static. Keep all
+raw readings and unfavorable results. Main/shadow and material/asset inspections
+are separate untimed runs. No cold-load/FPS/low-end or art approval is implied.
+Exact parameters, source/geometry checks and verification limits are in
+`docs/obsidian/plans/board3d.md`,5F.1 section. Private game state is never loaded.
+
 ## Visual Phase 5E.2 - opt-in proportions pilot
 
 Exact committed5E.1 `3d82af6` versus an explicit two-family proposal. Production

@@ -6,21 +6,23 @@ import { ignoreSceneryRaycast } from "./environment";
 import { useVisualResources } from "./VisualResources";
 import type { buildOceanFrameStrip, OceanLayout } from "./oceanGeometry";
 import type { Point3D } from "./types";
+import { waterStyle, type WaterAppearance } from "./waterMaterials";
 
 type Frame = ReturnType<typeof buildOceanFrameStrip>;
-const WATER = ["#286b8b", "#2a6e8c", "#296c87"];
 
 /** Static visual geometry only: no IDs, handlers, rules, timers or frame loop. */
-export default function OceanBoard3D({ layout, playable, frame }: {
+export default function OceanBoard3D({ layout, playable, frame, waterAppearance = "current" }: {
   layout: OceanLayout; playable: Point3D[]; frame: Frame | null;
+  waterAppearance?: WaterAppearance;
 }) {
+  const water = waterStyle(waterAppearance);
   const pool = useVisualResources();
   const invalidate = useThree(s => s.invalidate);
   const bodies = useRef<InstancedMesh>(null);
   const fills = useRef<InstancedMesh>(null);
   const seams = useRef<InstancedMesh>(null);
   const waves = useRef<InstancedMesh>(null);
-  const waterMaterials = useMemo(() => [pool.standard("#75909c"), pool.standard("#ffffff")], [pool]);
+  const waterMaterials = useMemo(() => [pool.standard(water.side), pool.standard("#ffffff")], [pool, water.side]);
   const frameResource = useMemo(() => {
     const geometry = new BufferGeometry();
     if (frame) {
@@ -52,7 +54,7 @@ export default function OceanBoard3D({ layout, playable, frame }: {
       transform.position.set(...cell.position);
       transform.rotation.set(0, 0, 0); transform.scale.set(1, 1, 1);
       transform.updateMatrix(); bodies.current?.setMatrixAt(index, transform.matrix);
-      bodies.current?.setColorAt(index, color.set(WATER[((cell.q * 31 + cell.r * 17) % 3 + 3) % 3]));
+      bodies.current?.setColorAt(index, color.set(water.cells[((cell.q * 31 + cell.r * 17) % 3 + 3) % 3]));
       transform.position.y = DECORATIVE_WATER_TOP + .001;
       transform.rotation.set(-Math.PI / 2, 0, Math.PI / 6);
       transform.updateMatrix(); seams.current?.setMatrixAt(index, transform.matrix);
@@ -68,17 +70,17 @@ export default function OceanBoard3D({ layout, playable, frame }: {
       ref.current.computeBoundingSphere();
     }
     invalidate();
-  }, [layout.cells, playable, invalidate]);
+  }, [layout.cells, playable, invalidate, water]);
 
   return <group userData={{ decorativeOceanHexes: true, cellCount: layout.cells.length }}>
     {/* A tiled underlay closes existing inset terrain gutters; no rectangular sea substitute. */}
-    <instancedMesh ref={fills} args={[pool.geometry("oceanFill"), pool.standard("#20526a"), playable.length + layout.cells.length]}
+    <instancedMesh ref={fills} args={[pool.geometry("oceanFill"), pool.standard(water.underlay), playable.length + layout.cells.length]}
       raycast={ignoreSceneryRaycast} receiveShadow userData={{ decorativeOceanUnderlay: true }} />
     <instancedMesh ref={bodies} args={[pool.geometry("oceanHex"), waterMaterials, layout.cells.length]}
       raycast={ignoreSceneryRaycast} receiveShadow userData={{ decorativeWaterCells: layout.cells.length }} />
-    <instancedMesh ref={seams} args={[pool.ring(.991, 1, 6), pool.flat("#25546a"), layout.cells.length]}
+    <instancedMesh ref={seams} args={[pool.ring(.991, 1, 6), pool.flat(water.seam), layout.cells.length]}
       raycast={ignoreSceneryRaycast} />
-    <instancedMesh ref={waves} args={[pool.geometry("wave"), pool.flat("#79a6b8"), layout.cells.length * 2]}
+    <instancedMesh ref={waves} args={[pool.geometry("wave"), pool.flat(water.wave), layout.cells.length * 2]}
       raycast={ignoreSceneryRaycast} />
     {frame && <mesh geometry={frameResource.geometry} material={pool.standard("#476277")}
       raycast={ignoreSceneryRaycast} receiveShadow userData={{ decorativeOceanFrame: true }} />}

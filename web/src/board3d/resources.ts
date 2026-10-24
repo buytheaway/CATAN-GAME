@@ -1,11 +1,12 @@
 import {
   BoxGeometry, BufferGeometry, CircleGeometry, ConeGeometry, CylinderGeometry, ExtrudeGeometry,
   IcosahedronGeometry, MeshBasicMaterial, MeshStandardMaterial, OctahedronGeometry,
-  PlaneGeometry, RingGeometry, Shape, SphereGeometry, TorusGeometry,
+  PlaneGeometry, RingGeometry, Shape, SphereGeometry, TorusGeometry, type Material,
 } from "three";
 import { createPieceMaterials } from "./pieceAssets";
 import { createFogResources } from "./fogResources";
 import { BOARD_RIM_TOP, DECORATIVE_WATER_TOP } from "./coordinates";
+import { createWaterMaterialCache } from "./waterMaterials";
 
 function extrude(points: [number, number][], depth: number, bevel: number) {
   const shape = new Shape();
@@ -91,6 +92,7 @@ export function createVisualResources() {
   const materials = new Map<string, MeshStandardMaterial | MeshBasicMaterial>();
   const pieces = createPieceMaterials();
   let fog: ReturnType<typeof createFogResources> | undefined;
+  let water: ReturnType<typeof createWaterMaterialCache> | undefined;
   let leases = 0;
   const dispose = () => {
     geometries.forEach(g => g.dispose());
@@ -99,9 +101,11 @@ export function createVisualResources() {
     materials.clear();
     pieces.dispose();
     fog?.dispose(); fog = undefined;
+    water?.dispose(); water = undefined;
   };
   return {
     pieces,
+    waterMaterial(source: Material) { return (water ??= createWaterMaterialCache()).get(source); },
     fog() { return fog ??= createFogResources(); },
     geometry(kind: keyof typeof factories) {
       if (!geometries.has(kind)) geometries.set(kind, factories[kind]());

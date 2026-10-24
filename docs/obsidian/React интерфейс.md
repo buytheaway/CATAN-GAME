@@ -4,6 +4,12 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Visual Phase 5F.1 - optional water materials
+
+**Implemented opt-in renderer proposal2026-10-24; verification — [[plans/board3d#Visual Phase 5F.1 - water material harmony]].** Optional `Board3D.waterAppearance` defaults to `current`, flows to OceanBoard3D/DecorativeOcean and through HexTile3D to revealed TerrainHexVisual/fallback Sea hints. Only external `water-wrapper.tsx` selects `pilot`; App/GamePage/BoardRenderer/controller, server snapshot and saved preferences gain no field/setting. Unknown Fog still mounts only its neutral cover. Source/default behavior is compared to committed5E.2.
+
+[waterMaterials.ts](../../web/src/board3d/waterMaterials.ts) holds the two palettes and a lazy per-scene material cache. Existing VisualResources owns/disposes nine cloned Sea water materials via its leases; global GLTF templates/wood/geometry remain unchanged. Current/pilot can restore without mutating another tile, scene or cached asset. Canvas texture regeneration uses the existing R3F lifecycle. Material switches may change React mesh traversal order; complete world transforms/geometry/IDs, camera and actual raycasting stay fixed. No frame loop, protocol/controller logic, new model or SVG change. Tests distinguish a rendered legal target from a completed DOM action before issuing pointer clicks; original command/rejection assertions remain.
+
 ## Visual Phase 5E.2 - optional terrain detail, unchanged production default
 
 **Implemented opt-in preview2026-10-24; verification — [[plans/board3d#Visual Phase 5E.2 - proportions and visual hierarchy]].** `Board3D` gains optional `terrainDetail: "current" | "pilot"`, default `current`, passed through revealed `HexTile3D` to `TerrainHexVisual`. App/GamePage/BoardRenderer/controller, WS schemas and saved preferences gain no user setting or gameplay model. Hidden Fog still mounts only its neutral cover. The e2e wrapper alone opts in and uses an external-store event to compare variants without changing camera/snapshot/cue state; no preview code enters production App.

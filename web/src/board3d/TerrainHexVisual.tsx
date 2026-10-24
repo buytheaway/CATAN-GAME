@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Object3D } from "three";
+import { Mesh, type Object3D } from "three";
 import { terrainStyle } from "./materials";
 import TerrainHints from "./TerrainHints";
 import {
@@ -9,9 +9,11 @@ import { useVisualResources } from "./VisualResources";
 import { TERRAIN_FALLBACK_OFFSET } from "./coordinates";
 import { clearRobberVegetation } from "./terrainReadability";
 import { applyTerrainDetail, type TerrainDetail } from "./terrainProportions";
+import { waterStyle, type WaterAppearance } from "./waterMaterials";
 
 /** Presentation only. The parent hex retains the original logical hit geometry and IDs. */
-export default function TerrainHexVisual({ terrain, tileIndex, robberClearance = false, detail = "current" }: { terrain: string; tileIndex: number; robberClearance?: boolean; detail?: TerrainDetail }) {
+export default function TerrainHexVisual({ terrain, tileIndex, robberClearance = false, detail = "current", waterAppearance = "current" }: { terrain: string; tileIndex: number; robberClearance?: boolean; detail?: TerrainDetail; waterAppearance?: WaterAppearance }) {
+  const pool = useVisualResources();
   const name = terrainAssetName(terrain);
   const [loaded, setLoaded] = useState<{ name: typeof name; template: Object3D | null }>({ name: null, template: null });
   useEffect(() => {
@@ -20,20 +22,25 @@ export default function TerrainHexVisual({ terrain, tileIndex, robberClearance =
     return () => { active = false; };
   }, [name]);
   const template = loaded.name === name ? loaded.template : null;
+  const waterPilot = name === "sea" && waterAppearance === "pilot";
   const scene = useMemo(() => {
     if (!template) return null;
     const clone = cloneTerrainScene(template);
     if (robberClearance) clearRobberVegetation(clone);
     applyTerrainDetail(clone, detail);
+    if (waterPilot) clone.traverse(node => {
+      if (node instanceof Mesh) node.material = Array.isArray(node.material)
+        ? node.material.map(material => pool.waterMaterial(material)) : pool.waterMaterial(node.material);
+    });
     return clone;
-  }, [template, robberClearance, detail]);
-  const pool = useVisualResources();
-  const style = terrainStyle(name ?? terrain);
+  }, [template, robberClearance, detail, waterPilot, pool]);
+  const water = waterStyle(waterAppearance);
+  const style = name === "sea" ? { color: water.fallback, side: water.fallbackSide } : terrainStyle(name ?? terrain);
 
   if (!scene) return <group position={TERRAIN_FALLBACK_OFFSET} userData={{ terrainFallback: name ?? terrain }}>
     <mesh geometry={pool.geometry("hex")} material={[pool.standard(style.color), pool.standard(style.side)]}
       receiveShadow castShadow raycast={ignoreTerrainRaycast} />
-    {!robberClearance && <TerrainHints terrain={name ?? terrain} tileIndex={tileIndex} />}
+    {!robberClearance && <TerrainHints terrain={name ?? terrain} tileIndex={tileIndex} waterAppearance={waterAppearance} />}
   </group>;
 
   return <group position={[0, TERRAIN_TRANSFORM.lift, 0]} rotation={[0, TERRAIN_TRANSFORM.rotationY, 0]}

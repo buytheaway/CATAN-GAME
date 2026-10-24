@@ -5,9 +5,87 @@ updated: 2026-10-24
 
 # Board3D
 
+## Visual Phase 5F.1 - water material harmony
+
+**Implemented and verified2026-10-24; READY FOR CHECKPOINT as an opt-in material experiment.** The preceding proportions pilot is published as `e01e8fb45e501a55aa6cd3d3b4bf51bb59fe5a21`; normal push and exact local/origin equality verified, 22 intended files, user graph/media/artifacts excluded. Its default remains `terrainDetail="current"`; no artistic approval or GPU improvement was inferred. This phase changes water materials only, not geometry or the production default.
+
+### Measured current rendering
+
+Actual Chrome captures reproduced bright playable Sea against a quieter decorative ring and a separately shaded background. `sea.glb` is 278188 bytes: its water is opaque, double-sided `MeshPhysicalMaterial`, with specularIntensity .44 and roughness .65–.82. Representative **sRGB material base colors, not sampled screenshot pixels**: Water_Teal `#378d9f`, Water_Light `#4ba4b1`, Swell_Light `#74c1c5`, Foam `#ddefe7`. The wooden base/bevel/rim use separate materials. Playable water terrain varies around Y=.217–.272, existing foam reaches .324839; the rim ends at .218333. These elevations are intentional existing geometry and remain fixed.
+
+Decorative cells use instance tints `#286b8b/#2a6e8c/#296c87`, white Standard top, Standard side `#75909c`, roughness .78, no metalness, opaque FrontSide. Their top is .210333, below the existing coastline cap to avoid z-fighting. Underlay `#20526a`, Basic seam `#25546a`, Basic wave `#79a6b8`; the continuous frame stays Standard `#476277`. Surrounding water is the existing 1024² canvas-gradient Basic material, `toneMapped=false`, at Y=-.032; stops `#286479/#1a4e64/#153a4e/#0d2333`. No new texture is needed.
+
+Observed renderer: sRGB output, ACESFilmic toneMapping=4/exposure1, PCFSoft shadows, ambient .85 / hemisphere .55 / directional2.1. None changes. Shape/density and light-response differences explain why the three surfaces do not look like one material family; this is a visual comparison finding, not a gameplay defect or approval of a final style.
+
+### Bounded material alternative
+
+`Board3D.waterAppearance` is optional and defaults to `current`. Only the external public-fixture wrapper supplies `pilot`; App/GamePage/BoardRenderer/controller, saved preferences and protocol gain no setting or state field. The same snapshot/IDs flow to both variants. Current remains the shipping appearance. Provisional direction is clean stylized tabletop, not photorealistic water, reflections or a terrain-wide repaint.
+
+| Surface | Pilot parameter |
+|---|---|
+| Playable Water Teal / Light / Deep / Edge | `#31758a / #3a8092 / #2a687f / #25586c` |
+| Swell Teal / Shade / Light | `#3b7f91 / #2b667b / #488b9a` |
+| Small Ripples / Foam | `#548c99 / #9cbcb9` |
+| All nine mapped Sea materials | roughness .88; original Physical class/specular/side/alpha/depth/maps preserved |
+| Decorative cell tints / side | `#2d7087 / #30738a / #2e6e84`; side `#5c7781` |
+| Underlay / seam / wave | `#244d60 / #285568 / #6b9aa7` |
+| Existing coastal water strip / foam | `#3c6973 / #789eaa`, foam opacity .48 |
+| Existing background gradient | `#2a6074 / #1e4d62 / #153749 / #0d2333`; outside waves `#6b9aa7` |
+| Procedural Sea fallback | top `#31758a`, side `#25586c`, wave `#6b9aa7` |
+
+The scene resource pool lazily shares **nine owned material clones** across all revealed Sea tiles. Original cached GLTF materials, including wooden bases/rims, are never edited. Clones are released with existing StrictMode-safe scene leases; toggles keep a bounded warm cache until unmount. Fresh current scenes allocate no pilot clones. The existing canvas texture is regenerated/disposed when its preset changes; no additional texture file, shader, reflection pass, dependency or animation clock is introduced. Matrices, geometry buffers, one-ring default/two-ring option, mitered frame, coastline, ports, ownership colors, number values, camera and SVG remain. Unknown Fog never mounts actual terrain. This proposal does not enable Fog admissions or transport capabilities.
+
+### Actual visual and regression evidence
+
+Loopback gallery: **http://127.0.0.1:18789/**; [restart/capture instructions](../../../web/e2e/README.md#visual-phase-5f1---water-material-harmony). Live Current/Water Pilot preserves camera; committed source uses exact `e01e8fb` blobs, never checkout/reset. One/two rings and frame controls preserve the material choice in both the scene and URL. Existing public fixture factories supply Base, official New Shores3/4, Four Islands3/4 and Fog before/after. A pirate is placed only on a known public sea tile for display. These are synthetic PUBLIC states, not natural or legality-certified multiplayer matches; no private recipe/account/database endpoint is exposed.
+
+**174 matched actual PNGs (87 pairs) plus3 motion views,177 total** cover full 2560×1440 views and native600×600 coast/port/sea/pirate/frame crops, normal zoom, wheel close-up, orbit, both rings and Fog. Exact public state/native camera/complete geometry equality is checked between sources. Reports/media: `%TEMP%/catan-water-5f1-accepted/`. The initial31 baseline and intermediate174 captures remain separately under `catan-water-5f1-initial` and `catan-water-5f1-final`. Source bundle hashes match the final runtime. Root inspected New Shores/Four Islands overviews, sea detail and two-ring frame corners, Base overview, NS3 orbit/coast and Fog before/after port views. No new frame deformation, obstructed port or shoreline crack was established in those views; arbitrary-angle universal visibility is not certified.
+
+**432 frontend tests / TypeScript / production build pass, exit0.** Four new actual-GLB tests cover nine-material isolation, unchanged Physical properties/source assets, sharing across50clones, StrictMode leases and owned-only disposal. Logs/status: `.venv/test-artifacts/water-5f1-verified/`; the existing >500kB chunk warning remains. Backend/engine/protocol/persistence/security/maps/assets/dependencies are unchanged; no full Python/PostgreSQL run is claimed. The renderer's interaction paths do not change, so fresh live multiplayer is not required by this scope; browser fixtures are not presented as server acceptance.
+
+Fresh Chrome acceptance: **47 distinct groups** (threats8, buildings7, ocean9, ships6, proportions8, water9). They verify current/committed equality, material-only switch/restore and bounded resources, unchanged Fields12/tile29 clearance, camera/orbit/zoom/resize/reset, 0/1/2 rings/frame, neutral unknown Fog/public reveal, original legal pointer targets, confirmed public ship/pirate/building frames, GLB opt-in, SVG, reconnect/reload, intentional Sea-load fallback and reduced/static idle. Three browser tools now wait for the actual selected edge and a rendered frame before clicking; no command/rejection/privacy assertion is removed. Initial failures and the original raw reports are retained. Live geometry hashing compares complete world/ID/buffer records independently of React child traversal order; the observed remount preserved all1916mesh/260buffer contents. Normal pirate bob remains the original ±.004 around an exact authoritative parent anchor, not a new drift defect.
+
+### Performance and remaining decisions
+
+**Completed, exit0: 12 cases / 96 readings / 11520 valid async GPU queries; zero disjoint/errors.** Exact committed `e01e8fb` current water versus explicit pilot, Base/NS4/FI4/fifty × normal/reduced/static; two ABBA/BAAB blocks, warm90/query120/wall60. Chrome155.0.8059.85, RTX5050 Laptop driver610.74, viewport1440x900/DPR1, identical public state/camera/procedural ships/one ring/frame and normalized Base boat poses. Compilation/loading/warm-up are excluded from steady timings. No agent capture/regression browser or video encoding ran during timing; FC25 was absent at the explicit preflight check. Observed reading temperatures54-61C, utilization1-21%, graphics clocks352-2670MHz; clocks/power are not locked. Normal existing animation phases remain time-based. These are command-span measurements, not sustained FPS, cold-start or low-end certification.
+
+| Scene/mode | GPU median old→pilot ms | GPU p95 old→pilot ms | Block0 / Block1 median delta ms |
+|---|---:|---:|---:|
+| Base normal |2.210→2.184|2.992→2.722|-0.054 / -0.011|
+| Base reduced |2.101→2.206|2.700→2.972|+0.069 / +0.132|
+| Base static |2.234→2.185|2.800→2.792|-0.019 / -0.081|
+| New Shores4 normal |3.879→3.964|4.686→4.717|+0.158 / +0.035|
+| New Shores4 reduced |4.072→4.102|5.402→4.990|+0.125 / -0.083|
+| New Shores4 static |3.923→3.945|5.574→5.186|+0.068 / -0.043|
+| Four Islands4 normal |3.399→3.384|6.022→5.634|+0.091 / -0.187|
+| Four Islands4 reduced |3.609→3.518|4.750→4.421|-0.062 / -0.156|
+| Four Islands4 static |3.526→3.548|4.365→4.530|-0.013 / +0.084|
+| Fifty normal |2.391→2.332|2.887→2.862|-0.136 / +0.012|
+| Fifty reduced |2.340→2.266|2.842→3.036|-0.097 / -0.040|
+| Fifty static |2.260→2.264|2.922→2.856|-0.115 / +0.093|
+
+**Mixed results; no universal optimization or GPU-equivalence claim.** Base reduced median and p95 worsen in both blocks; New Shores normal median also worsens in both. NS4 reduced/static, FI4 normal/static and fifty normal/static have opposing block signs. Fifty reduced improves median but worsens p95. No adverse sample is removed or dismissed as a proved artifact. Unlocked clocks/environment may contribute but do not establish causation. These numbers must not be used to reinterpret older phases measured under different conditions.
+
+The separate untimed `pass-inventory.json` reconciles actual main/shadow callbacks and native calls/triangles for all24 side/mode inspections. Every old/pilot pair has identical counters:
+
+| Scene | Main / shadow calls (both variants) | Main+shadow triangles | Materials / scene geometries / programs / textures | Loaded GLB bytes |
+|---|---:|---:|---:|---:|
+|Base|1188 / 931|586262|175 / 250 / 11 / 29|4661464|
+|New Shores4|2061 / 1638|918554|215 / 305 / 11 / 38|5255152|
+|Four Islands4|1875 / 1455|821472|183 / 260 / 11 / 34|4673192|
+|Fifty|1398 / 1099|320022|118 / 149 / 12 / 17|1243840|
+
+GPU geometry counts remain256/311/266/154 respectively; all96 readings retain stable post-warm resources. Scene material counts do not imply zero CPU allocation: the pilot owns up to nine shared Sea clones in addition to immutable global GLTF templates, and preset color variants use the existing bounded material pool. The separate `material-inventory.json` verifies all eight source/scene model lists, byte sizes and SHA256 values; Sea remains278188 bytes. The table covers actually loaded model files, not total page/network bytes. No new model, downloaded texture, shader program or rendering pass is introduced.
+
+Reduced idle is zero in every scene. Static NS4/FI4/fifty is also zero; Base retains its existing10-11frames/s decorative boats. Normal modes remain Base10-11/others12-13frames/s. There is no additional permanent water clock. Initial clone/canvas-generation latency and arbitrary camera/low-end behavior are not certified.
+
+All chronological raw/warm/GPU/wall samples, unfavorable results, block deltas and telemetry remain in `%TEMP%/catan-water-gpu-20261024/paired-performance.json`; separate pass/material reports are in the same folder. Final source bundle hashes match the177-image gallery and accepted water smoke. `gallery-smoke.json` verifies the actual localhost server, image ordering, served bundles, live material restore and ring/material URL consistency. Earlier failing automation reports remain available; readiness uses completed final-source results, not partial progress.
+
+**READY FOR CHECKPOINT as an opt-in material experiment.** User approval of palette, foam contrast, playable/decorative distinction and any production rollout remains pending. Geometry/elevation and shading-class differences deliberately remain; this is not physically identical water everywhere or a terrain-wide art replacement. Current water/terrain proportions and procedural ship remain default;5E.2/GLB options remain opt-in. No5F.1 commit/push or5G.
+
 ## Visual Phase 5E.2 - proportions and visual hierarchy
 
-**Implemented and verified; READY FOR CHECKPOINT as an opt-in experiment,2026-10-24.** Published5E.1 checkpoint is `3d82af6c8fc4449bd80b28f8c4bf20bde689e14e`, exact local/origin/main equality verified after normal fast-forward push. Its19 intended files were committed separately, excluding the existing user graph and temporary artifacts; the423-test/GPU evidence below is historical, not rerun for checkpointing.5E.2 remains uncommitted and is not approved for production-default promotion.
+**Historical verification2026-10-24; committed/pushed as `e01e8fb45e501a55aa6cd3d3b4bf51bb59fe5a21`.** Published5E.1 checkpoint is `3d82af6c8fc4449bd80b28f8c4bf20bde689e14e`, exact local/origin/main equality verified after normal fast-forward push. Its19 intended files were committed separately, excluding the existing user graph and temporary artifacts; the423-test/GPU evidence below is historical, not rerun for checkpointing.The subsequent authorized5E.2 checkpoint is published; production-default promotion remains unapproved.
 
 Actual path: committed player-specific snapshot → existing BoardRenderer/controller → Board3D → revealed HexTile3D → cached terrain's owned clone. A presentation-only optional `terrainDetail` prop defaults to `current`; GamePage/App, commands, snapshots and saved preferences gain no setting/field. Only the external e2e wrapper explicitly passes `pilot`. Default measured node transforms/visibility equal5E.1. No new GLBs/Blender models/materials, lighting overhaul or ship-default change. Hidden Fog, game IDs, numbers, anchors, raycasting, camera/ocean/frame and shared finite animation architecture remain unchanged.
 
@@ -55,7 +133,7 @@ No backend change, production-default change or new raycast/controller path, so 
 
 ### Performance gate
 
-**Completed, exit0:12cases/96readings/11520valid async GPU queries, zero disjoint/errors.** Exact `3d82af6` versus opt-in pilot, Base/NS4/FI4/50 ×normal/reduced/static; two ABBA/BAAB blocks. Chrome155.0.8059.85, RTX5050Laptop driver610.74,1440×900/DPR1. Identical camera/public state/ship default/ocean/frame/normalized ambient boat poses,90warm/120GPU/60wall frames per reading. Loading/compile/warm-up excluded. No other test browser/screenshot/video during timing; FC25 absent at preflight/spot checks. Sampled temperature63–67C, GPU utilization14–42%; clocks/power are unlocked. All raw samples, worse readings, opposing block deltas, idle and telemetry remain in `%TEMP%/catan-proportions-gpu-20261024/paired-performance.json`. Separate untimed `pass-inventory.json` reconciles actual Three main/shadow callbacks with native calls/triangles in every case. Bundle hashes match final screenshots/accepted opt-in smoke. No5E.2 commit/push or5F.
+**Completed, exit0:12cases/96readings/11520valid async GPU queries, zero disjoint/errors.** Exact `3d82af6` versus opt-in pilot, Base/NS4/FI4/50 ×normal/reduced/static; two ABBA/BAAB blocks. Chrome155.0.8059.85, RTX5050Laptop driver610.74,1440×900/DPR1. Identical camera/public state/ship default/ocean/frame/normalized ambient boat poses,90warm/120GPU/60wall frames per reading. Loading/compile/warm-up excluded. No other test browser/screenshot/video during timing; FC25 absent at preflight/spot checks. Sampled temperature63–67C, GPU utilization14–42%; clocks/power are unlocked. All raw samples, worse readings, opposing block deltas, idle and telemetry remain in `%TEMP%/catan-proportions-gpu-20261024/paired-performance.json`. Separate untimed `pass-inventory.json` reconciles actual Three main/shadow callbacks with native calls/triangles in every case. Bundle hashes match final screenshots/accepted opt-in smoke. No5E.2 commit/push had been performed at that verification; the subsequent authorized checkpoint is recorded above.
 
 | Scene/mode | GPU median old→pilot ms | GPU p95 old→pilot ms |
 |---|---:|---:|

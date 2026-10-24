@@ -10,7 +10,16 @@ async function snapshot(page){return page.evaluate(()=>{
 });}
 async function rejectionOverlay(page,origin,source){
  await page.goto(origin+'/preview?'+h.query('seven',source));await h.ready(page);
+ const rendered=await page.evaluate(()=>window.__scene.getState().gl.info.render.frame);
  await page.getByRole('button',{name:'Ship',exact:true}).click();
+ // React selection and the demand-rendered target mesh do not commit inside
+ // Playwright's DOM click. Wait for the actual intended edge and a drawn frame.
+ await page.waitForFunction(previous=>{
+  const store=window.__scene?.getState(),canvas=document.querySelector('canvas');
+  if(!store||store.gl.domElement!==canvas||store.gl.info.render.frame<=previous)return false;
+  const edge=window.__fogFixture.snapshot().state.legal.ships[0];let found=false;
+  store.scene.traverse(n=>{found ||= n.userData.targetType==='edge'&&n.userData.edge.join(',')===edge.join(',');});return found;
+ },rendered);
  const target=await page.evaluate(()=>{
   const state=window.__fogFixture.snapshot().state,edge=state.legal.ships[0],{scene,camera,gl}=window.__scene.getState();let mesh;
   scene.traverse(object=>{if(object.userData.targetType==='edge'&&object.userData.edge.join(',')===edge.join(','))mesh=object;});

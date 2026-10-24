@@ -7,6 +7,12 @@ updated: 2026-10-24
 
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
+## Visual Phase 5F.1 - provisional water family
+
+**Implemented opt-in material comparison, 2026-10-24; final verification — [[plans/board3d#Visual Phase 5F.1 - water material harmony]].** Clean stylized tabletop is a provisional direction, not approved final art. Keep the hex grid, wooden playable tile borders, coast, physical-looking continuous frame and piece/port readability. Current bright Sea GLBs and quiet outer rings remain production default. The optional alternative coordinates teal values and reduces white wave contrast, while retaining richer playable Sea geometry and quieter decorative cells. Nine water materials are cloned/shared, not replaced assets or a terrain-wide repaint. Existing background canvas is reused; no new reflections, textures, expensive shaders or permanent water loop.
+
+Current/Water Pilot comparison: **http://127.0.0.1:18789/**, using real Board3D and synthetic PUBLIC states. Live material changes preserve camera; one/two-ring/frame options stay available. The user has not approved the palette, wave contrast, or production rollout. 5E.2 proportions and the Blender ship remain separate opt-in experiments; no material change to ownership colors, land, numbers, Fog or game rules.
+
 ## Visual Phase 5E.2 - measured proportions proposal
 
 **Opt-in implemented/tested proposal2026-10-24; not approved production art.** Gameplay pieces should remain primary, followed by neutral threats/mandatory targets, numbers/ports, resource identity and decoration. This hierarchy does not alter click priority or game rules. Actual loaded dimensions show sheep footprints larger than settlements and wheat groups higher than settlement roofs; nearby-object captures confirm the visual competition. Neither taller mountains/trees nor artistic disagreement alone is classified as a rendering bug. Number tokens remain readable; no third category is changed.
@@ -19,7 +25,7 @@ Actual OLD/NEW gallery: **http://127.0.0.1:18788/**. Live current/pilot comparis
 
 **Implemented2026-10-21; verification/status — [[plans/board3d#Visual Phase 5E.1 - piece readability and occlusion]].** Keep the current neutral robber silhouette, common floor and scale. Around its existing public anchor, hide only intersecting named wheat, pine or sheep decoration groups on the owned terrain clone. Keep broad landforms, rims, buildings and shared templates intact. On that occupied tile the number badge shifts0.2 left in local X, at the existing height and with the same number/pips. Both restore after departure; existing finite visual cues retain clearance at a known public departure endpoint. No X-ray figure, floating elevation, asset replacement, blanket rescale, new animation loop or approved new art direction.
 
-Matched actual Chrome screenshots cover the original Four Islands4/Fields12, camera rotations/close-up, Base/New Shores and other land terrain. Gallery: **http://127.0.0.1:18787/**. The historical5C/5D.2 occlusion observation below is the before state;5E.1 addresses that demonstrated case. Broader proportions, owner-palette/art style and playable/decorative water consistency remain5E.2 proposals, not additional implemented fixes or user approval.
+Matched actual Chrome screenshots cover the original Four Islands4/Fields12, camera rotations/close-up, Base/New Shores and other land terrain. Gallery: **http://127.0.0.1:18787/**. The historical5C/5D.2 occlusion observation below is the before state;5E.1 addresses that demonstrated case. Those were historical follow-up proposals. Separately authorized5E.2 proportions and5F.1 water comparisons are opt-in; broader owner-palette/art changes and production promotion remain unapproved.
 
 ## Visual Phase 5D.2 - implemented bounded ocean and frame
 

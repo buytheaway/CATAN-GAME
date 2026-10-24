@@ -35,6 +35,7 @@ import { buildOceanFrameStrip, buildOceanLayout, type OceanRings } from "./ocean
 import OceanBoard3D from "./OceanBoard3D";
 import type { Tile } from "../components/BoardView.types";
 import type { TerrainDetail } from "./terrainProportions";
+import type { WaterAppearance } from "./waterMaterials";
 
 const ignoreRaycast = () => undefined;
 function Coastline({ coast }: Pick<BoardRenderModel, "coast">) {
@@ -66,7 +67,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   shipCues = new Map(), shipsAnimated = true, onShipsAnimated,
   pieceCues = new Map(), constructionAnimated = true, onConstructionAnimated,
   threatCues = new Map(), threatsAnimated = true, onThreatsAnimated,
-  shipModel = "procedural", onShipModel, oceanRings = 1, oceanFrame = true, terrainDetail = "current" }: {
+  shipModel = "procedural", onShipModel, oceanRings = 1, oceanFrame = true, terrainDetail = "current", waterAppearance = "current" }: {
   state: BoardSnapshot; interaction: BoardInteraction; diceRoll?: DiceRollVisual | null;
   matchKey?: string; connected?: boolean;
   reveals?: ReadonlyMap<number, number>;
@@ -76,6 +77,7 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
   shipModel?: ShipModel; onShipModel?: (model: ShipModel) => void;
   oceanRings?: OceanRings; oceanFrame?: boolean;
   terrainDetail?: TerrainDetail;
+  waterAppearance?: WaterAppearance;
 }) {
   const model = useMemo(() => createRenderModel(state), [state]);
   const [hoveredTile, setHoveredTile] = useState<number | null>(null);
@@ -178,14 +180,14 @@ export default function Board3D({ state, interaction, diceRoll, matchKey = "", c
             <shadowMaterial transparent opacity={0.22} />
           </mesh>
           <VisualResources>
-          {!!oceanRings && !!ocean.cells.length && <OceanBoard3D layout={ocean} playable={waterPositions} frame={frame} />}
+          {!!oceanRings && !!ocean.cells.length && <OceanBoard3D layout={ocean} playable={waterPositions} frame={frame} waterAppearance={waterAppearance} />}
           <SceneMotion reduced={reduced} connected={connected}>
           <FogPresentation quality={fogQuality} reduced={reduced} connected={connected} hidden={hidden}>
-          <DecorativeOcean bounds={bounds} coast={model.coast} />
+          <DecorativeOcean bounds={bounds} coast={model.coast} waterAppearance={waterAppearance} />
           {decorativeShipsEnabled(state) && <AmbientShips center={bounds.center} clearance={ambientClearance} />}
           {diceRoll && <DiceRoll3D key={diceRoll.id} roll={diceRoll} center={bounds.center} />}
           {model.tiles.map(t => <HexTile3D key={t.tileIndex} tile={t} hovered={hoveredTile === t.tileIndex}
-            robberClearance={robberClearance.has(t.tileIndex)} detail={terrainDetail}
+            robberClearance={robberClearance.has(t.tileIndex)} detail={terrainDetail} waterAppearance={waterAppearance}
             legal={interaction.targets.tiles.includes(t.tileIndex)} selected={interaction.selection.victim?.tile === t.tileIndex}
             reveal={reveals?.get(t.tileIndex)} onHover={hover} onInspect={inspect} />)}
           <Coastline coast={model.coast} />
