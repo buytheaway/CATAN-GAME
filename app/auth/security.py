@@ -1,5 +1,6 @@
 import os
 import ipaddress
+import uuid
 from contextvars import ContextVar
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -11,6 +12,14 @@ from app.persistence.credentials import utcnow
 COOKIE = "catan_session"
 SESSION_AGE = timedelta(days=30)
 authorization = ContextVar("account_authorization", default=None)
+# Pinned to the existing, inspected account, never a claimed name or registration.
+OWNER_ACCOUNT_ID = uuid.UUID("9ceeeab2-9d25-4e67-84f7-3bb09e4914c6")
+owner_test_tools_required = ContextVar("owner_test_tools_required", default=False)
+
+
+def owner_test_enabled(identity):
+    return bool(identity and identity.get("user_id", identity.get("id")) == OWNER_ACCOUNT_ID
+                and identity.get("test_tools_enabled") is True)
 
 
 def client_ip(request):
@@ -74,15 +83,22 @@ def clear_cookie(response):
     response.delete_cookie(COOKIE, httponly=True, secure=not development(), samesite="lax", path="/")
 
 
-async def authorize_transaction(session):
+async def authorize_transaction(session, *, exclusive=False):
     """Share-lock session/user until room COMMIT; logout's UPDATE orders after it."""
     identity = authorization.get()
-    if identity is None:
-        return
-    row = (await session.execute(select(m.user_sessions.c.id).select_from(
-        m.user_sessions.join(m.users)).where(
-        m.user_sessions.c.id == identity["session_id"], m.user_sessions.c.user_id == identity["user_id"],
-        m.user_sessions.c.revoked_at.is_(None), m.user_sessions.c.expires_at > utcnow(),
-        m.users.c.disabled_at.is_(None)).with_for_update(read=True))).first()
-    if row is None:
-        raise AuthError("session_expired")
+    row = None
+    if identity is not None:
+        row = (await session.execute(select(m.users.c.id.label("user_id"), m.users.c.test_tools_enabled).select_from(
+            m.user_sessions.join(m.users)).where(
+            m.user_sessions.c.id == identity["session_id"], m.user_sessions.c.user_id == identity["user_id"],
+            m.user_sessions.c.revoked_at.is_(None), m.user_sessions.c.expires_at > utcnow(),
+            m.users.c.disabled_at.is_(None)).with_for_update(read=not exclusive))).mappings().one_or_none()
+        if row is None:
+            raise AuthError("session_expired")
+    if owner_test_tools_required.get():
+        enabled = (await session.execute(select(m.users.c.test_tools_enabled).where(
+            m.users.c.id == OWNER_ACCOUNT_ID, m.users.c.disabled_at.is_(None)
+        ).with_for_update(read=True))).scalar_one_or_none()
+        if enabled is not True:
+            raise AuthError("test_mode_disabled", 403)
+    return row

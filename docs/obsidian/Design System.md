@@ -5,6 +5,10 @@ updated: 2026-10-24
 
 # Design System
 
+## Owner Test Mode control
+
+Implemented 2026-10-26: compact, always-visible **TEST MODE ON/OFF** switch beside the authenticated designated owner's account, on Home/lobby/match. Accessible switch semantics, keyboard focus, pending disable and controlled error feedback use the existing account styling. The switch changes permission only; explicit **Enable Test Room** before Start and the existing Test Tools drawer remain separate. No ordinary-match cheat controls or generic Admin UI. [[React интерфейс#Owner Test Mode]], [[Project State]].
+
 [[00 Главная]] · [[React интерфейс]] · [[Стили и визуальные границы]] · [[plans/game-ui-redesign]]
 
 ## Visual Phase 5F.1 - provisional water family
@@ -282,7 +286,7 @@ Implemented and verified **2026-10-06**, after game-ux-2-2. Direction remains cl
 - Bank Visible uses actual snapshot counts, Hidden generic backs plus availability. Confirmed event flights show self exact resource, opponent back; actual theft type only participants, observer generic. No animation determines gameplay or reveals foreign hand.
 - Dice roll/settle ~900ms, visible to 2100ms, fade to 2500ms, compact exact pair/sum stays. Robber clearer dark silhouette and finite 420ms move; reduced motion immediate. Static ocean/shorelines frame Base island, real Seafarers sea stays identifiable. Terrain visuals independently editable with modest shared procedural detail; same original port endpoints and small sailboat/dock.
 - Actual framing uses real map bounds; Base width +22–24%, height +17–19% against UX 2.2 at all required desktop sizes. Port/piece/number readability and shared legal hit targets retained; decorative ocean is not a new tile/model/rules layer.
-- Test Room is a developer fixture capability: env OFF default; explicit lobby opt-in on ON server; Test Tools only active host, warning label, server validates every named action. Not account/admin authentication or a raw editor.
+- Test Room remains an explicit pre-start fixture capability: default OFF, active authorized host only, warning label and server validation of every named action. Other local developers use server opt-in; the pinned account may instead use the durable owner toggle described above. No generic admin role or raw editor.
 
 **266 pytest, 128 web, TS/production/Docker pass; 27 Chrome E2E cases.** Scenario suite 348/508, old 160 failures unchanged. Base/Gold/50-hex fixture: idle +0 frames, 2D cleanup; no perpetual ocean motion. Draw calls approximately 806/703/1485 (static), low-end FPS/mobile/natural full match not certified. Dependencies unchanged; lazy Three warning remains. New prompt/top-vertex overlap found and fixed during real clicks; no confirmed remaining UX 2.3 blocker.
 

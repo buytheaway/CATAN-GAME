@@ -26,6 +26,7 @@ from app.persistence.recovery import clone_room, resume_timer, checksum
 from app.persistence.inspection import MAX_CREDENTIALS, MAX_BODY_BYTES, InspectionLimiter, inspect_memory
 from app.auth.routes import router as auth_router
 from app.auth.security import AuthError, COOKIE, allowed_origin, same_origin_guest, authorization, authorize_transaction, client_ip
+from app.auth.security import OWNER_ACCOUNT_ID, owner_test_enabled, owner_test_tools_required
 from app.auth.service import AuthService
 
 from app import net_protocol
@@ -317,6 +318,14 @@ async def inspect_recent_games(request: Request):
 
 CMD_ID_LRU = 256
 TEST_TOOLS_ENABLED = os.getenv("CATAN_ENABLE_TEST_TOOLS", "0") == "1"
+
+
+def _test_tools_available(identity):
+    if identity and identity["user_id"] == OWNER_ACCOUNT_ID:
+        return owner_test_enabled(identity)  # Owner OFF also overrides the developer flag.
+    return TEST_TOOLS_ENABLED
+
+
 MULTIPLAYER_COMMANDS = frozenset({
     "place_settlement", "place_road", "upgrade_city", "build_ship", "move_ship",
     "roll", "discard", "choose_gold", "move_robber", "move_pirate",
@@ -441,7 +450,12 @@ async def _publish_match_state(conn: ClientConn, room: Room, pid: int, slot_id: 
         await _send(conn.ws, net_protocol.error_message(code, "Private state authorization unavailable"))
         await conn.ws.close(code=close_code)
 
-    async def send_owned():
+    async def send_owned(identity=None):
+        # Capability is read under the same session/user locks as the private send.
+        message["state"]["test_tools"] = bool(message["state"].get("test_mode")
+            and pid == room.host_pid and _test_tools_available(identity)
+            and (not identity or identity["user_id"] != OWNER_ACCOUNT_ID
+                 or room.players[pid].user_id == OWNER_ACCOUNT_ID))
         raw = json.dumps(message)
         if not current_recipient():
             return
@@ -475,8 +489,8 @@ async def _publish_match_state(conn: ClientConn, room: Room, pid: int, slot_id: 
             # Reuse the command commit gate's session/user share locks. A logout
             # or account disable UPDATE must order before or after this frame.
             async with persistence.database.sessions() as session, session.begin():
-                await authorize_transaction(session)
-                await send_owned()
+                identity = await authorize_transaction(session)
+                await send_owned(identity)
         except AuthError:
             await invalidate("session_expired")
         except SQLAlchemyError:
@@ -673,7 +687,8 @@ def _require_compatible(room: Room, *, internal_gameplay=False) -> None:
         raise RuleError("compatibility_required", COMPATIBILITY_MESSAGE)
 
 
-def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
+def _apply_cmd(room: Room, pid: int, cmd: Dict, *, tools_allowed=None) -> Optional[Dict]:
+    tools_allowed = TEST_TOOLS_ENABLED if tools_allowed is None else tools_allowed
     trusted_fog = _fog_gameplay_allowed(room)
     if has_fog(room.game) and not trusted_fog:
         return net_protocol.error_message("feature_disabled", FOG_DISABLED_MESSAGE)
@@ -689,7 +704,7 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     if ctype == "test_action":
         if trusted_fog:
             return net_protocol.error_message("feature_disabled", FOG_DISABLED_MESSAGE)
-        if not TEST_TOOLS_ENABLED or not room.test_mode or pid != room.host_pid:
+        if not tools_allowed or not room.test_mode or pid != room.host_pid:
             return net_protocol.error_message("forbidden", "Test tools are unavailable for this room/player")
         before = game_events.resources_before(g)
         try:
@@ -712,7 +727,7 @@ def _apply_cmd(room: Room, pid: int, cmd: Dict) -> Optional[Dict]:
     if ctype == "roll":
         if set(cmd) != {"type"}:
             return net_protocol.error_message("invalid", "Send only the roll intention")
-        if TEST_TOOLS_ENABLED and room.test_mode and room.next_test_dice is not None:
+        if tools_allowed and room.test_mode and room.next_test_dice is not None:
             dice = room.next_test_dice
         elif room.settings.dice_mode == "balanced":
             next_bag = room.dice_bag if len(room.dice_bag) > 12 else shuffled_bag()
@@ -795,12 +810,14 @@ async def _process_room_timer_locked(room: Room) -> None:
     if timer.stage == "stopped":
         return
     mandatory = g.pending_action is not None or int(g.free_roads.get(g.turn, 0)) > 0
+    tools_allowed = False
     if mandatory:
         if timer.stage == "blocked":
             return
         timer.stage = "blocked"
     else:
-        error = _apply_cmd(candidate, g.turn, {"type": "end_turn" if g.rolled else "roll"})
+        tools_allowed = not g.rolled and room.next_test_dice is not None and await _test_tools_for_room(room)
+        error = _apply_cmd(candidate, g.turn, {"type": "end_turn" if g.rolled else "roll"}, tools_allowed=tools_allowed)
         if error:
             # Stop retrying an unsafe/unknown state until a real command resolves it.
             timer.stage = "stopped"
@@ -811,7 +828,9 @@ async def _process_room_timer_locked(room: Room) -> None:
         _sync_timer(candidate)
     candidate.tick += 1
     candidate.last_activity_ts = time.time()
-    await _commit(room, candidate, snapshot=True)
+    await _commit(room, candidate, snapshot=True,
+                  owner_tools=bool(tools_allowed)
+                  and room.players[room.host_pid].user_id == OWNER_ACCOUNT_ID)
     await _send_match_state(room)
 
 
@@ -860,8 +879,14 @@ def _promote(room: Room, candidate: Room) -> None:
             conn.pid = None
 
 
-async def _commit(room: Room, candidate: Room, **kwargs) -> None:
-    await persistence.commit(room, candidate, **kwargs)
+async def _commit(room: Room, candidate: Room, *, owner_tools=False, **kwargs) -> None:
+    if owner_tools and not persistence.database:
+        raise AuthError("test_mode_disabled", 403)  # Never substitute a RAM preference.
+    context = owner_test_tools_required.set(owner_tools)
+    try:
+        await persistence.commit(room, candidate, **kwargs)
+    finally:
+        owner_test_tools_required.reset(context)
     _promote(room, candidate)
 
 
@@ -1093,6 +1118,44 @@ def set_account_context(conn, who):
     conn.session_hash, conn.session_expires_at = who["session_hash"], who["expires_at"]
 
 
+async def _test_tools_for_room(room):
+    if not room.test_mode:
+        return False
+    if room.players[room.host_pid].user_id != OWNER_ACCOUNT_ID:
+        return TEST_TOOLS_ENABLED
+    if not persistence.ready or not persistence.database:
+        return False
+    return await AuthService(persistence.database).owner_test_mode_enabled()
+
+
+async def _send_capabilities(conn, who):
+    message = {"type": "hello", "version": net_protocol.VERSION,
+               "test_tools_available": _test_tools_available(who),
+               "connection_nonce": conn.connection_nonce}
+    if who and who["user_id"] == OWNER_ACCOUNT_ID:
+        message["owner_test_mode"] = {"enabled": owner_test_enabled(who)}
+    await _send(conn.ws, message)
+
+
+async def _notify_owner_test_mode():
+    # No database lock is held while waiting for a Room lock. Never cache permission.
+    for conn in list(manager.connections.values()):
+        if conn.user_id != OWNER_ACCOUNT_ID or not conn.session_hash:
+            continue
+        try:
+            room = manager.rooms.get(conn.room_code or "")
+            if room:
+                async with room.lock:
+                    who = await AuthService(persistence.database).resolve_hash(conn.session_hash)
+                    await _send_capabilities(conn, who)
+                    await _send_match_state_to(conn.ws, room)
+            else:
+                who = await AuthService(persistence.database).resolve_hash(conn.session_hash)
+                await _send_capabilities(conn, who)
+        except (WebSocketDisconnect, RuntimeError, OSError, asyncio.TimeoutError):
+            pass  # The preference has committed; a disconnected UI can reload it.
+
+
 async def account_socket_valid(conn):
     if conn.session_hash is None:
         return True
@@ -1134,8 +1197,7 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
     ws, kind = conn.ws, data["type"]
     if kind == "hello":
         conn.name = data["name"]
-        await _send(ws, {"type": "hello", "version": net_protocol.VERSION,
-                         "test_tools_available": TEST_TOOLS_ENABLED, "connection_nonce": conn.connection_nonce})
+        await _send_capabilities(conn, authorization.get())
         return
     if not persistence.ready:
         raise PersistenceUnavailable("Database/recovery temporarily unavailable")
@@ -1257,7 +1319,12 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             if seq > slot.last_seq_applied + 1:
                 raise RuleError("out_of_order", "Out of order seq", {"expected_seq": slot.last_seq_applied + 1})
             candidate = clone_room(room)
-            error = _apply_cmd(candidate, conn.pid, data["cmd"])
+            tools_allowed = _test_tools_available(authorization.get())
+            if conn.user_id == OWNER_ACCOUNT_ID and room.players[room.host_pid].user_id != OWNER_ACCOUNT_ID:
+                tools_allowed = False
+            if data["cmd"]["type"] == "roll" and room.next_test_dice is not None:
+                tools_allowed = await _test_tools_for_room(room)
+            error = _apply_cmd(candidate, conn.pid, data["cmd"], tools_allowed=tools_allowed)
             if error:
                 candidate = clone_room(room)  # Reject discards all domain effects; only transport outcome commits.
             player = candidate.players[conn.pid]
@@ -1271,8 +1338,25 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
             receipt = {"match_player_id": player.match_player_id, "seq": seq, "cmd_id": cmd_id,
                        "payload_hash": digest, "outcome": "rejected" if error else "accepted",
                        "error_code": error["code"] if error else None}
-            await _commit(room, candidate, snapshot=not error, receipt=receipt,
-                          trusted_fog=_fog_access(room) is not None)
+            try:
+                await _commit(room, candidate, snapshot=not error, receipt=receipt,
+                              owner_tools=not error and tools_allowed and room.players[room.host_pid].user_id == OWNER_ACCOUNT_ID and (
+                                  data["cmd"]["type"] == "test_action" or
+                                  data["cmd"]["type"] == "roll" and room.next_test_dice is not None),
+                              trusted_fog=_fog_access(room) is not None)
+            except AuthError as exc:
+                if exc.code != "test_mode_disabled":
+                    raise
+                # OFF won the COMMIT race: discard the privileged candidate and
+                # persist a final rejected receipt using the usual sequence contract.
+                error = net_protocol.error_message("test_mode_disabled", "Test Mode permission is off")
+                candidate = clone_room(room)
+                player = candidate.players[conn.pid]
+                player.last_seq_applied, player.token_expires_at = seq, renewed_expiry()
+                _remember_cmd_id(player, cmd_id)
+                candidate.last_activity_ts = time.time()
+                receipt.update(outcome="rejected", error_code="test_mode_disabled")
+                await _commit(room, candidate, receipt=receipt)
             if error:
                 await _send(ws, error)
             else:
@@ -1315,7 +1399,9 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
         elif kind == "enable_test_mode":
             if room.selected_map_id == fog_beta.BETA_MAP_ID:
                 raise RuleError("feature_disabled", "Test Mode is unavailable for Fog beta")
-            if not TEST_TOOLS_ENABLED or conn.pid != room.host_pid or room.status != "lobby":
+            if (not _test_tools_available(authorization.get())
+                    or conn.user_id == OWNER_ACCOUNT_ID and room.players[room.host_pid].user_id != OWNER_ACCOUNT_ID
+                    or conn.pid != room.host_pid or room.status != "lobby"):
                 raise RuleError("forbidden", "Only host on a test-enabled server may enable a lobby test room")
             candidate.test_mode = True
             candidate.config_revision += 1
@@ -1324,7 +1410,8 @@ async def _dispatch_impl(conn: ClientConn, data: Dict) -> None:
         candidate.last_activity_ts = time.time()
         actor_id = room.players[conn.pid].id
         next(p for p in candidate.players if p.id == actor_id).token_expires_at = renewed_expiry()
-        await _commit(room, candidate, snapshot=kind in ("start_match", "rematch"), operation=operation)
+        await _commit(room, candidate, snapshot=kind in ("start_match", "rematch"), operation=operation,
+                      owner_tools=kind == "enable_test_mode" and conn.user_id == OWNER_ACCOUNT_ID)
         if kind in ("start_match", "rematch"):
             await _notify_start(room)
         elif kind == "chat":
@@ -1381,6 +1468,9 @@ async def websocket_endpoint(ws: WebSocket):
             try:
                 await _dispatch(conn, data)
             except AuthError as exc:
+                if exc.status == 403:
+                    await _send(ws, net_protocol.error_message(exc.code, "Test Mode permission is disabled"))
+                    continue
                 await _send(ws, net_protocol.error_message(exc.code, "Sign in again"))
                 await ws.close(code=4401)
                 return

@@ -83,7 +83,7 @@ def initialize(room, *, rebind=True):
             g.rolled = False
 
 
-def verify_rejection(room, pid, cmd):
+def verify_rejection(room, pid, cmd, **kwargs):
     before = deepcopy(room.game)
     dice_before = (room.dice, room.roll_count)
     events_before = deepcopy((room.game_events, room.event_serial, room.next_test_dice))
@@ -91,7 +91,7 @@ def verify_rejection(room, pid, cmd):
     if room.players[0].name.startswith("fixture-dice "):
         server._roll_dice = lambda: (4, 5)
     try:
-        error = original_apply(room, pid, cmd)
+        error = original_apply(room, pid, cmd, **kwargs)
     finally:
         server._roll_dice = roller
     if error:

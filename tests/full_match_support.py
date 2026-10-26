@@ -71,10 +71,10 @@ def install_test_rng():
     roll_context = ContextVar("natural_match_roll_context", default=(0, "base_standard"))
     original_apply = server._apply_cmd
 
-    def apply_with_roll_context(room, pid, command):
+    def apply_with_roll_context(room, pid, command, **kwargs):
         marker = roll_context.set((room.roll_count, room.game.map_id))
         try:
-            return original_apply(room, pid, command)
+            return original_apply(room, pid, command, **kwargs)
         finally:
             roll_context.reset(marker)
     server._apply_cmd = apply_with_roll_context

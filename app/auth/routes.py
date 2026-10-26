@@ -125,6 +125,18 @@ async def logout(request: Request):
     return response
 
 
+@router.post("/api/auth/test-mode")
+async def owner_test_mode(request: Request):
+    from app import server_mp as server
+    require_origin(request)
+    who = await identity(request)
+    data = await body(request, ("enabled",))
+    preference = await service().set_owner_test_mode(who, data["enabled"])
+    # Preference is durable before updating already-open sockets or returning success.
+    await server._notify_owner_test_mode()
+    return reply(preference)
+
+
 @router.get("/api/games/active")
 async def active_games(request: Request):
     from app import server_mp as server

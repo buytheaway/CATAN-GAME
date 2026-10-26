@@ -135,7 +135,7 @@ export type CmdAck = {
 type SeatIdentity = { type: "seat_identity"; ownership: "account"; room_code: string; pid: number; match_id: number; last_seq_applied: number };
 export type RoomClosed = { type: "room_closed"; room_code: string; request_id?: string };
 export type WsEvent = RoomState | MatchState | ServerError | ReconnectTokenMsg | SeatIdentity | CmdAck | ChatState | RoomClosed
-  | { type: "hello"; version: number; test_tools_available?: boolean; connection_nonce?: string };
+  | { type: "hello"; version: number; test_tools_available?: boolean; connection_nonce?: string; owner_test_mode?: { enabled: boolean } };
 
 type MapSelection = { mapId: string; payload: Record<string, any> };
 
@@ -176,6 +176,7 @@ export class WSClient {
   public matchState: MatchState | null = null;
   public testToolsAvailable = false;
   onCapabilities?: () => void;
+  onOwnerTestModeChanged?: () => void;
   enableTestMode() {
     if (this.testToolsAvailable && this.isOpen() && this.roomState?.status === "lobby" && this.youPid === this.roomState.host_pid)
       this.send({ type: "enable_test_mode" });
@@ -495,6 +496,7 @@ export class WSClient {
       this.connectionNonce = data.connection_nonce;
       this.testToolsAvailable = data.test_tools_available === true;
       this.onCapabilities?.();
+      if (typeof data.owner_test_mode?.enabled === "boolean") this.onOwnerTestModeChanged?.();
       return;
     }
     if (data.type === "room_closed") {

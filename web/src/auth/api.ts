@@ -1,7 +1,7 @@
 import { CURRENT_GAME_KEY } from "../recentGames";
 import type { GameSummary } from "../recentGames";
 
-export type User = { username: string; display_name: string };
+export type User = { username: string; display_name: string; owner_test_mode?: { enabled: boolean } };
 export class AuthFailure extends Error {
   constructor(public code: string) { super(code); }
 }
@@ -14,6 +14,8 @@ export const errorText: Record<string, string> = {
   seat_not_owned: "This game does not belong to this account.", guest_credential_invalid: "This guest place can no longer be claimed.",
   duplicate_room_membership: "You already own a seat in this room.", rate_limited: "Too many attempts. Try again shortly.",
   already_claimed: "This guest place already belongs to an account.",
+  forbidden: "This account cannot change Test Mode.",
+  test_mode_disabled: "Test Mode permission is off. Enable it from your account controls.",
   origin_forbidden: "Authentication is unavailable on this address. Check the server's allowed origins.",
   persistence_unavailable: "The server is temporarily unavailable. Your saved games are kept.",
 };
@@ -36,7 +38,14 @@ export async function getMe() {
   const me = await authRequest<{authenticated: boolean; user?: User}>("/api/auth/me");
   if (typeof me.authenticated !== "boolean" || me.authenticated && (!me.user || typeof me.user.username !== "string" || typeof me.user.display_name !== "string"))
     throw new AuthFailure("persistence_unavailable");
+  if (me.user?.owner_test_mode !== undefined && typeof me.user.owner_test_mode?.enabled !== "boolean")
+    throw new AuthFailure("persistence_unavailable");
   return me;
+}
+export async function setOwnerTestMode(enabled: boolean) {
+  const result = await authRequest<{enabled: boolean}>("/api/auth/test-mode", { enabled });
+  if (result.enabled !== enabled) throw new AuthFailure("persistence_unavailable");
+  return result;
 }
 export async function getActiveGames() {
   const result = await authRequest<{games: GameSummary[]}>("/api/games/active");

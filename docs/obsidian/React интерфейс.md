@@ -4,6 +4,12 @@ tags: [catan, web, интерфейс]
 
 # React интерфейс
 
+## Owner Test Mode
+
+Implemented 2026-10-26. `AuthProvider` loads the server-only `user.owner_test_mode`; `OwnerTestModeToggle` in `AccountControls` shows **TEST MODE OFF/ON** beside the account on Home, lobby and `GameTopBar`. No username allowlist or browser-stored authorization. Click calls the strict cookie API, then refreshes `/api/auth/me`; grants are never optimistic. Reload/login/window focus and live owner capability notifications refresh the same durable preference. Loading/error cannot grant tools.
+
+ON only permits **Enable Test Room** in a new host lobby before Start. Existing `TestTools.tsx`, `testModeAccess`, `useGameCommand`, controller and snapshot rendering remain. In a Test Room finish setup and open **TEST MODE → Tools**; OFF removes the Tools capability on the existing socket. An ordinary active match remains ordinary even when the switch is ON. Other accounts/guests have no switch. Styling is local to `auth.css`; F1/F2 and engine authority are unchanged. Existing Test Rooms do not appear in Active Games or automatically restore on backend restart. [[Сервер и протокол#Owner Test Mode toggle]], [[Project State]].
+
 ## Visual Phase 5F.1 - optional water materials
 
 **Implemented opt-in renderer proposal2026-10-24; verification — [[plans/board3d#Visual Phase 5F.1 - water material harmony]].** Optional `Board3D.waterAppearance` defaults to `current`, flows to OceanBoard3D/DecorativeOcean and through HexTile3D to revealed TerrainHexVisual/fallback Sea hints. Only external `water-wrapper.tsx` selects `pilot`; App/GamePage/BoardRenderer/controller, server snapshot and saved preferences gain no field/setting. Unknown Fog still mounts only its neutral cover. Source/default behavior is compared to committed5E.2.
@@ -236,7 +242,7 @@ GamePage (.game-shell, shared Phase 1 tokens)
 
 [GameLog.tsx](../../web/src/game/GameLog.tsx) has independent `logOpen` state, reset on match-key changes. It renders existing personalized GameEvents plus optional legacy Connection details. RoomChat stays mounted with `room.chat_history`, `client.sendChat` and connection gating; rate limits/history/revision/reconnect semantics remain server/WSClient-owned. Independent Log does not suppress pending incoming trade offers. PlayerStrip receives Room only for public presence/host; VP/resource/dev counters still come from the permitted player snapshot. Missing Room presence is not invented as offline.
 
-[testModeAccess](../../web/src/game/TestTools.tsx) explains availability from existing `test_mode`, `test_tools`, connection and game-over flags. The header exposes Tools only for the server-issued host capability, with waiting/disconnected/endgame disabled states; participants see TEST MODE without controls. Ordinary/disabled-server Game info explains how to opt in. Existing server checks, owning socket, Test Room and `CATAN_ENABLE_TEST_TOOLS=1` are unchanged. No new action or privilege is introduced.
+[testModeAccess](../../web/src/game/TestTools.tsx) explains availability from existing `test_mode`, `test_tools`, connection and game-over flags. The header exposes Tools only for the server-issued host capability, with waiting/disconnected/endgame disabled states; participants see TEST MODE without controls. Ordinary/unavailable Game info explains opt-in. Socket ownership/Test Room requirements remain; the historical server-only permission was extended by [[React интерфейс#Owner Test Mode]] on 2026-10-26. No new Test Tools action is introduced.
 
 [environment.ts](../../web/src/board3d/environment.ts) contains presentation-only Base ship policy, actual-tile clearance/routes and a scenery raycast no-op. AmbientShips uses Three group refs and a cleaned-up 100ms timer with demand invalidation; it pauses on hidden document/reduced motion and has no React per-frame updates. Neither ocean nor boats have topology/IDs/legal/callbacks or enter camera fitting. [PortReadout3D.tsx](../../web/src/board3d/PortReadout3D.tsx) uses round markers and shared resource glyphs; original port edges/vertices/paths remain. BoardSnapshot only picks the existing optional rules_config for the visual Seafarers policy; wire shape is unchanged.
 
@@ -304,7 +310,7 @@ Hand click → local Give/Want tray. **Bank** отправляет existing trad
 
 DiceRoll3D: 600ms roll +300ms settle, hold до 2100ms, fade до 2500ms, затем compact exact DiceHUD; конечные transforms/invalidate без React frame state/physics. Robber — 420ms old→new movement, reduced instant. Static DecorativeOcean не имеет game IDs/targets и не меняет camera game bounds. TerrainHints — dispatcher независимых terrain visuals в board3d/terrain/. Port3D сохраняет оба vertex IDs. Camera auto-fit использует projected real footprint, размер viewport и offsets; 2D renderer и payloads не менялись.
 
-[TestTools](../../web/src/game/TestTools.tsx) получает personalized test_tools=true только host явно enabled lobby room на test-enabled server; named ActionSubmit/ACK/feedback, только main. На OFF/normal room кнопки и команды запрещены. No accounts/raw editor. Live socket automatic token reconnect уже существовал; page refresh хранит token, ordinary Join восстанавливает матч, нового identity flow нет.
+[TestTools](../../web/src/game/TestTools.tsx) получает personalized test_tools=true только authorized host явно enabled Test Room; named ActionSubmit/ACK/feedback, только main. Normal rooms и revoked capability запрещают команды. **Historical UX 2.3** used only server developer opt-in and guest reconnect; current pinned-account permission is [[React интерфейс#Owner Test Mode]], and account Continue uses the existing cookie-owned seat flow. Raw editor отсутствует.
 
 Evidence/limits — [[Design System#Game UX 2.3 — implemented playtest feedback]], [[plans/game-ui-redesign#Game UX 2.3 — Playtest Feedback Pass]].
 

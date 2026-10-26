@@ -12,8 +12,8 @@ export function testModeAccess(state: Pick<GameSnapshot, "test_mode" | "test_too
   const canUse = enabled && state.test_tools === true && status === "connected" && !state.game_over;
   const description = !enabled
     ? serverAvailable ? "Enable Test Room in the lobby before starting a match to use developer tools."
-      : "Test tools are disabled on this server. The server operator must enable them before creating a Test Room."
-    : !state.test_tools ? "Non-production Test Room. Only the current host can use Test Tools."
+      : "Test tools are unavailable. The designated owner can enable permission with the account TEST MODE toggle; local developer servers can also opt in."
+    : !state.test_tools ? "Non-production Test Room. Only the current host with active Test Mode permission can use Test Tools."
       : state.game_over ? "Non-production Test Room. Test actions are unavailable after the match ends."
         : status !== "connected" ? "Non-production Test Room. Reconnect to use Test Tools."
           : "Non-production Test Room. Open TEST MODE in the header for server-validated developer tools.";

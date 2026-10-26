@@ -203,7 +203,7 @@ export default function LobbyPage({
           }} /></label><p className="shell-help" role="status">{customLabel}</p></details>
         </div>
         <MatchSettings client={client} room={room} connected={connected} />
-        {room.test_mode ? <p className="test-room-warning">Development test room · debug actions enabled for host</p>
+        {room.test_mode ? <p className="test-room-warning">Test Room · tools require current host permission</p>
           : client.testToolsAvailable && !fogBeta && isHost && room.status === "lobby" && <button className="btn subtle"
             disabled={!connected} onClick={() => client.enableTestMode()}>Enable Test Room</button>}
       </Panel></div>

@@ -1,7 +1,7 @@
 """Private PostgreSQL schema. Engine objects never become ORM entities."""
 from sqlalchemy import (MetaData, Table, Column, Text, Integer, BigInteger, Boolean,
                         DateTime, LargeBinary, ForeignKey, ForeignKeyConstraint,
-                        UniqueConstraint, CheckConstraint, Index)
+                        UniqueConstraint, CheckConstraint, Index, false)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 metadata = MetaData()
@@ -15,6 +15,7 @@ users = Table("users", metadata,
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Column("disabled_at", DateTime(timezone=True)),
+    Column("test_tools_enabled", Boolean, nullable=False, server_default=false()),
 )
 user_sessions = Table("user_sessions", metadata,
     Column("id", UUID(as_uuid=True), primary_key=True),

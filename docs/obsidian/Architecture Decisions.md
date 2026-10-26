@@ -1,9 +1,21 @@
 ---
 tags: [catan, архитектура, adr]
-updated: 2026-10-18
+updated: 2026-10-26
 ---
 
 # Architecture Decisions
+
+## ADR-026 — Pinned account Test Mode preference
+
+Status: **Authorized and implemented, 2026-10-26; verification and limits — [[Project State]].** Extends the historical server-only opt-in in ADR-005; no generic admin role.
+
+The existing enabled local account `buytheaway` was inspected read-only and pinned by immutable `users.id = 9ceeeab2-9d25-4e67-84f7-3bb09e4914c6`. Username, display name, guest name, client pid and HTTP/WS payloads cannot assign this capability. A different database/account with the same name has no access. Migration `owner01` adds default-false `users.test_tools_enabled`; no lookup/backfill, credential change or auto-provisioning. Missing account/preference/database fails closed; no RAM fallback.
+
+The cookie-authenticated owner may POST the strict boolean preference to `/api/auth/test-mode`, under existing Origin/session checks. Home/lobby/match account controls show an always-visible ON/OFF switch only when the server identifies that owner. ON permits the existing explicit pre-start **Enable Test Room** flow; it never changes an ordinary match. Tool execution still requires a Test Room, its account-owned host seat, current controller/session, valid epoch/sequence and non-Fog state. OFF overrides the developer flag for this owner. Other local developer hosts retain `CATAN_ENABLE_TEST_TOOLS=1`; they never gain the owner toggle.
+
+Privileged candidate COMMIT rechecks the durable preference under PostgreSQL SHARE locks; the toggle UPDATE requires exclusive locks. A command commits before OFF, or OFF wins and the detached candidate is discarded with a final rejected receipt. No already-issued packet can be recalled. Private publication independently retains F1 ownership/session checks and reads the current capability under its authorization locks. Open owner sockets receive refreshed capabilities/personal state; ordinary Roll ignores a saved forced die while permission is OFF. Tools cannot act on normal/opponent rooms, and Fog remains disabled for Test Tools.
+
+Preference survives logout/login/restart independently of room snapshots. Existing Test Room policy is retained: excluded from Active Games and automatic startup restoration, not deleted; refresh/Continue works while the room remains live. This feature does not implement persistent test-room discovery, historical conversion or gameplay rules. [[Сервер и протокол#Owner Test Mode toggle]], [[Deployment#Owner Test Mode]], [[React интерфейс#Owner Test Mode]].
 
 ## ADR-025 — Explicit custom Fog beta admission and emergency stop
 
@@ -312,6 +324,8 @@ Reason: Удаления чужого res недостаточно: в двух 
 Consequences: Сервер строит разные snapshots по соединениям. Клиент обрабатывает отсутствие чужого res/dev_cards; банк показывает counts только при Visible, иначе bank_available. to_player_dict сам остаётся private, Visible bank добавляется отдельным серверным слоем. Spectator API нет; старым клиентам нужна адаптация. Детали — [[Сервер и протокол]].
 
 Game UX 2.3 extension (2026-10-06): committed Room gameplay events are also projected per recipient through a closed allowlist. Theft resource is visible only to thief/victim; production composition only to recipient; no raw engine event/debug-secret broadcast. Presentation history cannot execute rules. Test capability requires explicit server opt-in and lobby Test Room, with current active host ownership; normal multiplayer contract stays protected. Details — [[Сервер и протокол#Game UX 2.3 — personalized events and Test Mode]].
+
+2026-10-26: the historical server-only opt-in above is extended by ADR-026's pinned, durable owner preference. Explicit Test Room/current host ownership and all private projection constraints remain.
 
 ## ADR-006 — Consumed sequence for final command outcomes
 

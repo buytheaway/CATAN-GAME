@@ -5,6 +5,12 @@ updated: 2026-10-18
 
 # Deployment
 
+## Owner Test Mode
+
+Implemented 2026-10-26. After the updated backend/frontend are built, normal startup applies additive Alembic `owner01`. The existing pinned `buytheaway` account can then use **TEST MODE ON/OFF** beside its account without editing env or recreating containers for each toggle. Default is OFF. Sign in → ON → Host a new lobby → **Enable Test Room** before Start → complete setup → **TEST MODE / Tools**. OFF removes current privilege but does not erase/convert the room. Existing normal matches stay protected.
+
+The capability is pinned to the inspected immutable UUID, not to whoever registers that username in a new installation. A missing owner/preference/database gives no grant. No bootstrap/auto-assignment, admin role or password change. Other local developer workflows may still use `CATAN_ENABLE_TEST_TOOLS=1`; owner OFF overrides it for that account. Test Rooms keep their existing exclusion from Active Games and startup restoration. No volume reset or snapshot conversion is needed. [[Architecture Decisions#ADR-026 — Pinned account Test Mode preference]], [[Сервер и протокол#Owner Test Mode toggle]], [[Project State]].
+
 [[Project State]] · [[Точки входа]] · [[Сервер и протокол]] · [[Architecture Decisions]] · [[plans/containerization]]
 
 Production Infrastructure Phase 1 добавила Docker Compose; Persistence 1B — durable PostgreSQL/recovery; Auth Phase 1 — account sessions/ownership. Проверено 2026-10-07 на Docker Desktop Linux containers, Windows host. Это production-like запуск с persistence/accounts, без собственного TLS termination; публичное развёртывание требует HTTPS и operational hardening.

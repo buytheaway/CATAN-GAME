@@ -7,11 +7,15 @@ from sqlalchemy.exc import IntegrityError
 from app.persistence import models as m
 from app.persistence.credentials import issue_token, token_hash, utcnow
 from . import passwords
-from .security import AuthError, SESSION_AGE
+from .security import (AuthError, SESSION_AGE, OWNER_ACCOUNT_ID, authorization,
+                       authorize_transaction)
 
 
 def safe_user(row):
-    return {"username": row["username"], "display_name": row["display_name"]}
+    result = {"username": row["username"], "display_name": row["display_name"]}
+    if row.get("user_id", row.get("id")) == OWNER_ACCOUNT_ID:
+        result["owner_test_mode"] = {"enabled": row.get("test_tools_enabled") is True}
+    return result
 
 
 class AuthService:
@@ -24,7 +28,7 @@ class AuthService:
         now = utcnow()
         async with self.db.sessions() as session, session.begin():
             row = (await session.execute(select(
-                m.users.c.id.label("user_id"), m.users.c.username, m.users.c.display_name,
+                m.users.c.id.label("user_id"), m.users.c.username, m.users.c.display_name, m.users.c.test_tools_enabled,
                 m.user_sessions.c.id.label("session_id"), m.user_sessions.c.expires_at,
                 m.user_sessions.c.last_seen_at).select_from(m.users.join(m.user_sessions)).where(
                 m.user_sessions.c.token_hash == digest, m.user_sessions.c.revoked_at.is_(None),
@@ -44,6 +48,28 @@ class AuthService:
         async with self.db.sessions() as session, session.begin():
             await session.execute(update(m.user_sessions).where(m.user_sessions.c.id == identity["session_id"])
                                   .values(revoked_at=utcnow()))
+
+    async def set_owner_test_mode(self, identity, enabled):
+        if identity["user_id"] != OWNER_ACCOUNT_ID:
+            raise AuthError("forbidden", 403)
+        if type(enabled) is not bool:
+            raise AuthError("invalid_request", 400)
+        context = authorization.set(identity)
+        try:
+            async with self.db.sessions() as session, session.begin():
+                # Serializes toggles with each other and with authorized command COMMITs.
+                await authorize_transaction(session, exclusive=True)
+                await session.execute(update(m.users).where(m.users.c.id == OWNER_ACCOUNT_ID)
+                                      .values(test_tools_enabled=enabled, updated_at=utcnow()))
+        finally:
+            authorization.reset(context)
+        return {"enabled": enabled}
+
+    async def owner_test_mode_enabled(self):
+        async with self.db.sessions() as session:
+            return (await session.execute(select(m.users.c.test_tools_enabled).where(
+                m.users.c.id == OWNER_ACCOUNT_ID, m.users.c.disabled_at.is_(None)
+            ))).scalar_one_or_none() is True
 
     async def authenticate(self, data, *, register, incoming=None):
         name, secret = passwords.username(data.get("username")), passwords.password(data.get("password"))

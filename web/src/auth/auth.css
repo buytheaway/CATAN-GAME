@@ -1,4 +1,9 @@
 .auth-controls { display: inline-flex; }
+.owner-test-mode { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.owner-test-mode .auth-launch { max-width: none; white-space: nowrap; font-size: 11px; }
+.owner-test-mode [aria-checked=true] { border-color: #83cbb2; color: #c1e6d9; }
+.owner-test-mode [role=alert] { max-width: 180px; color: #ffcfbd; font-size: 11px; }
+.owner-test-mode button:focus-visible { outline: 2px solid #c1e6d9; outline-offset: 3px; }
 /* Existing match header launch control keeps its dimensions and style. */
 .auth-launch { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #152b3b; border: 1px solid #375668; border-radius: 8px; color: #edf5fa; padding: 8px 12px; cursor: pointer; font: inherit; }
 .auth-backdrop { position: fixed; inset: 0; z-index: 150; display: grid; place-items: center; background: #06101bdb; padding: 24px; }

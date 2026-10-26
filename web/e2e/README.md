@@ -1,5 +1,33 @@
 # Game UI / Game Room UX browser checks
 
+## Permanent owner Test Mode
+
+Real Chrome/Nginx/WS/PostgreSQL acceptance; no gameplay mocks. Use only the
+isolated `catan-owner-acceptance-test` project. Its synthetic fixture has the pinned
+UUID but a public test password; the seed command refuses non-local/non-`*_test`
+databases. Never point it at the user's database. Existing public Fog stays OFF,
+`CATAN_ENABLE_TEST_TOOLS=0`, and production authentication/passwords are untouched.
+
+```powershell
+docker compose -p catan-owner-acceptance-test -f compose.yaml -f tests/owner_test_mode.compose.yaml up -d --build --wait
+$env:CATAN_TEST_DATABASE_URL = 'postgresql+psycopg://catan:public-owner-disposable-password@127.0.0.1:55442/catan_owner_ui_test'
+.\.venv\Scripts\python.exe -m web.e2e.owner_test_mode_seed
+$env:CATAN_OWNER_TEST_DISPOSABLE = '1'
+$env:CATAN_E2E_ORIGIN = 'http://127.0.0.1:18095'
+$env:CATAN_E2E_OUTPUT = Join-Path $env:TEMP ('catan-owner-toggle-' + [guid]::NewGuid().ToString('N'))
+# Use the existing external Playwright install through NODE_PATH.
+node web/e2e/owner-test-mode.cjs
+```
+
+Nine groups check guest/foreign-account refusal, owner switch visibility,
+refresh/logout/login persistence, explicit Test Room and legal Board3D setup,
+authenticated tool action/privacy, live OFF/raw command denial and account-owned
+reconnect. Screenshots/results use only synthetic test accounts. Preference is
+left OFF. A separate backend restart verifies the preference/session, not automatic
+test-room recovery (which remains intentionally excluded). No screenshot/report
+or credential artifact belongs in Git. Do not mix this project with the user's
+normal Compose project or reset their volumes.
+
 ## Visual Phase 5F.1 - water material harmony
 
 Real Board3D, exact committed5E.2 `e01e8fb` versus an opt-in water material

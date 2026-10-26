@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { AuthFailure, authRequest, errorText, getActiveGames, getMe, type User } from "./api";
+import { AuthFailure, authRequest, errorText, getActiveGames, getMe, setOwnerTestMode, type User } from "./api";
 import { removeRecentGame, type RecentGame, type GameSummary } from "../recentGames";
 import type { WSClient } from "../wsClient";
 import GameCard from "../shell/GameCard";
@@ -10,7 +10,8 @@ import "./auth.css";
 
 type Auth = { user: User | null; loading: boolean; message: string; revision: number;
   signIn: (register: boolean, data: Record<string, string>) => Promise<void>;
-  logout: () => Promise<void>; claim: (binding: RecentGame) => Promise<void>; refresh: () => Promise<void>; client: WSClient };
+  logout: () => Promise<void>; claim: (binding: RecentGame) => Promise<void>; refresh: () => Promise<void>;
+  setTestMode: (enabled: boolean) => Promise<void>; client: WSClient };
 const Context = createContext<Auth | null>(null);
 export const useAuth = () => useContext(Context);
 const describe = (e: unknown) => errorText[e instanceof AuthFailure ? e.code : "persistence_unavailable"];
@@ -24,10 +25,20 @@ export function AuthProvider({ client, onExit, children }: {client: WSClient; on
   const refresh = async () => {
     const request = ++generation.current;
     try { const me = await getMe(); if (request === generation.current) { setUser(me.authenticated ? me.user ?? null : null); setMessage(""); } }
-    catch (e) { if (request === generation.current) setMessage(describe(e)); }
+    catch (e) { if (request === generation.current) { setMessage(describe(e)); setUser(current => current ? { ...current, owner_test_mode: undefined } : null); } }
     finally { if (request === generation.current) setLoading(false); }
   };
   useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    client.onOwnerTestModeChanged = () => { void refresh(); };
+    const focused = () => { void refresh(); };
+    window.addEventListener("focus", focused);
+    return () => { client.onOwnerTestModeChanged = undefined; window.removeEventListener("focus", focused); };
+  }, [client]);
+  const setTestMode = async (enabled: boolean) => {
+    try { await setOwnerTestMode(enabled); }
+    finally { await refresh(); } // Includes ambiguous HTTP outcomes; never optimistically grants access.
+  };
   const signIn = async (register: boolean, data: Record<string, string>) => {
     ++generation.current;
     const result = await authRequest<{user: User}>(`/api/auth/${register ? "register" : "login"}`, data);
@@ -46,7 +57,25 @@ export function AuthProvider({ client, onExit, children }: {client: WSClient; on
       ...(current?.room_code === binding.room_code && client.connectionNonce ? {connection_nonce: client.connectionNonce} : {}) });
     removeRecentGame(binding); setRevision(n => n + 1); setMessage("");
   };
-  return <Context.Provider value={{user, loading, message, revision, signIn, logout, claim, refresh, client}}>{children}</Context.Provider>;
+  return <Context.Provider value={{user, loading, message, revision, signIn, logout, claim, refresh, setTestMode, client}}>{children}</Context.Provider>;
+}
+
+export function OwnerTestModeToggle() {
+  const auth = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const preference = auth?.user?.owner_test_mode;
+  if (!auth || !preference) return null;
+  return <span className="owner-test-mode">
+    <button className="auth-launch" role="switch" aria-label="Owner Test Mode" aria-checked={preference.enabled}
+      disabled={busy || auth.loading} title="Permission for your explicitly enabled Test Rooms only. Normal matches stay protected."
+      onClick={async () => {
+        setBusy(true); setError("");
+        try { await auth.setTestMode(!preference.enabled); } catch (e) { setError(describe(e)); }
+        finally { setBusy(false); }
+      }}>TEST MODE {preference.enabled ? "ON" : "OFF"}</button>
+    {error && <span role="alert">{error}</span>}
+  </span>;
 }
 
 export function AccountControls({ shell = false }: { shell?: boolean }) {
@@ -96,6 +125,7 @@ export function AccountControls({ shell = false }: { shell?: boolean }) {
   };
   const binding = auth.client.guestBinding();
   return <div className={`auth-controls${shell ? " auth-controls--shell" : ""}`}>
+    <OwnerTestModeToggle />
     {shell && <span className="shell-account-label">{auth.loading ? "Checking account…" : auth.user ? "Signed in" : "Playing as a guest"}</span>}
     <button className="auth-launch" title={auth.user?.display_name} onClick={() => {
       if (!auth.user) setRegister(false);

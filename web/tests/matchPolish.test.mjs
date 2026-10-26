@@ -97,7 +97,7 @@ test("Test Mode requires both server snapshot flags, a connection and an unfinis
     [{test_mode:true,test_tools:true},"reconnecting",true,false],
     [{test_mode:true,test_tools:true,game_over:true},"connected",true,false],
   ]) assert.equal(testModeAccess(snapshot(flags),status,available).canUse,want);
-  assert.match(testModeAccess(snapshot(),"connected",false).description,/disabled on this server/);
+  assert.match(testModeAccess(snapshot(),"connected",false).description,/unavailable.*designated owner.*TEST MODE toggle/);
   assert.match(testModeAccess(snapshot(),"connected",true).description,/lobby before starting/);
   assert.match(testModeAccess(snapshot({test_mode:true}),"connected",true).description,/Only the current host/);
 });

@@ -90,3 +90,47 @@ test("malformed account metadata and network failures produce temporary errors",
   globalThis.fetch=async()=>({ok:true,json:async()=>({authenticated:true})});await assert.rejects(api.getMe(),/persistence_unavailable/);
   globalThis.fetch=async()=>{throw Error("network secret");};await assert.rejects(api.getMe(),/persistence_unavailable/);
 });
+
+for (const enabled of [false, true]) {
+  test(`owner preference ${enabled ? "ON" : "OFF"} comes from cookie API and sends no claimed identity`, async () => {
+    const requests = [];
+    globalThis.fetch = async (path, options) => {
+      requests.push({path, options});
+      return {ok: true, json: async () => path.endsWith("/me")
+        ? {authenticated: true, user: {username: "buytheaway", display_name: "Owner", owner_test_mode: {enabled}}}
+        : {enabled}};
+    };
+    assert.equal((await api.getMe()).user.owner_test_mode.enabled, enabled);
+    assert.deepEqual(await api.setOwnerTestMode(enabled), {enabled});
+    assert.equal(requests[1].path, "/api/auth/test-mode");
+    assert.equal(requests[1].options.credentials, "same-origin");
+    assert.deepEqual(JSON.parse(requests[1].options.body), {enabled});
+    assert.equal(localStorage.length, 0);
+    assert.equal(sessionStorage.length, 0);
+  });
+}
+
+test("account name alone does not create an owner preference and malformed preferences fail closed", async () => {
+  globalThis.fetch = async () => ({ok: true, json: async () => ({authenticated: true, user: {username: "buytheaway", display_name: "Owner"}})});
+  assert.equal((await api.getMe()).user.owner_test_mode, undefined);
+  for (const owner_test_mode of [null, {}, {enabled: 1}, {enabled: "true"}]) {
+    globalThis.fetch = async () => ({ok: true, json: async () => ({authenticated: true, user: {username: "buytheaway", display_name: "Owner", owner_test_mode}})});
+    await assert.rejects(api.getMe(), /persistence_unavailable/);
+  }
+  globalThis.fetch = async () => ({ok: false, json: async () => ({error: "forbidden"})});
+  await assert.rejects(api.setOwnerTestMode(true), e => e.code === "forbidden");
+});
+
+test("open owner socket can lose and regain tools without reconnect or sequence reset", () => {
+  const {client, socket} = resumed();
+  let changes = 0;
+  client.onOwnerTestModeChanged = () => changes++;
+  for (const enabled of [true, false, true]) {
+    socket.receive({type: "hello", version: 1, test_tools_available: enabled, connection_nonce: "same", owner_test_mode: {enabled}});
+    assert.equal(client.testToolsAvailable, enabled);
+    assert.equal(client.seq, 7);
+    assert.equal(client.youPid, 1);
+  }
+  assert.equal(changes, 3);
+  assert.equal(socket.readyState, Socket.OPEN);
+});
